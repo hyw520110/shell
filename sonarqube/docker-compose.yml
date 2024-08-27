@@ -1,0 +1,63 @@
+version: '3.1'
+services:
+  postgres:
+    image: postgres:13
+    restart: always
+    container_name: postgres
+    ports:
+      - 5432:5432
+    volumes:
+      - ./db/postgres:/var/lib/postgresql
+      - ./db/postgres/data:/var/lib/postgresql/data
+      - /etc/localtime:/etc/localtime:ro
+      - ./db/init/postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      TZ: Asia/Shanghai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: sonar
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+    networks: 
+      - sonarnet
+  sonar:
+# 7.8支持java8；7.9要求java11
+    image: sonarqube:7.8-community
+    container_name: sonarqube
+    privileged: true
+    restart: always
+    depends_on:
+      - postgres
+    volumes:
+      - ./data:/opt/sonarqube/data
+      - ./extensions:/opt/sonarqube/extensions
+      - /var/log/sonar:/opt/sonarqube/logs
+      - ./conf:/opt/sonarqube/conf
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - 9000:9000
+#    command:
+#      - -Dsonar.ce.javaOpts=-Xmx2048m
+#      - -Dsonar.web.javaOpts=-Xmx2048m
+#      - -Dsonar.web.context=/
+#      - -Dsonar.core.serverBaseURL=https://sonarqube.example.com
+    environment:
+      TZ: Asia/Shanghai
+      SONARQUBE_JDBC_USERNAME: root
+      SONARQUBE_JDBC_PASSWORD: sonar@lx
+      SONARQUBE_JDBC_URL: jdbc:postgresql://postgres:5432/sonar
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+    networks: 
+      - sonarnet
+networks:
+  sonarnet:
+    driver: bridge
+
+

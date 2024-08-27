@@ -1,0 +1,41 @@
+# 全局配置
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  # scrape_timeout is set to the global default (10s).
+# 告警配置
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['10.1.10.101:9093']
+# 加载一次规则，并根据全局“评估间隔”定期评估它们。
+rule_files:
+  - "/etc/prometheus/rules.yml"
+# 控制Prometheus监视哪些资源
+# 默认配置中，有一个名为prometheus的作业，它会收集Prometheus服务器公开的时间序列数据。
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['10.1.10.101:9090']
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['10.1.10.101:8899']
+# Node_Export
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['10.1.10.101:9100']
+        labels:
+# TODO ip替换 or file_sd_configs
+          instance: vm-10.1.10.101
+          service: node-service
+# 以上static_configs静态配置方式重启时监控会中断，支持多种服务发现https://blog.csdn.net/w2009211777/article/details/123950688，如file_sd_configs：[{"targets": ["10.1.10.101:9100"],"labels": {"instance": "vm-192.168.1.166","service": "node-service"}}]
+#    file_sd_configs:
+#      - files: ['./conf/groups/nodegroups/*.json']
+# 应用 jvm监控模板 4701; spring boot监控模板 12900
+  - job_name: 'app'
+    scrape_interval: 5s
+#  采集的路径
+    metrics_path: '/lxcheck/prometheus'
+    static_configs:
+# 应用服务ip端口
+      - targets: ['10.1.10.101:10086']

@@ -1,0 +1,11 @@
+version: '3.3'
+services:
+ dejavu:
+  image: appbaseio/dejavu:latest
+  restart: always
+  container_name: dejavu
+  environment:
+   - TZ=Asia/Shanghai
+  ports:
+    - 1358:1358     
+  privileged: true 

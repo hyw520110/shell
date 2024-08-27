@@ -1,0 +1,14 @@
+version: '3.4'
+services:
+  mysql:
+    container_name: mysql
+    image: nacos/nacos-mysql:5.7
+    restart: "always"
+    network_mode: host
+    env_file:
+      - ./conf/.mysql.env
+    volumes:
+      - ./data:/var/lib/mysql
+#      - ./conf:/etc/mysql
+    ports:
+      - 3306:3306

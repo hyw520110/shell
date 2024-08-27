@@ -1,0 +1,17 @@
+{
+	"ulid": "01GNA2YTA84BV7CSWX5VEZAV4C",
+	"minTime": 1672143867884,
+	"maxTime": 1672149600000,
+	"stats": {
+		"numSamples": 5389,
+		"numSeries": 32,
+		"numChunks": 42
+	},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01GNA2YTA84BV7CSWX5VEZAV4C"
+		]
+	},
+	"version": 1
+}

@@ -1,0 +1,62 @@
+version: '3.3'
+services:
+ elasticsearch: 
+  image: elasticsearch:$ES_VERSION
+  restart: always
+  container_name: elasticsearch
+#command: elasticsearch -Ecluster.name=catalog -Ebootstrap.memory_lock=true -Ehttp.port=9200 -Ehttp.cors.allow-origin="http://localhost:1358" -Ehttp.cors.enabled=true -Ehttp.cors.allow-headers=X-Requested-With,X-Auth-Token,Content-Type,Content-Length,Authorization -Ehttp.cors.allow-credentials=true -Ediscovery.zen.unicast.hosts=elasticsearch  
+  volumes: 
+   - /var/log/es:/usr/share/elasticsearch/logs
+   - ./bin:/usr/share/elasticsearch/bin
+   - ./config:/usr/share/elasticsearch/config
+   - ./data:/usr/share/elasticsearch/data
+   - ./jdk:/usr/share/elasticsearch/jdk
+   - ./plugins:/usr/share/elasticsearch/plugins
+  environment: 
+    - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    - cluster.name=es-cluster
+    - cluster.initial_master_nodes=es1,es2,es3
+    - discovery.seed_hosts=es2,es3
+    - TZ=Asia/Shanghai
+  ports:
+    - 9200:9200     
+    - 9300:9300     
+  privileged: true 
+  ulimits:
+    memlock:
+      soft: -1
+      hard: -1
+ # 指定最大进程数
+    nproc: 65535
+# 指定文件句柄数
+    nofile:
+      soft: 65535
+      hard: 65535
+  networks:
+    - elastic
+ elastichd:
+    image: containerize/elastichd:latest
+    container_name: elasticsearch-hd
+    ports:
+      - "9800:9800"
+    links:
+      - elasticsearch
+ dejavu:
+  image: appbaseio/dejavu:latest
+  container_name: dejavu
+  ports:
+    - 1358:1358
+  links:
+    - elasticsearch
+# elasticsearch-head:
+#  image: wallbase/elasticsearch-head:6-alpine
+#  container_name: elasticsearch-head
+#  environment:
+#    TZ: 'Asia/Shanghai'
+#  ports:
+#    - 9100:9100
+#  networks:
+#    - elastic
+networks:
+  elastic:
+    driver: bridge
