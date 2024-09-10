@@ -8,6 +8,7 @@ mkdir $WORKDIR
 cp $F $WORKDIR
 cd /tmp/proxy
 echo -e ">>> installing ... \n"
+[ ! -f $F ] && wget https://mirrors.goproxyauth.com/https://github.com/snail007/goproxy/releases/download/v10.4/proxy-linux-amd64.tar.gz  
 tar zxvf $F >/dev/null 2>&1
 set +e
 killall -9 proxy >/dev/null 2>&1
