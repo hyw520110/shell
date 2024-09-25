@@ -14,7 +14,7 @@ else
    # wget https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo -O /etc/yum.repos.d/docker-ce.repo
    yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
    # yum list docker-ce --showduplicates
-   version=`cat /etc/redhat-release|sed -r 's/.* ([0-9]+)\..*/\1/'`
+   version=`cat /etc/redhat-release 2>/dev/null|sed -r 's/.* ([0-9]+)\..*/\1/'`
    echo "version:[$version]"
    if [ $version -eq 7 ]; then
         sudo yum makecache fast
