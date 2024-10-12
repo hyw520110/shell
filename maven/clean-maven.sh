@@ -1,0 +1,1 @@
+find ~/.m2 -type f -name "*lastUpdated*" |xargs rm -rf 
