@@ -4,7 +4,7 @@
 pg_version="15"
 
 # 导入公共脚本
-source ./os_common.sh
+source ../linux/os_common.sh
 
 
 # 添加 PostgreSQL 仓库

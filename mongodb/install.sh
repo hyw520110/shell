@@ -17,7 +17,7 @@ GROUP=mongodb
 PORT=27017
 
 # 导入公共脚本
-source ./os_common.sh
+source ../linux/os_common.sh
 
 find_and_extract_mongodb_binary() {
     tgz_files_current=$(ls mongodb*.tgz 2>/dev/null)
