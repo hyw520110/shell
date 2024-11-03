@@ -1,10 +1,10 @@
 version: '3.4'
 services:
   nacos:
-    image: nacos/nacos-server:v2.0.4
+    image: nacos/nacos-server:v2.4.3
     container_name: nacos-standalone-mysql
-    env_file:
-      - ./conf/nacos-standlone-mysql.env
+#    env_file:
+#      - ./conf/nacos-standlone-mysql.env
     volumes:
       - ./logs/:/home/nacos/logs
       - ./init.d/custom.properties:/home/nacos/init.d/custom.properties

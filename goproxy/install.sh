@@ -5,10 +5,10 @@ set -e
 WORKDIR="/tmp/proxy"
 rm -rf $WORKDIR
 mkdir $WORKDIR
-cp $F $WORKDIR
-cd /tmp/proxy
+[ -f $F ] && mv $F ${WORKDIR}/
+cd $WORKDIR
 echo -e ">>> installing ... \n"
-[ ! -f $F ] && wget https://mirrors.goproxyauth.com/https://github.com/snail007/goproxy/releases/download/v10.4/proxy-linux-amd64.tar.gz  
+[ ! -f $F ] && wget https://github.com/snail007/goproxy/releases/download/v14.7/proxy-linux-amd64.tar.gz
 tar zxvf $F >/dev/null 2>&1
 set +e
 killall -9 proxy >/dev/null 2>&1
