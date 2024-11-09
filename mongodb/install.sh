@@ -1,9 +1,12 @@
 #!/bin/bash
-
+# 脚本名称：MongoDB安装脚本
+# https://www.mongodb.com/zh-cn/docs/database-tools/installation/installation-linux/
+# https://downloads.mongodb.com/compass/mongodb-mongosh_2.3.3_arm64.deb
+# https://fastdl.mongodb.org/tools/db/mongodb-database-tools-debian10-x86_64-100.10.0.tgz
 # 默认安装目录
-INSTALL_DIR="/usr/local"
+INSTALL_DIR="/opt/mongodb"
 # 下载目录：本地安装包不存在时，下载安装包的目录
-DOWNLOAD_DIR="/tmp"
+DOWNLOAD_DIR="/opt/softs"
 # 配置文件路径
 CONF_FILE=${INSTALL_DIR}/mongo/conf/mongodb.conf
 # 自启服务文件
@@ -17,7 +20,7 @@ GROUP=mongodb
 PORT=27017
 
 # 导入公共脚本
-source ../linux/os_common.sh
+source ../shell/os_common.sh
 
 find_and_extract_mongodb_binary() {
     tgz_files_current=$(ls mongodb*.tgz 2>/dev/null)
@@ -167,8 +170,11 @@ TimeoutStartSec=130
 WantedBy=multi-user.target
 EOF
     count=$(find $INSTALL_DIR/mongo/conf/ -name "mongodb_*.conf"|wc -l)
+    if [ $count -eq 0 ];then
+      count=$(find $INSTALL_DIR/mongo/conf/ -name "mongodb*.conf"|wc -l)
+    fi
     systemctl daemon-reload
-    if [ $count -eq 1 ];then
+    if [ $count -le 1 ];then
       systemctl enable mongodb
       if systemctl is-active mongodb &> /dev/null; then
           echo -e "${GREEN}MongoDB 服务正在运行。${NC}"
@@ -192,9 +198,10 @@ EOF
 validate_login() {
     local result=""
     local retries=3
-    echo " '$2' 用户登录验证..."
+    echo "mongosh $1 --username $2 --password $3 --authenticationDatabase admin 登录验证..."
     while [ $retries -gt 0 ]; do
       sleep 5
+      # https://www.mongodb.com/try/download/shell
       if mongosh $1 --username "$2" --password "$3" --authenticationDatabase "admin" --eval "db.runCommand({connectionStatus: 1})"; then
         result="$2用户登录成功。"
         break
@@ -254,6 +261,11 @@ EOF
   grep -q "replSetName:" $CONF_FILE || ports=(27017)
   for p in "${ports[@]}"; do
     local conf_file="${INSTALL_DIR}/mongo/conf/mongodb_${p}.conf"
+    [ ! -f $conf_file ] && conf_file="${INSTALL_DIR}/mongo/conf/mongodb.conf"
+    if [ ! -f $conf_file ];then
+      echo "文件不存在:$conf_file"
+      continue
+    fi
     sed -i 's/^#security:/security:/' $conf_file
     sed -i 's/^#  authorization/  authorization/' $conf_file
     sed -i "s/#  keyFile/  keyFile/" $conf_file
