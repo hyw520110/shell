@@ -15,9 +15,9 @@ else
         yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
         version=$(cat /etc/redhat-release 2>/dev/null | sed -r 's/.* ([0-9]+)\..*/\1/')
         echo "version:[$version]"
-        if [ $version -eq 7 ]; then
+        if [ "$version" == "7" ]; then
             sudo yum makecache fast
-        elif [ $version -eq 8 ]; then
+        elif [ "$version" == "8" ]; then
             sudo dnf makecache
         fi
         yum install -y docker-ce docker-ce-cli containerd.io
@@ -26,13 +26,7 @@ else
     elif command -v apt-get &> /dev/null; then
         # Deepin
         apt-get update
-        apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
-        curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-        echo \
-          "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian \
-          $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-        apt-get update
-        apt-get install -y docker-ce docker-ce-cli containerd.io
+        apt install docker.io
         systemctl enable docker
         systemctl start docker
     else

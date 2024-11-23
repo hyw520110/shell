@@ -1,8 +1,8 @@
 #!/bin/bash
 # nginx自动安装、配置
 
-usr=nginx
-group=nginx
+usr=www-data
+group=www-data
 
 url=http://nginx.org/download/nginx-1.23.1.tar.gz
 # nginx压缩文件名
@@ -34,7 +34,7 @@ check () {
   fi
   # 检测并修改配置文件用户配置
   if [ "`grep '^user ' $BASE_DIR/conf/nginx.conf | awk '{print $2}'`" != "${usr};" ]; then
-    sed -i "s/^user .*;/user $usr;" $BASE_DIR/conf/nginx.conf
+    sed -i "s#^user .*;#user $usr;#" $BASE_DIR/conf/nginx.conf
   fi
   if [ ! -e /usr/bin/wget ]; then
     # 检查包管理器
@@ -57,13 +57,11 @@ check () {
     dpkg -l | grep libgeoip-dev > /dev/null 2>&1
   elif command -v yum > /dev/null 2>&1; then
     rpm -q geoip-devel > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      yum install -y geoip-devel
+    fi
   else
     echo "未知的包管理器，无法检查GeoIP库"
-    exit 1
-  fi
-
-  if [ $? -ne 0 ]; then
-    echo "GeoIP库未安装或安装不完整，请重新安装"
     exit 1
   fi
 
@@ -165,14 +163,14 @@ open_firewalld_port () {
 
 # 添加自启动脚本
 add_systemd_service () {
-  cat <<EOF >/etc/systemd/system/nginx.service
+  cat <<EOF >/usr/lib/systemd/system/nginx.service
 [Unit]
 Description=The NGINX HTTP and reverse proxy server
 After=network.target
 
 [Service]
 Type=forking
-PIDFile=$nginx_home/logs/nginx.pid
+PIDFile=/var/run/nginx.pid
 ExecStartPre=$nginx_home/sbin/nginx -t -c $nginx_home/conf/nginx.conf
 ExecStart=$nginx_home/sbin/nginx -c $nginx_home/conf/nginx.conf
 ExecReload=$nginx_home/sbin/nginx -s reload

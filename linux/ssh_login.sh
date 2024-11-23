@@ -31,22 +31,8 @@ get_target_user() {
 get_target_ip
 get_target_user
 
-# 定义缓存文件路径
-ssh_cache=~/.ssh_cache
 rsa_pub_file=~/.ssh/id_rsa.pub
 
-# 创建缓存文件，如果不存在的话
-if [ ! -f "$ssh_cache" ]; then
-    touch "$ssh_cache"
-fi
-
-# 检查是否已经对目标主机设置过免密登录
-if grep -q -w "$target_ip" "$ssh_cache"; then
-    echo "已经为 $target_ip 设置过免密登录，退出。"
-    exit 0
-else
-    echo "$target_ip" >> "$ssh_cache"
-fi
 
 # 生成RSA密钥对，如果尚未生成
 if [ ! -f "$rsa_pub_file" ]; then

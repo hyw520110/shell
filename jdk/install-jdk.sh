@@ -16,9 +16,9 @@ p_file=/etc/profile.d/java.sh
 
 # 检查操作系统
 function check_os () {
-  if [ -f /etc/redhat-release ]; then
+   if command -v apt > /dev/null; then
     OS="CentOS"
-  elif [ -f /etc/debian_version ]; then
+  elif command -v yum > /dev/null; then
     OS="Debian"
   else
     echo "不支持的操作系统"
@@ -169,6 +169,9 @@ function install_java () {
 
   if check_installed_java $version; then
     echo "Java $version 已经安装。"
+    # 将 Java 8 设置为默认版本
+    update_and_switch_alternatives $home_dir $((count + 3 - version))
+    set_environment_variables $home_dir
     return
   fi
 

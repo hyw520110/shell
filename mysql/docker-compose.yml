@@ -1,14 +1,20 @@
-version: '3.4'
+version: '3.8'
+
 services:
   mysql:
     container_name: mysql
-    image: nacos/nacos-mysql:5.7
-    restart: "always"
-    network_mode: host
+    image: mysql/mysql-server:8.0.32-amd64
+    restart: always
+    networks:
+      - mysql-network
     env_file:
       - ./conf/.mysql.env
     volumes:
       - ./data:/var/lib/mysql
-#      - ./conf:/etc/mysql
+      - ./conf:/etc/mysql/conf.d
     ports:
-      - 3306:3306
+      - "3306:3306"
+
+networks:
+  mysql-network:
+    driver: bridge

@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  php-fpm:
+    image: php-fpm
+    container_name: php-fpm
+    command: /usr/local/sbin/php-fpm -F
+    volumes:
+      - ./opt/php:/var/www/html
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

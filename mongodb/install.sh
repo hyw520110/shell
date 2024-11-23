@@ -1,7 +1,7 @@
 #!/bin/bash
 # 脚本名称：MongoDB安装脚本
 # https://www.mongodb.com/zh-cn/docs/database-tools/installation/installation-linux/
-# https://downloads.mongodb.com/compass/mongodb-mongosh_2.3.3_arm64.deb
+# https://downloads.mongodb.com/compass/mongodb-mongosh_2.3.3_amd64.deb
 # https://fastdl.mongodb.org/tools/db/mongodb-database-tools-debian10-x86_64-100.10.0.tgz
 # 默认安装目录
 INSTALL_DIR="/opt/mongodb"
@@ -10,7 +10,7 @@ DOWNLOAD_DIR="/opt/softs"
 # 配置文件路径
 CONF_FILE=${INSTALL_DIR}/mongo/conf/mongodb.conf
 # 自启服务文件
-SERVICE_FILE=/etc/systemd/system/mongodb.service
+SERVICE_FILE=/usr/lib/systemd/system/mongodb.service
 # 环境变量文件
 ENV_FILE=/etc/profile.d/mongo.sh
 # 进程服务及目录所属用户及用户组
@@ -18,7 +18,7 @@ USR=mongodb
 GROUP=mongodb
 # 默认端口
 PORT=27017
-
+# apt-get install -y libssl1.1
 # 导入公共脚本
 source ../shell/os_common.sh
 
@@ -215,7 +215,7 @@ validate_login() {
 }
 init_mongodb() {
   # 初始化时通常端口小在先，通常为主节点
-  local addr="mongodb://localhost:27018/admin"
+  local addr="mongodb://localhost:27017/admin"
   local host_name=$(get_dns_hostname)
   grep -q "replSetName:" $CONF_FILE || addr="mongodb://localhost:27017/admin"
   echo -n "${addr}等待接受连接..."
@@ -246,10 +246,11 @@ EOF
   fi
 
   read -t 5 -p "输入初始用户名(默认root):" username
+  read -t 5 -p "输入初始用户名(空则生成随机密码):" password
   username=${username:-root}
   if ! mongosh $addr --eval "print(db.system.users.findOne({user: '$username', db: 'admin'}))" | grep -q "$username"; then
-      password=$(tr -dc 'a-zA-Z0-9#&' < /dev/urandom | head -c12)
-      echo "创建初始用户 '$username'..." && echo -e "初始密码:${RED}${password}${NC}"
+      [ -n "$password" ] && password=$(tr -dc 'a-zA-Z0-9#&' < /dev/urandom | head -c12)
+      echo "创建初始用户 '$username'..." && echo -e "密码:${RED}${password}${NC}"
       mongosh $addr --eval "db.createUser({user: '$username', pwd: '$password', roles: [{role: 'root', db: 'admin'},{role: 'clusterAdmin', db: 'admin'}]});"
       validate_login $addr $username $password
   else

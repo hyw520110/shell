@@ -24,7 +24,6 @@ function update_hosts {
         domain=$(echo "$domain" | awk '{$1=$1};1')
         line=$(grep "$domain" /etc/hosts)
         if [ -n "$line" ]; then
-            # 使用 sed 的 -e 选项来处理特殊字符
             escaped_domain=$(echo "$domain" | sed 's/[\&/]/\\&/g')
             sed -i '' "/$escaped_domain/d" /etc/hosts
         fi

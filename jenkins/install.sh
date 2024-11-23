@@ -10,9 +10,9 @@ IP=$(/opt/shell/ip.sh)
 
 # 检测操作系统
 detect_os() {
-  if [ -f /etc/debian_version ]; then
-    OS="Deepin"
-  elif [ -f /etc/redhat-release ]; then
+  if command -v apt > /dev/null; then
+    OS="Debian"
+  elif command -v yum > /dev/null; then
     OS="CentOS"
   else
     echo "不支持的操作系统"
