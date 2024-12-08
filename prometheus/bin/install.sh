@@ -1,20 +1,18 @@
 #!/bin/bash
 
 # 全局变量和配置
-PROMETHEUS_VERSION="2.36.1"
+PROMETHEUS_VERSION="3.0.1"
 NODE_EXPORTER_VERSION="1.8.2"
 PROMETHEUS_URL="https://github.com/prometheus/prometheus/releases/download/v$PROMETHEUS_VERSION/prometheus-$PROMETHEUS_VERSION.linux-amd64.tar.gz"
 NODE_EXPORTER_URL="https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
 DOWNLOAD_DIR="/opt/softs"
 SCRIPT_DIR=$(dirname $(readlink -f $0))
-PROMETHEUS_DIR=$(dirname $SCRIPT_DIR)
-PROMETHEUS_TAR="$DOWNLOAD_DIR/prometheus-$PROMETHEUS_VERSION.linux-amd64.tar.gz"
-NODE_EXPORTER_TAR="$DOWNLOAD_DIR/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
-CONFIG_DIR="${PROMETHEUS_DIR}/conf"
-DATA_DIR="${PROMETHEUS_DIR}/data"
+BASE_DIR=$(dirname $SCRIPT_DIR)
+BIN_DIR="$BASE_DIR/bin"
+CONFIG_DIR="$BASE_DIR/conf"
+DATA_DIR="$BASE_DIR/data"
 USER="prometheus"
 GROUP="prometheus"
-
 # 检查是否是root用户
 check_root() {
   if [ "$EUID" -ne 0 ]; then
@@ -23,40 +21,36 @@ check_root() {
   fi
 }
 
-# 检测操作系统类型，更新包列表，安装必要软件包
+# 安装必要的软件包
 setup_environment() {
-  if command -v apt-get > /dev/null 2>&1; then
-    apt-get update
-    apt-get install -y wget curl
-  elif command -v yum > /dev/null 2>&1; then
-    yum -y update
-    yum -y install wget curl
-  else
-    echo "未知的操作系统，无法继续"
-    exit 1
-  fi
+  local package_manager
+  for cmd in wget curl; do
+    command -v $cmd > /dev/null 2>&1 && continue
+    package_manager=$(command -v apt-get || command -v yum)
+    [[ -z "$package_manager" ]] && echo "未知的操作系统，无法继续" && exit 1
+    $package_manager update && $package_manager install -y $cmd
+  done
 }
 
-# 创建 Prometheus 用户和组（如果不存在）
 create_user_and_group() {
-  if ! getent group $GROUP > /dev/null 2>&1; then
-    groupadd --system $GROUP
-  fi
-  if ! id -u $USER > /dev/null 2>&1; then
-    useradd -s /sbin/nologin --system -g $GROUP $USER
-  fi
+  getent group $GROUP > /dev/null 2>&1 || groupadd --system $GROUP
+  id -u $USER > /dev/null 2>&1 || useradd -s /sbin/nologin --system -g $GROUP $USER
 }
 
-# 下载并解压 Prometheus
-download_prometheus() {
-  mkdir -p $DOWNLOAD_DIR $PROMETHEUS_DIR
-  if [ ! -f $PROMETHEUS_TAR ]; then
-    wget -O $PROMETHEUS_TAR $PROMETHEUS_URL
+# 下载并解压工具函数
+download_and_extract() {
+  local url=$1
+  local dest_dir=$DOWNLOAD_DIR
+  local tar_file="${DOWNLOAD_DIR}/${url##*/}"
+  local extract_dir=$3
+
+  mkdir -p $dest_dir
+  if [ ! -f $tar_file ]; then
+    wget -O $tar_file $url || { echo "下载失败: $url"; exit 1; }
   fi
-  tar -xzf $PROMETHEUS_TAR -C $PROMETHEUS_DIR
-  mv $PROMETHEUS_DIR/prometheus-$PROMETHEUS_VERSION.linux-amd64/* $PROMETHEUS_DIR/
-  rm -rf $PROMETHEUS_DIR/prometheus-$PROMETHEUS_VERSION.linux-amd64
-  rm -f $PROMETHEUS_TAR
+  tar -xzf $tar_file -C $dest_dir || { echo "解压失败: $tar_file"; exit 1; }
+  mv $dest_dir/$extract_dir/* $BIN_DIR/
+  rm -rf $dest_dir/$extract_dir
 }
 
 # 配置 Prometheus
@@ -72,30 +66,25 @@ global:
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ['localhost:9091']
   - job_name: 'node_exporter'
     static_configs:
       - targets: ['localhost:9100']
 EOF
-  else
-    [ ! -f /etc/prometheus/rules.yml ] && sed -i "s#/etc/prometheus/rules.yml#$CONFIG_DIR/rules.yml#" $CONFIG_DIR/prometheus.yml
+    chown $USER:$GROUP $CONFIG_DIR/prometheus.yml
   fi
 
-  # 配置文件 IP 替换
-  if [ `grep "localhost" $CONFIG_DIR/prometheus.yml|wc -l` -gt 0 ]; then
-    ip=`/usr/sbin/ip addr |grep -A 2 "state UP"|grep inet|grep -Ev "inet6|127|172"|grep -v "\.250\."|head -n 1|awk '{print $2}'|awk -F'/' '{print $1}'`
-    sed -i "s/localhost/$ip/g" $CONFIG_DIR/prometheus.yml
-  fi
-
-  chown $USER:$GROUP $CONFIG_DIR/prometheus.yml
+  # 替换配置文件中的 IP 地址
+  sed -i "s/localhost/$(/usr/sbin/ip addr | grep -A2 'state UP' | grep inet | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)/g" $CONFIG_DIR/prometheus.yml
 }
 
-# 创建 systemd 服务
+# 创建 systemd 服务通用函数
 create_systemd_service() {
-  if [ ! -f /etc/systemd/system/prometheus.service ]; then
-    cat <<EOF >/etc/systemd/system/prometheus.service
+  local service_name=$1
+
+  cat <<EOF >/etc/systemd/system/${service_name}.service
 [Unit]
-Description=Prometheus
+Description=$service_name
 Wants=network-online.target
 After=network-online.target
 
@@ -103,94 +92,36 @@ After=network-online.target
 User=$USER
 Group=$GROUP
 Type=simple
-ExecStart=$PROMETHEUS_DIR/prometheus --config.file=$CONFIG_DIR/prometheus.yml --storage.tsdb.path=$DATA_DIR --web.console.templates=$PROMETHEUS_DIR/consoles --web.console.libraries=$PROMETHEUS_DIR/console_libraries
+ExecStart=$BIN_DIR/startup.sh
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload
-    systemctl enable prometheus
-  fi
-
-  # 检查服务是否已经运行
-  if systemctl is-active --quiet prometheus; then
-    echo "Prometheus 服务已在运行"
-  else
-    systemctl start prometheus
-    echo "Prometheus 服务已启动"
-  fi
+  systemctl daemon-reload
+  systemctl enable $service_name
+  systemctl start $service_name
 }
 
 # 检测 Node Exporter 是否安装
 detect_node_exporter() {
-  if [ -f "$PROMETHEUS_DIR/node_exporter" ]; then
-    echo "Node Exporter 已安装。"
-    return 0
-  else
-    echo "Node Exporter 未安装。"
-    return 1
-  fi
+  [[ -f "$BIN_DIR/node_exporter" ]] && return 0 || return 1
 }
 
-# 下载并解压 Node Exporter
-download_node_exporter() {
-  if [ ! -f $NODE_EXPORTER_TAR ]; then
-    wget -O $NODE_EXPORTER_TAR $NODE_EXPORTER_URL
-  fi
-  tar -xzf $NODE_EXPORTER_TAR -C $PROMETHEUS_DIR
-  mv $PROMETHEUS_DIR/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64/node_exporter $PROMETHEUS_DIR/
-  rm -rf $PROMETHEUS_DIR/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64
-  rm -f $NODE_EXPORTER_TAR
-  chown $USER:$GROUP $PROMETHEUS_DIR/node_exporter
-}
-
-# 创建 Node Exporter 的 systemd 服务
-create_node_exporter_service() {
-  if [ ! -f /etc/systemd/system/node_exporter.service ]; then
-    cat <<EOF >/etc/systemd/system/node_exporter.service
-[Unit]
-Description=Node Exporter
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-User=$USER
-Group=$GROUP
-Type=simple
-ExecStart=$PROMETHEUS_DIR/node_exporter
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable node_exporter
-  fi
-
-  # 检查服务是否已经运行
-  if systemctl is-active --quiet node_exporter; then
-    echo "Node Exporter 服务已在运行"
-  else
-    systemctl start node_exporter
-    echo "Node Exporter 服务已启动"
-  fi
-}
-
-# 执行主流程
+# 主安装函数
 install() {
   check_root
   setup_environment
   create_user_and_group
-  download_prometheus
+  mkdir -p $BIN_DIR
+  download_and_extract $PROMETHEUS_URL "prometheus-$PROMETHEUS_VERSION.linux-amd64"
   configure_prometheus
-  create_systemd_service
+  create_systemd_service "prometheus"  
 
   if ! detect_node_exporter; then
-    download_node_exporter
-    create_node_exporter_service
+    download_and_extract $NODE_EXPORTER_URL "node_exporter-$NODE_EXPORTER_VERSION.linux-amd64"
+    create_systemd_service "node_exporter" 
   fi
 
   echo "Prometheus 和 Node Exporter 安装和配置完成！"

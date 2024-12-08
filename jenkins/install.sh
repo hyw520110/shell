@@ -5,7 +5,7 @@ JENKINS_URL="https://get.jenkins.io/war-stable/2.319.1/jenkins.war"
 DOWNLOAD_DIR="/opt/jenkins"
 JENKINS_HOME="/var/lib/jenkins"
 JENKINS_USER="jenkins"
-JAVA_VERSION="11"
+JAVA_VERSION="17"
 IP=$(/opt/shell/ip.sh)
 
 # 检测操作系统
@@ -19,20 +19,22 @@ detect_os() {
     exit 1
   fi
 }
-install_java11(){
-	case $OS in
-	  Deepin)
-	    sudo apt update
-	    sudo apt install -y openjdk-11-jdk
-	    ;;
-	  CentOS)
-	    sudo yum update -y
-	    sudo yum install -y java-11-openjdk-devel
-	    ;;
-	esac
+
+install_java17(){
+  case $OS in
+    Debian)
+      sudo apt update
+      sudo apt install -y openjdk-17-jdk
+      ;;
+    CentOS)
+      sudo yum update -y
+      sudo yum install -y java-17-openjdk-devel
+      ;;
+  esac
 }
-get_java11_path(){
- update-alternatives --list java | grep 'java-11'
+
+get_java17_path(){
+  update-alternatives --list java | grep 'java-17'
 }
 
 # 检测 8080 端口是否被占用
@@ -46,7 +48,7 @@ check_port_occupied() {
 # 安装依赖项
 install_dependencies() {
   case $OS in
-    Deepin)
+    Debian)
       sudo apt update
       sudo apt install -y curl
       ;;
@@ -66,7 +68,11 @@ check_dependencies_installed() {
 
 # 创建 Jenkins 用户
 create_jenkins_user() {
-  sudo useradd -r -m -d $JENKINS_HOME -s /bin/false $JENKINS_USER
+  if ! id -u $JENKINS_USER > /dev/null 2>&1; then
+    sudo useradd -r -d $JENKINS_HOME -s /bin/false $JENKINS_USER
+  else
+    echo "用户$JENKINS_USER已存在"
+  fi
 }
 
 # 创建 JENKINS_HOME 目录
@@ -147,10 +153,10 @@ show_jenkins_log() {
 # 主函数
 main() {
   detect_os
-  JAVA_PATH=$(get_java11_path)
-  [ -z "$JAVA_PATH" ]  && install_java11 && JAVA_PATH=$(get_java11_path)
+  JAVA_PATH=$(get_java17_path)
+  [ -z "$JAVA_PATH" ] && install_java17 && JAVA_PATH=$(get_java17_path)
   if [ ! -f "$JAVA_PATH" ]; then
-    echo "无法完成Java 11的检测或安装"
+    echo "无法完成Java 17的检测或安装"
     exit 1
   fi
   check_port_occupied

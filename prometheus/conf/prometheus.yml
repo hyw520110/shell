@@ -6,13 +6,12 @@ global:
   evaluation_interval: 15s
   # 设置全局的抓取超时时间，即 Prometheus 在放弃请求之前等待响应的时间。
   scrape_timeout: 10s
-
 # 告警配置
 alerting:
   # 配置告警管理器的地址，Prometheus 会将告警发送到这些地址。
   alertmanagers:
     - static_configs:
-        - targets: ['10.1.10.101:9093']
+        - targets: ['192.168.1.85:9093']
 
 # 规则文件配置
 rule_files:
@@ -24,20 +23,20 @@ scrape_configs:
   # 抓取 Prometheus 自身的指标
   - job_name: 'prometheus'
     static_configs:
-      - targets: ['10.1.10.101:9090']
+      - targets: ['192.168.1.85:9091']
 
   # 抓取 cAdvisor 的指标
   - job_name: 'cadvisor'
     static_configs:
-      - targets: ['10.1.10.101:8899']
+      - targets: ['192.168.1.85:8899']
 
   # 抓取 Node Exporter 的指标
   - job_name: 'node-exporter'
     static_configs:
-      - targets: ['10.1.10.101:9100']
+      - targets: ['192.168.1.85:9100']
         labels:
           # 为节点添加实例和服务标签，便于区分不同节点和服务
-          instance: vm-10.1.10.101
+          instance: vm-192.168.1.85
           service: node-service
 
   # 抓取应用程序的指标
@@ -45,9 +44,9 @@ scrape_configs:
     # 设置应用程序的抓取间隔时间，可以比默认的 15s 更短
     scrape_interval: 5s
     # 设置应用程序的抓取路径
-    metrics_path: '/lxcheck/prometheus'
+    metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['10.1.10.101:10086']
+      - targets: ['192.168.1.85:8089']
 
 # 动态服务发现配置（可选）
 # 以下配置用于动态发现目标，避免静态配置带来的重启中断问题
@@ -60,9 +59,9 @@ scrape_configs:
 #   # 文件内容示例如下：
 #   # [
 #   #   {
-#   #     "targets": ["10.1.10.101:9100"],
+#   #     "targets": ["192.168.1.85:9100"],
 #   #     "labels": {
-#   #       "instance": "vm-10.1.10.101",
+#   #       "instance": "vm-192.168.1.85",
 #   #       "service": "node-service"
 #   #     }
 #   #   }

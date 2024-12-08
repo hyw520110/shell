@@ -4,22 +4,23 @@
 # 默认版本为 8
 JAVA_VERSION=${1:-8}
 
-# 定义变量
-declare -A JAVA_INFO=(
+JAVA_INFO=(
   [8]="/opt/dragonwell-8.11.12 https://github.com/alibaba/dragonwell8/releases/download/dragonwell-8.11.12_jdk8u332-ga/Alibaba_Dragonwell_8.11.12_x64_linux.tar.gz"
-  [11]="/opt/jdk-11.0.2 https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_linux-x64_bin.tar.gz"
-  [21]="/opt/dragonwell-21.0.4.0.4.7 https://dragonwell.oss-cn-shanghai.aliyuncs.com/21.0.4.0.4%2B7/Alibaba_Dragonwell_Extended_21.0.4.0.4.7_x64_linux.tar.gz"
+  [11]="/opt/jdk-11.0.2 https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_osx-x64_bin.tar.gz"
+  [21]="/opt/dragonwell-21.0.4.0.4.7 https://dragonwell.oss-cn-shanghai.aliyuncs.com/21.0.4.0.4%2B7/Alibaba_Dragonwell_Extended_21.0.4.0.4.7_x64_macos.tar.gz"
 )
 
-gz_file=/opt/softs/${JAVA_INFO[$JAVA_VERSION]##*/}
+gz_file=/tmp/${JAVA_INFO[$JAVA_VERSION]##*/}
 p_file=/etc/profile.d/java.sh
 
 # 检查操作系统
 function check_os () {
-   if command -v apt > /dev/null; then
-    OS="CentOS"
-  elif command -v yum > /dev/null; then
+  if command -v brew > /dev/null; then
+    OS="macOS"
+  elif command -v apt > /dev/null; then
     OS="Debian"
+  elif command -v yum > /dev/null; then
+    OS="CentOS"
   else
     echo "不支持的操作系统"
     exit 1
@@ -36,10 +37,10 @@ function check_permissions () {
 
 # 列出所有 Java 候选项
 function listjava () {
-  if [ "$OS" == "CentOS" ]; then
+  if [ "$OS" == "macOS" ]; then
+    /usr/libexec/java_home -V | grep -E '^(\/.*\/jdk.*)'
+  else
     update-alternatives --list | grep java
-  elif [ "$OS" == "Debian" ]; then
-    sudo update-alternatives --list java
   fi
 }
 
@@ -47,20 +48,19 @@ function listjava () {
 function javaversion () {
   java -version 2>&1 | awk 'NR==1{gsub(/"/,"");print $3}'
 }
-
 # 检查 Java 是否已安装
 function check_installed_java () {
   local version=$1
   local home_dir=${JAVA_INFO[$version]%% *}
 
-  if [ -d $home_dir ]; then
+  if [ -d "$home_dir" ]; then
     echo "Java $version 已安装在 $home_dir"
     return 0
   fi
 
-  # 检查是否注册到 update-alternatives
-  if listjava | grep -q "$home_dir/bin/java"; then
-    echo "Java $version 已注册到 update-alternatives"
+  # 对于 macOS，检查是否通过 /usr/libexec/java_home 注册
+  if [ "$OS" == "macOS" ] && /usr/libexec/java_home -V 2>/dev/null | grep -q "$home_dir"; then
+    echo "Java $version 已注册到 /usr/libexec/java_home"
     return 0
   fi
 
@@ -75,7 +75,6 @@ function check_installed_java () {
 
   return 1
 }
-
 # 下载并解压 Java
 function download_and_extract () {
   local url=$1
@@ -89,7 +88,7 @@ function download_and_extract () {
 
   if [ ! -d $home_dir ] && [ ! -f $gz_file ]; then
     echo "下载 $url 到 $gz_file..."
-    wget $url -O $gz_file
+    curl -L $url -o $gz_file
   fi
 
   if [ ! -d $home_dir ]; then
@@ -111,54 +110,29 @@ function set_environment_variables () {
   for file in "${env_files[@]}"; do
     if [ -f "$file" ] && grep -q "JAVA_HOME" "$file"; then
       found=true
-      sed -i "s|^JAVA_HOME=.*|JAVA_HOME=$home_dir|" "$file"
-      sed -i "s|^PATH=.*|PATH=\$JAVA_HOME/bin:\$PATH|" "$file"
+      sed -i "" "s|^JAVA_HOME=.*|JAVA_HOME=$home_dir|" "$file"
+      sed -i "" "s|^PATH=.*|PATH=\$JAVA_HOME/bin:\$PATH|" "$file"
     fi
   done
 
   if ! $found; then
-    profile_file=/etc/profile
-    if [ -d /etc/profile.d ]; then
-      profile_file=$p_file
-      chmod +x $p_file
-    fi
-    cat <<EOF > $profile_file
-JAVA_HOME=$home_dir
-export JAVA_HOME
+    profile_file=~/.bash_profile
+    cat <<EOF >> $profile_file
+export JAVA_HOME=$home_dir
 export PATH=\$JAVA_HOME/bin:\$PATH
 EOF
-    source /etc/profile
+    source $profile_file
   fi
 }
 
-# 注册 Java 组件到 update-alternatives
-function register_alternatives () {
+# 更新 macOS 的 Java Home
+function update_macos_java_home () {
   local home_dir=$1
-  local priority=$2
-
-  if [ -d $home_dir ]; then
-    sudo update-alternatives --install /usr/bin/java java $home_dir/bin/java $priority
-    sudo update-alternatives --install /usr/bin/javac javac $home_dir/bin/javac $priority
-    sudo update-alternatives --install /usr/bin/jar jar $home_dir/bin/jar $priority
-  else
-    echo "Java 目录 $home_dir 不存在。"
-    exit 1
-  fi
-}
-
-# 更新 alternatives 并切换 Java 版本
-function update_and_switch_alternatives () {
-  local home_dir=$1
-  local priority=$2
-
-  if [ -d $home_dir ]; then
-    sudo update-alternatives --set java $home_dir/bin/java
-    sudo update-alternatives --set javac $home_dir/bin/javac
-    sudo update-alternatives --set jar $home_dir/bin/jar
-  else
-    echo "Java 目录 $home_dir 不存在。"
-    exit 1
-  fi
+  sudo /usr/libexec/java_home -V 2>/dev/null | while read line; do
+    if [[ $line =~ ^($home_dir) ]]; then
+      sudo /usr/libexec/java_home -F $line
+    fi
+  done
 }
 
 # 安装 Java
@@ -170,19 +144,19 @@ function install_java () {
   if check_installed_java $version; then
     echo "Java $version 已经安装。"
     # 将 Java 8 设置为默认版本
-    update_and_switch_alternatives $home_dir $((count + 3 - version))
+    if [ "$OS" == "macOS" ]; then
+      update_macos_java_home $home_dir
+    fi
     set_environment_variables $home_dir
     return
   fi
 
   download_and_extract $url $home_dir $gz_file
-  priority=$((count + 3 - version))
-  register_alternatives $home_dir $priority
-  update_and_switch_alternatives $home_dir $priority
+  if [ "$OS" == "macOS" ]; then
+    update_macos_java_home $home_dir
+  fi
   set_environment_variables $home_dir
 }
-
-# 主函数
 function main () {
   check_os
   check_permissions
@@ -192,7 +166,7 @@ function main () {
 
   echo "当前 Java 版本: $current_version"
 
-  if [[ -v JAVA_INFO[$JAVA_VERSION] ]]; then
+  if [[ -n ${JAVA_INFO[$JAVA_VERSION]+x} ]]; then
     install_java $JAVA_VERSION
   else
     echo "不支持的 Java 版本: $JAVA_VERSION"
@@ -202,5 +176,4 @@ function main () {
   listjava
   echo "新的 Java 版本: $(javaversion)"
 }
-
 main
