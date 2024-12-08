@@ -17,13 +17,16 @@ function fetch_hosts {
 
 # 处理现有 /etc/hosts 文件
 function update_hosts {
-    existing_hosts=$(cat /etc/hosts)
     new_hosts=$(fetch_hosts)
     new_domains=$(echo "$new_hosts" | cut -d ' ' -f2-)
-    cp /etc/hosts /etc/hosts.bak
+    [ ! -f /etc/hosts.bak ] && cp /etc/hosts /etc/hosts.bak
     for domain in $new_domains; do
         domain=$(echo "$domain" | awk '{$1=$1};1')
-        sed -i "/$domain/d" /etc/hosts
+        line=$(grep "$domain" /etc/hosts)
+        if [ -n "$line" ]; then
+            escaped_domain=$(echo "$domain" | sed 's/[\&/]/\\&/g')
+            sed -i '' "/$escaped_domain/d" /etc/hosts
+        fi
     done
     echo "$new_hosts" >> /etc/hosts
     echo "/etc/hosts 文件已更新:"

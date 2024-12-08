@@ -18,11 +18,9 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles' 
       - '--storage.tsdb.retention.time=15d'
 # 设置web.external-url，添加数据源时http://localhost:8090/prometheus
-      - '--web.external-url=prometheus'
+      - '--web.external-url=http://localhost:8090/prometheus'
     networks:
       - monitor
-    links:
-      - alertmanager:alertmanager
   alertmanager:
    image: prom/alertmanager
    container_name: alertmanager
@@ -55,9 +53,6 @@ services:
      - GF_INSTALL_PLUGINS=camptocamp-prometheus-alertmanager-datasource
    networks:
       - monitor
-   links:
-     - prometheus:prometheus
-     - alertmanager:alertmanager
   node-exporter:
     image: quay.io/prometheus/node-exporter
     container_name: node-exporter

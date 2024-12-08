@@ -11,13 +11,26 @@ port=3306
 # 密码输入超时时间，修改默认随机密码，如超时未输入使用默认随机密码
 input_time=10
 # mysql下载地址
-url=https://mirrors.aliyun.com/mysql/MySQL-5.7/mysql-5.7.36-el7-x86_64.tar.gz
+mysql5_centos_url=https://mirrors.aliyun.com/mysql/MySQL-5.7/mysql-5.7.36-el7-x86_64.tar.gz
+mysql8_centos_url=https://mirrors.aliyun.com/mysql/MySQL-8.0/mysql-8.0.27-el7-x86_64.tar.gz
+mysql8_debian_url=https://mirrors.aliyun.com/mysql/MySQL-8.0/mysql-8.0.27-linux-glibc2.17-x86_64-minimal.tar.xz
+
+# 根据操作系统类型选择下载URL
+if which rpm > /dev/null 2>&1 && which yum > /dev/null 2>&1; then
+  url=$mysql8_centos_url
+elif which apt > /dev/null 2>&1; then
+  url=$mysql8_debian_url
+else
+  echo "Unsupported operating system"
+  exit 1
+fi
+
 # 从url中提取压缩文件名
 gz_file_name=${url##*/}
 # 下载文件路径，文件名从下载url提取
 gz_file=/opt/softs/$gz_file_name
 # 解压临时目录
-tmp_dir=/tmp/${gz_file_name%*.tar.gz}
+tmp_dir=/tmp/${gz_file_name%*.tar.*}
 
 # 当前目录
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -28,44 +41,61 @@ cd $BASE_DIR
 cnf=$BASE_DIR/conf/my.cnf
 
 # 检测是否安装：如已启动退出，如已安装(数据目录不为空)未启动则启动
-# 已启动时退出
-[ `ps -ef|grep mysqld|grep -v grep|grep -v install.sh|wc -l` -gt 0 ] && echo "mysql has been started :" && ps -ef|grep mysqld|grep -v grep && exit 0
+# 3306端口被占用时 提示退出
+[ `netstat -anp | grep $port | grep LISTEN | grep -v grep | wc -l` -gt 0 ] && print "port $port is already in use" && netstat -anp | grep $port | grep LISTEN && exit 0
+
 # 数据目录不为空时，提示数据目录不为空后，执行启动脚本退出
 [ -d $BASE_DIR/data ] && [ "`ls -A $BASE_DIR/data`" ] && echo "$BASE_DIR/data is not empty!" && $CURRENT_DIR/startup.sh && exit 0
 
 # 检查安装用户是否是root
 if [ $(id -u) != "0" ]; then
-    echo "Error: You must be root to run this script, please use root to install"
+    echo "使用root运行此脚本安装mysql!"
     exit 1
 fi
-
+# 检查用户和组
+if ! id -u $usr > /dev/null 2>&1; then
+  useradd -M -s /sbin/nologin $usr
+fi
+if ! getent group $usr_group > /dev/null 2>&1; then
+  groupadd $usr_group
+fi
 # 打印日志
 function print(){
   echo "$(date +"%Y%m%d %H:%M:%S"):$1"
 }
 # 判断文本在文件中不存在时，写入文本到文件,参数1：文本；参数2：文件路径;参数3可选：执行命令,文本写入后的加载命令
-# TODO 1、判断文件不存在直接写入；2、判断内容部分存在,修改文件，如key存在但value不同
 function wfile {
  # 当文件存在时，查找文件内容是否存在，不存在时追加文本到文件中,如有加载命令则执行加载命令
- [ -f $2 ] && [ ! -n "`grep "$1" $2`" ] && echo "$1">>$2 && echo "$1" >>$2 && [ -n "$3" ] && exec $3
+ [ -f $2 ] && [ ! -n "`grep "$1" $2`" ] && echo "$1" >> $2 && [ -n "$3" ] && exec $3
 }
 # 目录不存在时创建目录
-function mdir {
-  [ ! -d $1 ] && echo "mkdir -p $1" && mkdir -p $1
+function mkdirs {
+  for dir in "$@"; do
+    if [ ! -d "$dir" ]; then
+      echo "创建目录: $dir"
+      mkdir -p "$dir"
+    fi
+  done
 }
-
-
-print " start to check mysql ..."
+print "开始检查 ..."
 # mysql如已安装提示退出,如需卸载执行:rpm -ev 包名,如卸载依赖报错，加参数--nodeps
-[ `rpm -qa|grep -i mysql|grep -v grep|wc -l` -gt 0 ] && print "mysql has bean installed:"  && rpm -qa|grep -i mysql && exit 0
-# 3306端口被占用时 提示退出
-[ `netstat -anp|grep $port|grep LISTEN|grep -v grep |wc -l` -gt 0 ] && print "port $port is already in use" && netstat -anp|grep $port|grep LISTEN && exit 0
-# 依赖未安装时安装依赖
-[ `rpm -qa|grep -i libaio|grep -v grep|wc -l` -eq 0 ] && yum install -y libaio
-
+if which rpm > /dev/null 2>&1 && which yum > /dev/null 2>&1; then
+  #rpm -qa | grep -i mysql > /dev/null 2>&1 && print "mysql已安装:" && rpm -qa | grep -i mysql && exit 0
+  # 依赖未安装时安装依赖
+  [ `rpm -qa | grep -i libaio | grep -v grep | wc -l` -eq 0 ] && yum install -y libaio
+elif which apt > /dev/null 2>&1; then
+  [ `dpkg -l | grep -i libaio1 | grep -v grep | wc -l` -eq 0 ] && apt-get update && apt-get install -y libaio1
+  [ `dpkg -l | grep -i libncurses5 | grep -v grep | wc -l` -eq 0 ] && apt-get update && apt-get install libncurses5
+fi
+# 检查用户和组
+if ! id -u $usr > /dev/null 2>&1; then
+  useradd -M -s /sbin/nologin $usr
+fi
+if ! getent group $usr_group > /dev/null 2>&1; then
+  groupadd $usr_group
+fi
 # 检测并写入系统内核相关参数
 limits=/etc/security/limits.conf
-#cat >> $limits << EOF mysql    soft    nproc    16384 EOF" $limits
 wfile "mysql    soft    nproc    16384" $limits
 wfile "mysql    hard    nproc    16384" $limits
 wfile "mysql    soft    nofile    65536" $limits
@@ -73,111 +103,85 @@ wfile "mysql    hard    nofile    65536" $limits
 wfile "mysql    soft    stack    1024000" $limits
 wfile "mysql    hard    stack    1024000" $limits
 wfile "vm.swappiness = 5" /etc/sysctl.conf "sysctl -p"
-#sed -i "s/SELINUX=enforcing/SELINUX=disabled/g" /etc/selinux/config
 
 # 检查软件安装包目录不存在时创建
-mdir ${gz_file%/*}
-# 日志目录不存在时 创建  
-mdir $log_dir 
-mkdir -p $log_dir/binlog $log_dir/redolog $log_dir/undolog 
+mkdirs ${gz_file%/*}
+# 日志目录不存在时 创建
+mkdirs $log_dir $log_dir/binlog $log_dir/redolog $log_dir/undolog
+sed -i "s#/opt/mysql/logs#$log_dir#g" $cnf
 chown -R ${usr}:${usr_group} $log_dir
-mdir $BASE_DIR/data
+mkdirs $BASE_DIR/data
 
+# 软件包不存在时(软件包目录和用户目录),下载
+[ ! -f $gz_file ] && [ `find ~/ -maxdepth 1 -name 'mysql-*.tar.*' -type f | wc -l` -eq 0 ] && print "开始下载mysql安装包..." && wget $url -O $gz_file
 
-# 软件包不存在时(软件包目录和用户目录),下载 
-[ ! -f $gz_file ]  && [ `find ~/ -maxdepth 1 -name 'mysql-*.tar.gz' -type f | wc -l` -eq 0 ] &&  print "MySQL installation package not found! start downloading ..." && wget $url -o $gz_file 
-# TODO 查找到多个安装包时选择
+# 解压
+[ ! -d $tmp_dir ] && tar -xf $gz_file -C ${tmp_dir%/*}
 
-# mysql全局配置文件存在时 提示 TODO 选择配置文件
-[ -f /etc/my.cnf ] && ls $cnf /etc/my.cnf
-# 配置文件存在时备份
-[ -f $cnf ] && [ ! -f $cnf.bak ] && print "backup $cnf" && cp $cnf $cnf.bak
-# 检测配置中的路径和当前应用路径不一致时，批量替换成当前应用路径
-dir=`cat $cnf|grep datadir|awk -F'=' '{print $2}'|awk '$1=$1'`
-[ "$BASE_DIR" != "${dir%/*}" ] && sed -i "s#${dir%/*}#$BASE_DIR#g" $cnf
-
-# 日志目录和配置文件不一致时 修改替换日志路径
-# 查找配置文件中所有日志路径配置
-for filePath in `cat $cnf|grep "\.log"|grep "="|grep "/"|awk -F'=' '{print $2}'|awk '$1=$1'`
-do
-  # 配置文件中的路径和当前脚本定义的日志路径不匹配时 批量替换配置文件中的日志目录
-  [ "$log_dir" != "${filePath%/*}" ] && sed -i "s#${filePath%/*}#$log_dir#g" $cnf
-done
-# 检测配置文件中的用户和当前脚本定义的用户不一致时，修改配置文件中的用户
-[ "`cat $cnf|grep user|awk -F'=' '{print $2}'|awk '$1=$1'`" != "$usr" ] && sed -i "s/user=.*/user=$usr" $cnf
-
-# 检测用户
-if [ `id $usr |grep $usr|grep -v grep | wc -l` -eq 0 ];then
-  groupadd $usr_group && useradd -r -g $usr -s /bin/false $usr
-  # 设置用户密码
-  if [ -f /opt/shell/pwd.sh ];then
-    pwd=`/opt/shell/pwd.sh |grep "pwd:"|awk -F':' '{print $2}'`
-    echo "$usr pwd:$pwd" && echo $pwd | passwd --stdin "$usr"
-  fi
-fi
-
-print " start to install mysql ..."
-[ ! -d $tmp_dir ] &&  tar -zxf $gz_file -C ${tmp_dir%/*}
-rsync -aWPu $tmp_dir/* $BASE_DIR/  
+# 同步文件
+[ -d $tmp_dir ] && rsync -au $tmp_dir/* $BASE_DIR/
 # 设置权限
 chown -R ${usr}:${usr_group} $BASE_DIR
-#bin/mysql_ssl_rsa_setup &> /dev/null
-#chmod +r /opt/mydata/data/server-key.pem
+chmod -R 755 $BASE_DIR/data
+err_file=$(grep log-error $cnf | awk -F'=' '{print $2}' | awk '$1=$1')
+# 初始化
+if [ "`ls -A $BASE_DIR/data`" == "" ];then
+  shell="$BASE_DIR/bin/mysqld  --initialize --user=$usr --basedir=$BASE_DIR --datadir=$BASE_DIR/data --console --lower-case-table-names=1 --explicit_defaults_for_timestamp=true"
+  print "mysql初始化:$shell"
+  # 获取初始化
+  eval $shell > $log_dir/init.log 2>&1
+  [ $? -ne 0 ] && print "mysql初始化失败!错误日志:$init_output" && exit 1
 
-# 数据目录为空时执行初始化
-[ "`ls -A $BASE_DIR/data`" == "" ] && print "mysql init..."&& $BASE_DIR/bin/mysqld --defaults-file=$cnf --initialize --user=root --explicit_defaults_for_timestamp=true && [ $? -ne 0 ] && print "mysql initialize failed, please check the error log!" && exit 1
-# 错误日志文件
-err_file=`cat $BASE_DIR/conf/my.cnf|grep error.log|head -n 1|awk -F'=' '{print $2}'|awk '$1=$1'`
-# 获取初始化随机密码
-pass=`grep "A temporary password" $err_file |awk -F ': ' '{print $2}'` && echo -en "mysql db user root initial password is:\033[31m $pass \033[0m \n" 
+  #从初始化输出中获取随机密码
+  pass=$(grep "password" $log_dir/init.log| awk -F ': ' '{print $2}')
+  echo -en "mysql临时密码:\033[31m $pass \033[0m \n"
+  rm -rf $log_dir/init.log
+  chown -R ${usr}:${usr_group} $log_dir
+fi
+chmod 644 $cnf
 # 启动
-$CURRENT_DIR/startup.sh  && [ $? -gt 0 ] && print "startup failed,see:$err_file" && exit 1
-# 调试阶段临时缓存密码
-# echo "$pass" >$BASE_DIR/bin/.pwd
-ps -ef|grep mysql
-
-# 启动成功后 清理安装目录和安装包
-#rm -rf $tmp_dir && rm -rf $gz_file
+$CURRENT_DIR/startup.sh
+[ $? -gt 0 ] && print "启动失败，查看错误日志:$err_file" && exit 1
+ps -ef | grep mysql
 
 # 启动成功后安装自启动服务
-#cp support-files/mysql.server /etc/init.d/mysql
-if [ `ls /usr/lib/systemd/system/ |grep mysql|grep -v grep|wc -l` -eq 0 ] && [ `ls /etc/systemd/system/|grep mysql|grep -v grep|wc -l` -eq 0 ];then
-print "install mysqld service:/usr/lib/systemd/system/mysqld.service"
-cat >> /usr/lib/systemd/system/mysqld.service << EOF
+if [ `ls /usr/lib/systemd/system/ | grep mysql | grep -v grep | wc -l` -eq 0 ] && [ `ls /etc/systemd/system/ | grep mysql | grep -v grep | wc -l` -eq 0 ]; then
+  print "install mysqld service:/usr/lib/systemd/system/mysqld.service"
+  cat >> /usr/lib/systemd/system/mysqld.service << EOF
 [Unit]
 Description=mysql service
 [Service]
 Type=forking
-#ExecStart=$BASE_DIR/support-files/mysql.server start
-ExecStart=$BASE_DIR/bin/startup.sh
-#ExecStop=$BASE_DIR/support-files/mysql.server stop
-ExecStop=$BASE_DIR/bin/stop.sh
+ExecStart=$CURRENT_DIR/startup.sh
+ExecStop=$CURRENT_DIR/stop.sh
 User=$usr
 [Install]
 WantedBy=multi-user.target
 EOF
-systemctl daemon-reload
-systemctl enable mysqld.service
+  systemctl daemon-reload
+  systemctl enable mysqld.service
 fi
+
 # 等待几秒 显示启动日志
 sleep 3
-# 提示输入新密码，超时未输入则跳过密码修改，使用初始化时生成的随机密码
-read -t $input_time -p "Please enter your password(timeout $input_time seconds):" password
-# 提示超时未输入密码，再次输出随机密码  TODO 随机密码时 开启root远程登录
-[ ! -n "$password" ] && echo -en "\nPassword input timeout, default password is:\033[31m $pass \033[0m \n"
-
-if [ -n "$password" ];then
-# set PASSWORD = PASSWORD('$password');
-# alter user 'root'@'%' identified by '$password';
-# 修改密码
-$CURRENT_DIR/mysql -uroot -p${pass} --connect-expired-password <<EOF
-SET PASSWORD FOR 'root'@'localhost' = PASSWORD('$password');
-flush privileges;
-exit
-EOF
-pass=$password
-print "reset password:$pass"
+if [ -n "$pass" ];then
+  # 提示输入新密码，超时未输入则跳过密码修改，使用初始化时生成的随机密码
+  read -t $input_time -p "输入新密码(超时时间$input_time 秒):" password
+  # 提示超时未输入密码，再次输出随机密码
+  [ ! -n "$password" ] && echo -en "\n密码输入超时, 默认密码:\033[31m $pass \033[0m \n"
 fi
+if [ -n "$password" ]; then
+  # 修改密码
+  #ALTER USER 'root'@'localhost' IDENTIFIED BY 'YourNewPassword';
+  $CURRENT_DIR/mysql -uroot -p${pass} --connect-expired-password <<EOF
+  SET PASSWORD FOR 'root'@'localhost' = PASSWORD('$password');
+  flush privileges;
+  exit
+EOF
+  pass=$password
+  print "修改密码为:$pass"
+fi
+if [ -n "$pass" ];then
 # 开启root远程登录权限
 $CURRENT_DIR/mysql -uroot -p${pass} <<EOF
 use mysql;
@@ -186,4 +190,6 @@ grant all privileges on *.* to 'root'@'%' with grant option;
 flush privileges;
 exit
 EOF
-print "MySQL installation completed"
+fi
+print "MySQL安装完成"
+# systemctl stop firewalld

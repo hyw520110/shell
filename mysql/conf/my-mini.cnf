@@ -1,0 +1,13 @@
+[mysqld]
+port = 3306
+datadir=/opt/mysql/data
+socket=/tmp/mysql.sock
+log_bin= /var/log/mysql/binlog/mysql-bin.log
+log_bin-index = /var/log/mysql/binlog/mysql-bin.index
+log_error = /var/log/mysql/error.log
+server_id=1
+binlog_format=ROW
+innodb_undo_tablespaces=2
+binlog_expire_logs_seconds=86400
+master_info_repository=TABLE
+relay_log_info_repository=TABLE
