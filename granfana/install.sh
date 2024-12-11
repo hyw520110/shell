@@ -16,6 +16,7 @@ setup_environment() {
  
 # 安装 Grafana
 install_grafana() {
+  # sed -i "s/default_language = en-US/default_language = zh-Hans/" /usr/share/grafana/conf/defaults.ini
   command -v apt-get && apt-get install -y adduser libfontconfig1 musl && wget https://dl.grafana.com/oss/release/grafana_11.4.0_amd64.deb && dpkg -i grafana_11.4.0_amd64.deb
   command -v yum && yum install -y https://dl.grafana.com/oss/release/grafana-11.4.0-1.x86_64.rpm
 }

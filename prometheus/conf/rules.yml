@@ -1,6 +1,6 @@
 # 规则文件配置
 groups:
-  - name: example
+  - name: alert_rules
     # 规则组的名称，用于标识一组规则
     rules:
       # 告警规则：当某个实例不可达超过1分钟时触发告警
@@ -40,7 +40,7 @@ groups:
 
       # 告警规则：当 Spring Boot 应用的 CPU 使用率超过 80% 时触发告警
       - alert: HighCPUUsage
-        expr: rate(process_cpu_seconds_total{application="my-spring-boot-app"}[5m]) * 100 > 80
+        expr: rate(process_cpu_seconds_total{application="app"}[5m]) * 100 > 80
         # 表达式，定义了触发告警的条件 当 `process_cpu_seconds_total` 的 5 分钟速率超过 80% 时，表示 CPU 使用率过高
         for: 5m
         # 告警持续时间，CPU 使用率超过 80% 的状态需要持续 5 分钟才会触发告警

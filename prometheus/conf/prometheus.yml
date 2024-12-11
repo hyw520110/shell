@@ -16,7 +16,7 @@ alerting:
 # 规则文件配置
 rule_files:
   # 指定规则文件的路径，Prometheus 会加载这些文件中的规则。
-  - "/etc/prometheus/rules.yml"
+  - "rules.yml"
 
 # 抓取配置
 scrape_configs:
@@ -25,44 +25,56 @@ scrape_configs:
     static_configs:
       - targets: ['192.168.1.85:9091']
 
-  # 抓取 cAdvisor 的指标
-  - job_name: 'cadvisor'
-    static_configs:
-      - targets: ['192.168.1.85:8899']
+# 抓取 cAdvisor 的指标
+#  - job_name: 'cadvisor'
+#    static_configs:
+#      - targets: ['192.168.1.85:8899']
 
-  # 抓取 Node Exporter 的指标
+  # 抓取 Node Exporter 的指标 1860
   - job_name: 'node-exporter'
     static_configs:
       - targets: ['192.168.1.85:9100']
         labels:
           # 为节点添加实例和服务标签，便于区分不同节点和服务
           instance: vm-192.168.1.85
-          service: node-service
-
-  # 抓取应用程序的指标
+          service: app-server
+      - targets: ['192.168.1.88:9100']
+        labels:
+          instance: vm-192.168.1.88
+          service: db-server          
+  # 抓取应用程序的指标 4701
   - job_name: 'app'
     # 设置应用程序的抓取间隔时间，可以比默认的 15s 更短
     scrape_interval: 5s
-    # 设置应用程序的抓取路径
+    # 设置应用程序的抓取路径 /ctx/${management.endpoints.web.exposure.base-path}/prometheus
     metrics_path: '/actuator/prometheus'
-    static_configs:
-      - targets: ['192.168.1.85:8089']
+    #static_configs:
+    #  - targets: ['192.168.1.85:8089']
+    # nacos2.2.0以上版本开启 nacos.prometheus.metrics.enabled=true 访问：http://nacos-server:8848/nacos/prometheus/namespaceId/{namespaceId}
+    scheme: http
+    http_sd_configs:
+      - url: 'http://nacos-server:8848/nacos/prometheus/namespaceId/dev'
+    relabel_configs:
+      # 确保 __address__ 使用 targets 提供的完整地址（IP和端口）
+      - source_labels: [__address__]
+        target_label: __address__
+      # 特殊处理：对于 context_path 为未解析变量的情况，默认使用 /actuator/prometheus
+      - source_labels: [__meta_nacos_metadata_context_path]
+        target_label: __metrics_path__
+        replacement: '/actuator/prometheus'
+        regex: '\$\{server\.servlet\.context\-path\}'
+      # 构建完整的metrics_path，确保没有多余的斜杠，并处理为空的 context_path
+      - source_labels: [__meta_nacos_metadata_context_path]
+        target_label: __metrics_path__
+        replacement: '/${1}/actuator/prometheus'
+        regex: '^(.*)?$'
+    # 数量较多或动态变化的应用程序实例，使用文件服务发现 (file_sd_configs) 或动态发现服务(Service Discovery)来管理目标列表
+    #使用文件服务发现时，可以动态添加和删除目标，而无需重启 Prometheus
+    #file_sd_configs: 
+    # - files:  ['app_targets.json']
+    #[{"labels": {"instance": "vm-192.168.1.85","service": "app-1"},"targets": ["192.168.1.85:8089"]},...]
 
-# 动态服务发现配置（可选）
-# 以下配置用于动态发现目标，避免静态配置带来的重启中断问题
-# Node_Exporter
-# - job_name: 'node-exporter'
-#   file_sd_configs:
-#     - files: ['./conf/groups/nodegroups/*.json']
-#   # 使用文件服务发现时，可以动态添加和删除目标，而无需重启 Prometheus
-#   # 文件路径 './conf/groups/nodegroups/*.json' 是一个示例路径，实际路径需要根据实际情况修改
-#   # 文件内容示例如下：
-#   # [
-#   #   {
-#   #     "targets": ["192.168.1.85:9100"],
-#   #     "labels": {
-#   #       "instance": "vm-192.168.1.85",
-#   #       "service": "node-service"
-#   #     }
-#   #   }
-#   # ]
+  # mysql_exporter 7362    
+  - job_name: 'mysql'
+    static_configs:
+      - targets: ['192.168.1.88:9104']
