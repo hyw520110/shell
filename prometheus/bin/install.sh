@@ -3,8 +3,10 @@
 # 全局变量和配置
 PROMETHEUS_VERSION="3.0.1"
 NODE_EXPORTER_VERSION="1.8.2"
+ALERTMANAGER_VERSION="0.28.0-rc.0"
 PROMETHEUS_URL="https://github.com/prometheus/prometheus/releases/download/v$PROMETHEUS_VERSION/prometheus-$PROMETHEUS_VERSION.linux-amd64.tar.gz"
 NODE_EXPORTER_URL="https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
+ALERTMANAGER_URL="https://github.com/prometheus/alertmanager/releases/download/v$ALERTMANAGER_VERSION/alertmanager-$ALERTMANAGER_VERSION.linux-amd64.tar.gz"
 DOWNLOAD_DIR="/opt/softs"
 SCRIPT_DIR=$(dirname $(readlink -f $0))
 BASE_DIR=$(dirname $SCRIPT_DIR)
@@ -46,9 +48,9 @@ download_and_extract() {
 
   mkdir -p $dest_dir
   if [ ! -f $tar_file ]; then
-    wget -O $tar_file $url || { echo "下载失败: $url"; exit 1; }
+    echo "开始下载$url 到 $tar_file " && wget -O $tar_file $url || { echo "下载失败: $url"; exit 1; }
   fi
-  tar -xzf $tar_file -C $dest_dir || { echo "解压失败: $tar_file"; exit 1; }
+  tar -xzf $tar_file -C ${dest_dir}/ || { echo "解压失败: $tar_file"; exit 1; }
   mv $dest_dir/$extract_dir/* $BIN_DIR/
   rm -rf $dest_dir/$extract_dir
 }
@@ -103,28 +105,25 @@ EOF
   systemctl enable $service_name
   systemctl start $service_name
 }
-
-# 检测 Node Exporter 是否安装
-detect_node_exporter() {
-  [[ -f "$BIN_DIR/node_exporter" ]] && return 0 || return 1
-}
+ 
 
 # 主安装函数
 install() {
   check_root
   setup_environment
   create_user_and_group
-  mkdir -p $BIN_DIR
+  [ ! -d $BIN_DIR ] && mkdir -p $BIN_DIR
   download_and_extract $PROMETHEUS_URL "prometheus-$PROMETHEUS_VERSION.linux-amd64"
   configure_prometheus
   create_systemd_service "prometheus"  
-
-  if ! detect_node_exporter; then
-    download_and_extract $NODE_EXPORTER_URL "node_exporter-$NODE_EXPORTER_VERSION.linux-amd64"
-    create_systemd_service "node_exporter" 
-  fi
-
+  $BIN_DIR/start_node_exporter.sh
   echo "Prometheus 和 Node Exporter 安装和配置完成！"
+  
+  if [ ! -f "$BIN_DIR/alertmanager" ]; then
+    download_and_extract $ALERTMANAGER_URL "alertmanager-$ALERTMANAGER_VERSION.linux-amd64"
+    mv $BIN_DIR/alertmanager.yml $CONFIG_DIR/
+    create_systemd_service "alertmanager" 
+  fi
 }
 
 install

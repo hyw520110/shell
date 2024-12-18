@@ -7,6 +7,7 @@ BASE_DIR=${CURRENT_DIR%/*}
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 PROMETHEUS_BIN="$BASE_DIR/bin/prometheus"
 NODE_EXPORTER_BIN="$BASE_DIR/bin/node_exporter"
+MYSQL_EXPORTER_BIN="$BASE_DIR/bin/mysqld_exporter"
 PORT=9091
 # 控制是否跟随日志输出
 LOGS_FLAG="-f" 
@@ -46,8 +47,11 @@ function install_container_mode() {
 
 # 启动主机模式
 function start_host_mode() {
+	# --web.enable-lifecycle
   ! is_running "$PROMETHEUS_BIN" && nohup $PROMETHEUS_BIN --config.file=$BASE_DIR/conf/prometheus.yml --storage.tsdb.path=$BASE_DIR/data --web.listen-address=":$PORT" --web.console.templates=$BASE_DIR/consoles --web.console.libraries=$BASE_DIR/console_libraries > /dev/null 2>&1 &
   ! is_running "$NODE_EXPORTER_BIN" && nohup $NODE_EXPORTER_BIN > /dev/null 2>&1 &
+  # 
+  # http://ip:9091/targets 
 }
 
 # 启动容器模式
