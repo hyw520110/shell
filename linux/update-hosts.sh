@@ -17,18 +17,23 @@ function fetch_hosts {
 
 # 处理现有 /etc/hosts 文件
 function update_hosts {
-    new_hosts=$(fetch_hosts)
-    new_domains=$(echo "$new_hosts" | cut -d ' ' -f2-)
+    # 获取新的 hosts 文件内容： ip 域名
+    new_hosts_domain=$(fetch_hosts)
+    # 获取新的域名(所有)
+    domains=$(echo "$new_hosts_domain" | cut -d ' ' -f2-)
     [ ! -f /etc/hosts.bak ] && cp /etc/hosts /etc/hosts.bak
-    for domain in $new_domains; do
+    for domain in $domains; do
         domain=$(echo "$domain" | awk '{$1=$1};1')
-        line=$(grep "$domain" /etc/hosts)
-        if [ -n "$line" ]; then
-            escaped_domain=$(echo "$domain" | sed 's/[\&/]/\\&/g')
-            sed -i '' "/$escaped_domain/d" /etc/hosts
+        # 获取域名所在整行：ip 域名
+        lines=$(grep " $domain" /etc/hosts)
+        if [ -n "$lines" ]; then
+            # 删除所有匹配的行
+#            echo "删除域名：$domain 所在行： $lines"
+            # 使用 grep 找到所有匹配行并删除
+            sed -i "/ $domain/d" /etc/hosts  
         fi
     done
-    echo "$new_hosts" >> /etc/hosts
+    echo "$new_hosts_domain" >> /etc/hosts
     echo "/etc/hosts 文件已更新:"
     cat /etc/hosts
 }

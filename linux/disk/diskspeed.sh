@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 定义块大小参数（以MB为单位）
-BLOCK_SIZES=(1 4 16 64 256) #512 1024 2048
+BLOCK_SIZES=(2 4 16 64) # 256 512 1024 2048
 TESTFILE="/tmp/diskspeedtest.tmp"
 # 每次测试的迭代次数
 ITERATIONS=3
@@ -61,20 +61,29 @@ select_device() {
         IFS=',' read -r DEVICE MOUNT_POINT <<< "${partitions[0]}"
         echo "自动选择了唯一的已挂载分区: $DEVICE"
     else
-        echo "请选择要测试的已挂载分区, 或按 Enter选择当前分区:"
-        select dev in "当前分区" "${partitions[@]}"; do
-            if [[ -n "$dev" ]]; then
-                if [[ "$dev" == "当前分区" ]]; then
-                    MOUNT_POINT=$(df . --output=target | tail -n 1)
-                    DEVICE=$(df . --output=source | tail -n 1)
-                else
-                    IFS=',' read -r DEVICE MOUNT_POINT <<< "$dev"
-                fi
-                break
-            else
-                echo "无效的选择，请重新选择。"
-            fi
+        echo "选择分区或按 Enter 选择当前分区: "
+        options=("当前分区" "${partitions[@]}")
+        for i in "${!options[@]}"; do
+            echo "$i) ${options[$i]}"
         done
+        read -p "请输入选项编号或按 Enter 选择当前分区: " choice
+        
+        if [[ -z "$choice" ]]; then
+            choice=0 # 默认选择当前分区
+        fi
+
+        if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 0 && choice < ${#options[@]} )); then
+            dev=${options[$choice]}
+            if [[ "$dev" == "当前分区" ]]; then
+                MOUNT_POINT=$(df . --output=target | tail -n 1)
+                DEVICE=$(df . --output=source | tail -n 1)
+            else
+                IFS=',' read -r DEVICE MOUNT_POINT <<< "$dev"
+            fi
+        else
+            echo "无效的选择，请重新运行脚本并做出正确选择。"
+            exit 1
+        fi
     fi
     
     echo "选定设备: $DEVICE，挂载点: $MOUNT_POINT"

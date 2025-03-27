@@ -5,12 +5,7 @@ export OLLAMA_HOST=0.0.0.0
 export OLLAMA_PORT=11434
 export OLLAMA_MODELS=/opt/ollama/models
 export OLLAMA_DEBUG=1
-# 模型在内存中的存活时间
-# OLLAMA_KEEP_ALIVE=24h
-# 同时处理的用户请求数量
-# OLLAMA_NUM_PARALLEL=4
-# 同时加载的模型数量
-# OLLAMA_MAX_LOADED_MODELS=4
+
 # 检查并安装 tmux
 install_tmux() {
     if ! command -v tmux &> /dev/null; then
@@ -31,17 +26,24 @@ install_ollama() {
     if ! command -v ollama &> /dev/null; then
         echo "正在安装 ollama..."
         curl -fsSL https://ollama.com/install.sh | sh
-	#指定模型路径 OLLAMA_MODELS
     fi
 }
 
 # 启动 ollama serve 如果没有运行
 start_ollama_serve() {
+    # 检查 systemd 服务是否正在运行
+    if ! sudo systemctl is-active --quiet ollama.service; then
+        echo "Starting ollama systemd service..."
+        sudo systemctl start ollama.service
+        sleep 5
+    fi
+
+    # 如果 systemd 服务未启动，则使用 nohup 启动 ollama serve
     if ! pgrep -f 'ollama serve' > /dev/null; then
         nohup ollama serve > ollama.log 2>&1 &
         sleep 5
     fi
-   ollama list
+    ollama list
 }
 
 # 在 tmux 中启动模型会话（如果尚未运行），并在需要时拉取模型
@@ -69,8 +71,9 @@ demo_api_call() {
     local command='curl -X POST "'$api_url'" -H "Content-Type: application/json" -d '\''{"model": "'$model'","prompt": "天为什么那么蓝?","stream": false,"options": {"num_ctx": 4096}}'\'
 
     echo "$command"
-   # eval $command
+    # eval $command
 }
+
 # 主程序流程
 main() {
     install_tmux
@@ -78,9 +81,8 @@ main() {
     start_ollama_serve
     
     # 启动模型会话并拉取模型
-    start_model_in_tmux "qwen2" "qwen2.5:7b"
     start_model_in_tmux "qwen2" "qwen2.5-coder:7b"
-    #start_model_in_tmux "llama3" "llama3.1:8b"
+    start_model_in_tmux "deepseek" "deepseek-r1:7b"
 
     # 打印监听端口和进程信息
     lsof -i:11434

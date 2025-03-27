@@ -13,7 +13,7 @@ input_time=10
 # mysql下载地址
 mysql5_centos_url=https://mirrors.aliyun.com/mysql/MySQL-5.7/mysql-5.7.36-el7-x86_64.tar.gz
 mysql8_centos_url=https://mirrors.aliyun.com/mysql/MySQL-8.0/mysql-8.0.27-el7-x86_64.tar.gz
-mysql8_debian_url=https://mirrors.aliyun.com/mysql/MySQL-8.0/mysql-8.0.28-linux-glibc2.17-x86_64-minimal.tar.xz
+mysql8_debian_url=https://mirrors.aliyun.com/mysql/MySQL-8.0/mysql-8.0.27-linux-glibc2.17-x86_64-minimal.tar.xz
 
 # 根据操作系统类型选择下载URL
 if which rpm > /dev/null 2>&1 && which yum > /dev/null 2>&1; then
@@ -152,6 +152,13 @@ fi
 chown -R ${usr}:${usr_group} $BASE_DIR
 chmod -R 755 $BASE_DIR/data
 err_file=$(grep log-error $cnf | awk -F'=' '{print $2}' | awk '$1=$1')
+
+# 检查 mysqld 文件权限
+if [ ! -x "$BASE_DIR/bin/mysqld" ]; then
+  print "mysqld 文件没有可执行权限，设置权限..."
+  chmod +x "$BASE_DIR/bin/mysqld"
+fi
+
 # 初始化
 if [ "`ls -A $BASE_DIR/data`" == "" ];then
   # 确保 data 目录存在且权限正确
