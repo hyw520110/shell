@@ -1,0 +1,33 @@
+version: "3"
+
+services:
+  ngnix:                                         
+    container_name: nginx           
+    image: nginx:latest                                 
+    restart: always
+    ports:                                    
+      - 80:80
+      - 443:443
+    privileged: true
+    network_mode: host
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./conf:/etc/nginx
+      - /var/log/nginx:/var/log/nginx
+      - ./html:/usr/share/nginx/html
+      - /etc/localtime:/etc/localtime
+      - /etc/hosts:/etc/hosts
+      - /oss/other:/oss/other
+#docker network create --driver bridge --subnet 10.1.120.0/24 --gateway 10.1.120.1 nginx_net
+#    networks:
+#      net:
+#        ipv4_address: 10.1.120.96
+#networks:
+#  net:
+#    ipam:
+#      driver: bridge
+#      config:
+#        - subnet: "10.1.120.0/24"
+#          gateway: 10.1.120.255
+#    external: true
