@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  jenkins:
+    image: jenkins/jenkins:lts
+    user: "jenkins"
+    container_name: jenkins
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - /var/jenkins_home:/var/jenkins_home
+      - /usr/bin/git:/usr/bin/git
+      - /root/.gitconfig:/var/jenkins_home/.gitconfig
+      - /opt/maven:/opt/maven
+    environment:
+      - SHELL=/bin/bash
+      - TZ=Asia/Shanghai
+      - JAVA_OPTS=-Dhudson.model.DirectoryBrowserSupport.CSP="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+      - MAVEN_HOME=/opt/maven
+      - PATH=/opt/maven/bin:${PATH}
+    networks:
+      - jenkins_network
+
+volumes:
+  jenkins_home:
+
+networks:
+  jenkins_network:
