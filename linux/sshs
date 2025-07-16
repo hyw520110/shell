@@ -1,0 +1,247 @@
+#!/bin/bash
+
+CONFIG_FILE="$HOME/.ssh/servers.ini"
+RSA_PUB_FILE=~/.ssh/id_rsa.pub
+
+# 用法提示
+usage() {
+  echo "Usage: $0 <server_name> [target_user]"
+  echo "  server_name: 服务器名称 (必填)"
+  echo "  target_user: 目标主机的用户名 (可选，默认为root)"
+  exit 1
+}
+
+# 加载配置文件
+load_config() {
+  declare -gA servers
+  while IFS='=' read -r key value; do
+    if [[ "$key" =~ ^$.*$$ ]]; then
+      current_section="${key:1:-1}"
+    else
+      servers["$current_section,$key"]="$value"
+    fi
+  done < "$CONFIG_FILE"
+}
+
+# 保存配置文件
+save_config() {
+  > "$CONFIG_FILE"
+  for section in "${!servers[@]}"; do
+    IFS=',' read -r section_name key <<< "$section"
+    value="${servers[$section]}"
+    if ! grep -q "$$section_name$" "$CONFIG_FILE"; then
+      echo "[$section_name]" >> "$CONFIG_FILE"
+    fi
+    echo "$key=$value" >> "$CONFIG_FILE"
+  done
+}
+
+# 显示服务器列表
+show_servers() {
+  echo "可用的服务器："
+  local i=1
+  for section in "${!servers[@]}"; do
+    IFS=',' read -r server_name key <<< "$section"
+    if [ "$key" == "hostname" ]; then
+      echo "$i) $server_name -> $(get_server_info $server_name)"
+      ((i++))
+    fi
+  done
+}
+
+# 获取服务器信息
+get_server_info() {
+  local server_name="$1"
+  local info=""
+  for key in hostname username port key_file; do
+    info+="$key=${servers[$server_name,$key]}, "
+  done
+  echo "${info%, }"
+}
+
+# 检查密钥是否已在 ssh-agent 中
+check_key_in_agent() {
+  local key_file="$1"
+  ssh-add -l | grep -q "$key_file"
+}
+
+# 添加密钥到 ssh-agent
+add_key_to_agent() {
+  local key_file="$1"
+  local key_password="$2"
+  expect -c "
+    spawn ssh-add $key_file
+    expect \"Enter passphrase:\"
+    send \"$key_password\r\"
+    expect eof
+  "
+}
+
+# 执行 SSH 命令
+execute_ssh_command() {
+  local server_name="$1"
+  local command="$2"
+  local hostname="${servers[$server_name,hostname]}"
+  local username="${servers[$server_name,username]}"
+  local port="${servers[$server_name,port]}"
+  local key_file="${servers[$server_name,key_file]}"
+  local key_password="${servers[$server_name,key_password]}"
+
+  if [ -n "$key_file" ] && ! check_key_in_agent "$key_file"; then
+    add_key_to_agent "$key_file" "$key_password"
+  fi
+
+  if [ -n "$key_file" ]; then
+    ssh -i "$key_file" -p "$port" "$username@$hostname" "$command"
+  else
+    sshpass -p "$key_password" ssh -p "$port" "$username@$hostname" "$command"
+  fi
+}
+
+# 检查服务器是否可达
+check_server_reachable() {
+  execute_ssh_command "$1" "exit" >/dev/null 2>&1
+}
+
+# 连接到服务器
+connect_to_server() {
+  execute_ssh_command "$1" ""
+}
+
+# 删除服务器
+delete_server() {
+  local server_name="$1"
+  for key in "${!servers[@]}"; do
+    if [[ "$key" == "$server_name,"* ]]; then
+      unset servers["$key"]
+    fi
+  done
+  save_config
+  echo "服务器 $server_name 已删除。"
+}
+
+# 添加新服务器
+add_server() {
+  # 获取目标主机和用户名
+  get_target_ip
+  get_target_user
+
+  # 其他交互式输入
+  read -p "请输入端口号 (默认 22): " port
+  port="${port:-22}"
+
+  # 生成 RSA 密钥对，如果尚未生成
+  if [ ! -f "$RSA_PUB_FILE" ]; then
+    ssh-keygen -t rsa -N ""
+  fi
+
+  # 尝试进行 SSH 公钥复制
+  if ssh-copy-id -i "$RSA_PUB_FILE" "$target_user@$target_ip"; then
+    echo "成功设置 $target_ip 的免密登录。"
+  else
+    echo "无法设置 $target_ip 的免密登录。"
+    return 1
+  fi
+
+  # 保存服务器信息
+  server_name="${target_ip: -7}"
+  while [[ -n "${servers[$server_name,hostname]}" ]]; do
+    echo "服务器名 $server_name 已存在，请输入其他名称："
+    read -p "请输入服务器名: " server_name
+  done
+
+  servers["$server_name,hostname"]="$target_ip"
+  servers["$server_name,username"]="$target_user"
+  servers["$server_name,port"]="$port"
+  servers["$server_name,key_file"]="$RSA_PUB_FILE"
+  servers["$server_name,key_password"]=""
+  save_config
+
+  echo "服务器 $server_name 添加成功。"
+}
+
+# 检测不可达服务器
+detect_unreachable_servers() {
+  local unreachable_servers=()
+  for section in "${!servers[@]}"; do
+    IFS=',' read -r server_name key <<< "$section"
+    if [ "$key" == "hostname" ]; then
+      if ! check_server_reachable "$server_name"; then
+        unreachable_servers+=("$server_name")
+      fi
+    fi
+  done
+
+  if [ ${#unreachable_servers[@]} -gt 0 ]; then
+    echo "以下服务器不可达，是否删除？"
+    for server in "${unreachable_servers[@]}"; do
+      echo "- $server"
+      delete_server "$server"
+    done
+  fi
+}
+
+# 获取目标主机
+get_target_ip() {
+  while true; do
+    read -p "请输入目标主机的IP或主机名: " target_ip
+    if [ -z "$target_ip" ]; then
+      echo "目标主机的IP或主机名不能为空。"
+    elif ! ping -c 1 -W 1 "$target_ip" &> /dev/null; then
+      echo "$target_ip 不可达，请重新输入。"
+    else
+      break
+    fi
+  done
+}
+
+# 获取目标用户名
+get_target_user() {
+  read -t 8 -p "请输入目标主机的用户名 (默认为root): " target_user
+  target_user="${target_user:-root}"
+}
+# 检查是否以root用户运行
+if [ "$EUID" -ne 0 ]; then
+  echo "请使用 root 权限运行此脚本: sudo $0"
+  exit 1
+fi
+# 主程序
+load_config
+detect_unreachable_servers
+
+if [ -z "$1" ]; then
+  show_servers
+  read -p "请选择一个服务器 (数字或名称)，或按回车键添加新服务器: " choice
+  if [ -z "$choice" ]; then
+    add_server
+  elif [[ "$choice" =~ ^[0-9]+$ ]]; then
+    # 用户输入的是编号
+    local i=1
+    for section in "${!servers[@]}"; do
+      IFS=',' read -r server_name key <<< "$section"
+      if [ "$key" == "hostname" ]; then
+        if [ "$i" -eq "$choice" ]; then
+          connect_to_server "$server_name"
+          exit 0
+        fi
+        ((i++))
+      fi
+    done
+    echo "无效的服务器编号。"
+    exit 1
+  else
+    # 用户输入的是服务器名称
+    if [[ -z "${servers[$choice,hostname]}" ]]; then
+      echo "无效的服务器名称。"
+      exit 1
+    fi
+    connect_to_server "$choice"
+  fi
+else
+  # 指定了服务器名称
+  if [[ -z "${servers[$1,hostname]}" ]]; then
+    echo "无效的服务器名称。"
+    exit 1
+  fi
+  connect_to_server "$1"
+fi

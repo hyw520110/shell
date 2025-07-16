@@ -1,0 +1,13 @@
+**/target/**
+**/.settings/**
+.idea
+.classpath
+.project
+**/*.log
+**/*.swp
+**/*.csv
+**/*.html
+**/data/**
+.DS_Store
+**/.DS_Store/**
+**/*.orig
