@@ -266,7 +266,7 @@ startup() {
 
 setup_service() {
   if [ `ls /usr/lib/systemd/system/ | grep mysql | grep -v grep | wc -l` -eq 0 ] && [ `ls /etc/systemd/system/ | grep mysql | grep -v grep | wc -l` -eq 0 ]; then
-    print "install mysqld service:/usr/lib/systemd/system/mysqld.service"
+    print "安装mysqld服务:/usr/lib/systemd/system/mysqld.service"
     cat >> /usr/lib/systemd/system/mysqld.service << EOF
 [Unit]
 Description=mysql service

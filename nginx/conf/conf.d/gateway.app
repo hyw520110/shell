@@ -10,7 +10,7 @@ upstream gateway {
  #keepalive 16;
 
  #默认轮询
- ip_hash;
+ #ip_hash;
  #响应时间
  #fair;
  #url_hash;
