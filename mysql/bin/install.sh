@@ -120,6 +120,37 @@ pre_check() {
   fi
 }
 
+# 检查MySQL版本并调整my.cnf兼容性
+adjust_cnf_for_version() {
+  local cnf_file="$1"
+  local version_bin="$2"
+  local mysql_version=$($version_bin --version 2>/dev/null | grep -Eo '[0-9]+\\.[0-9]+' | head -1)
+  local major_version=$(echo $mysql_version | cut -d. -f1)
+  if [ "$major_version" = "5" ]; then
+    # 注释MySQL 8专属参数
+    sed -i 's/^performance_schema\s*=\s*ON/#performance_schema = ON/g' "$cnf_file"
+    sed -i 's/^default_authentication_plugin/#default_authentication_plugin/g' "$cnf_file"
+    sed -i 's/^log_error_verbosity/#log_error_verbosity/g' "$cnf_file"
+    # 启用MySQL 5专属参数
+    sed -i 's/^#skip-name-resolve/skip-name-resolve/g' "$cnf_file"
+    sed -i 's/^#explicit_defaults_for_timestamp/explicit_defaults_for_timestamp/g' "$cnf_file"
+    sed -i 's/^#default-time-zone/default-time-zone/g' "$cnf_file"
+    sed -i 's/^#gtid_mode/gtid_mode/g' "$cnf_file"
+    sed -i 's/^#enforce_gtid_consistency/enforce_gtid_consistency/g' "$cnf_file"
+  elif [ "$major_version" = "8" ]; then
+    # 启用MySQL 8专属参数
+    sed -i 's/^#performance_schema/performance_schema/g' "$cnf_file"
+    sed -i 's/^#default_authentication_plugin/default_authentication_plugin/g' "$cnf_file"
+    sed -i 's/^#log_error_verbosity/log_error_verbosity/g' "$cnf_file"
+    # 注释MySQL 5专属参数
+    sed -i 's/^skip-name-resolve/#skip-name-resolve/g' "$cnf_file"
+    sed -i 's/^explicit_defaults_for_timestamp/#explicit_defaults_for_timestamp/g' "$cnf_file"
+    sed -i 's/^default-time-zone/#default-time-zone/g' "$cnf_file"
+    sed -i 's/^gtid_mode/#gtid_mode/g' "$cnf_file"
+    sed -i 's/^enforce_gtid_consistency/#enforce_gtid_consistency/g' "$cnf_file"
+  fi
+}
+
 copy_files() {
   if [ "$SOURCE_DIR" != "$install_dir" ]; then
     echo "拷贝配置文件从 $SOURCE_DIR 到 $install_dir"
@@ -140,6 +171,8 @@ copy_files() {
     sed -i "s#/opt/mysql/logs#/var/log/mysql#g" "$cnf_file"
     sed -i "s#${SOURCE_DIR}#$install_dir#g" "$cnf_file"
     sed -i "s#/home/dev/work/shell/mysql#$install_dir#g" "$cnf_file"
+    # 根据实际MySQL版本调整配置兼容性
+    adjust_cnf_for_version "$cnf_file" "$install_dir/bin/mysqld"
   fi
 }
 

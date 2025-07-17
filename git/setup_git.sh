@@ -85,9 +85,13 @@ if [ ! -f "$pub_key_file" ]; then
     mkdir -p ~/.ssh
     chmod 700 ~/.ssh
     ssh-keygen -t rsa -C "$email" -f "$key_file" -q -N ""
+    chmod 600 "$key_file"
+    chmod 644 "$pub_key_file"
     echo "新的 SSH 密钥已生成于 $key_file"
 else
     echo "SSH 密钥已存在于 $key_file"
+    chmod 600 "$key_file"
+    chmod 644 "$pub_key_file"
 fi
 
 # 设置 Git 用户名和邮箱
@@ -116,6 +120,7 @@ fi
 # 更新 SSH 配置文件
 ssh_config_file=~/.ssh/config
 mkdir -p ~/.ssh
+chmod 700 ~/.ssh
 chmod 600 ~/.ssh/config 2>/dev/null || touch ~/.ssh/config
 
 hostname=github.com
@@ -273,4 +278,10 @@ else
   echo "测试连接: ssh -T git@github.com"
   echo ""
   echo "如仍有问题，请检查 ~/.ssh/config 配置或联系管理员。"
+fi
+
+# === 自动检测并启动 ssh-agent，并添加私钥 ===
+if [ -z "$SSH_AUTH_SOCK" ]; then
+    eval "$(ssh-agent -s)"
+    ssh-add "$key_file"
 fi

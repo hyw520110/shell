@@ -1,9 +1,11 @@
 #!/bin/bash
 
 # 定义公共变量
-FRP_VERSION="0.61.0"
+FRP_VERSION="0.63.0"
 FRP_DOWNLOAD_URL="https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_amd64.tar.gz"
-INSTALL_DIR=$(dirname "$(readlink -f "$0")")
+# 若安装目录不是当前目录，则拷贝当前目录下所有文件到安装目录
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+INSTALL_DIR=$SCRIPT_DIR
 FRP_SERVICE_NAME="frps"
 FRP_CONF_NAME="${FRP_SERVICE_NAME}.toml"
 FRP_CLIENT_NAME="frpc"
@@ -11,6 +13,17 @@ FRP_CLIENT_CONF_NAME="${FRP_CLIENT_NAME}.toml"
 FRP_SERVICE_FILE="/usr/lib/systemd/system/${FRP_SERVICE_NAME}.service"
 FRP_CLIENT_FILE="/usr/lib/systemd/system/${FRP_CLIENT_NAME}.service"
 LOG_FILE="/var/log/frp.log"
+
+# 解析安装目录参数，默认为当前目录
+if [ -n "$1" ]; then
+    INSTALL_DIR=$(readlink -f "$1")
+fi
+
+if [ "$INSTALL_DIR" != "$SCRIPT_DIR" ]; then
+    echo "安装目录为: $INSTALL_DIR"
+    [ ! -d $INSTALL_DIR ] && mkdir -p "$INSTALL_DIR"
+    cp -r "$SCRIPT_DIR"/* "$INSTALL_DIR"/
+fi
 
 # 检查并安装必要工具
 check_dependencies() {
