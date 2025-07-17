@@ -181,7 +181,7 @@ download_and_extract() {
   if [ ! -f $gz_file ] || ! check_file_integrity $gz_file; then
     print "开始下载mysql安装包..."
     if ! safe_download "$mysql_url" "$gz_file"; then
-      print "无法下载MySQL安装包，请检查网络连接或手动下载后放置在/opt/softs目录"
+      print "无法下载MySQL安装包，请检查网络连接或手动下载后放置在$gz_file"
       exit 1
     fi
     if ! check_file_integrity $gz_file; then
@@ -229,6 +229,7 @@ setup_user_and_system() {
   wfile "mysql    soft    stack    1024000" $limits
   wfile "mysql    hard    stack    1024000" $limits
   wfile "vm.swappiness = 5" /etc/sysctl.conf "sysctl -p"
+
 }
 
 prepare_dirs() {
@@ -266,7 +267,7 @@ EOF
   sed -i "s#log-error=.*#log-error=$log_dir/error.log#g" "$cnf"
   chown -R ${usr}:${usr_group} "$log_dir"
   mkdirs "$data_dir"
-  chown -R ${usr}:${usr_group} "$base_dir/softs" "$install_dir" "$data_dir" "$log_dir"
+  chown -R ${usr}:${usr_group}  "$install_dir" "$data_dir" "$log_dir"
   chmod -R 755 "$data_dir" "$log_dir"
 }
 
