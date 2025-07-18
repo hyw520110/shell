@@ -212,7 +212,52 @@ EOF
     fi
     systemctl daemon-reload
 }
+# 检测防火墙类型并自动开放端口（仅在防火墙服务处于 active 时操作）
+# 使用方法：setup_firewall_ports "7000/tcp" "7800/tcp" "22/tcp"
+setup_firewall_ports() {
+    echo "正在检测系统防火墙状态..."
 
+    # 检查是否传入了端口
+    if [ $# -eq 0 ]; then
+        echo "未指定要开放的端口。"
+        return 1
+    fi
+
+    local ports=("$@")
+
+    # 检测 firewalld
+    if command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld; then
+        echo "检测到 firewalld 防火墙正在运行，正在检查并开放端口..."
+        for port in "${ports[@]}"; do
+            if ! sudo firewall-cmd --permanent --query-port="$port"; then
+                echo "正在添加端口 $port..."
+                sudo firewall-cmd --permanent --add-port="$port"
+            else
+                echo "端口 $port 已开放。"
+            fi
+        done
+        sudo firewall-cmd --reload
+        echo "firewalld 防火墙端口设置完成。"
+
+    # 检测 ufw
+    elif command -v ufw &> /dev/null && systemctl is-active --quiet ufw; then
+        echo "检测到 ufw 防火墙正在运行，正在检查并开放端口..."
+        for port in "${ports[@]}"; do
+            port_num=$(echo "$port" | cut -d'/' -f1)
+            proto=$(echo "$port" | cut -d'/' -f2)
+            if ! sudo ufw status verbose | grep -q "$port_num/$proto"; then
+                echo "正在添加端口 $port..."
+                sudo ufw allow "$port"
+            else
+                echo "端口 $port 已开放。"
+            fi
+        done
+        echo "ufw 防火墙端口设置完成。"
+
+    else
+        echo "防火墙服务未运行，跳过自动配置。"
+    fi
+}
 # 主逻辑
 # 检查并安装必要工具
 check_dependencies
@@ -257,6 +302,7 @@ case $CHOICE in
         ./startup-frps.sh
 
         echo "安装并启动 frps 完成。"
+        setup_firewall_ports "7000/tcp" "7800/tcp" "7443/tcp" "7500/tcp"
         ;;
     c)
         if [ ! -f "${INSTALL_DIR}/${FRP_CLIENT_NAME}" ]; then
@@ -277,8 +323,10 @@ case $CHOICE in
         # 启动服务
         echo "正在启动 frpc 服务..."
         ./startup-frpc.sh
-
         echo "安装并启动 frpc 完成。"
+        sshd_port=$(grep -oP 'Port \K\d+' /etc/ssh/sshd_config | head -n 1)
+        [ -z "$sshd_port" ] && sshd_port=22
+        setup_firewall_ports "${sshd_port}/tcp"
         ;;
     *)
         echo "无效的选择，退出安装。"
