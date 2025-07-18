@@ -68,12 +68,9 @@ if [ "$CURRENT_REGISTRY" == "$OFFICIAL_REGISTRY" ]; then
     echo "当前使用的是官方 npm 镜像源 ($OFFICIAL_REGISTRY)，正在切换为国内镜像源 ($TAOBAO_REGISTRY)..."
     npm config set registry "$TAOBAO_REGISTRY"
     echo "切换完成！当前镜像源: $(npm config get registry)"
-else
-    echo "当前镜像源为非官方源 ($CURRENT_REGISTRY)，无需切换。"
+    # 设置华为镜像
+	#npm config set registry https://mirrors.huaweicloud.com/repository/npm/
+	# 设置腾讯云镜像
+	#npm config set registry https://mirrors.cloud.tencent.com/npm/
 fi
-# 设置淘宝镜像
-npm config set registry https://registry.npmmirror.com
-# 设置华为镜像
-#npm config set registry https://mirrors.huaweicloud.com/repository/npm/
-# 设置腾讯云镜像
-#npm config set registry https://mirrors.cloud.tencent.com/npm/
+

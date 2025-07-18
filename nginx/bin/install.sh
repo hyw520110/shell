@@ -173,6 +173,38 @@ start_nginx () {
   fi
 }
 
+# 从配置文件中提取 web root 路径
+extract_web_root_from_conf() {
+  local conf_dir="$1"
+  local base_dir="$2"
+  # 提取所有 root 和 alias 路径
+  grep -Eh '^[\s]*(root|alias) ' "$conf_dir"/*.conf | awk '{print $2}' | tr -d ';' | sort -u | while read path; do
+    if [[ "$path" == /* ]]; then
+      echo "$path"
+    else
+      echo "$base_dir/$path"
+    fi
+  done
+}
+
+# 获取所有 web 根目录
+web_roots=$(extract_web_root_from_conf "$nginx_home/conf/conf.d" "$nginx_home")
+
+# 创建目录并设置权限
+for web_root in $web_roots; do
+  if [ ! -d "$web_root" ]; then
+    echo "创建 web 根目录: $web_root"
+    mkdir -p "$web_root"
+    chown -R $usr:$group "$web_root"
+    chmod -R 755 "$web_root"
+    echo "<h1>Welcome to Nginx</h1>" > "$web_root/index.html"
+  else
+    echo "web 根目录已存在: $web_root"
+    chown -R $usr:$group "$web_root" || true
+    chmod -R 755 "$web_root" || true
+  fi
+done
+
 # 开放服务器防火墙80端口给外界
 open_firewalld_port () {
   if command -v firewall-cmd > /dev/null 2>&1; then
