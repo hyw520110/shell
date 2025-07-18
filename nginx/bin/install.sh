@@ -111,10 +111,6 @@ install_nginx () {
        echo "nginx: 安装成功"
        cd /tmp  # 先切换到安全目录，避免后续删除当前目录导致 getcwd 报错
        rm -rf $tmp_dir
-       # 拷贝bin和conf目录到安装目录
-       cp -r $BASE_DIR/{bin,conf} $nginx_home/
-       # 确保conf.d目录存在
-       mkdir -p $nginx_home/conf/conf.d
     else
        echo "nginx: 编译失败"
        make clean
@@ -132,6 +128,39 @@ start_nginx () {
   [ ! -f /usr/bin/nginx ] && ln -s $nginx_home/sbin/nginx /usr/bin/nginx
   #检测nginx是否已经启动
   ps_count=$(ps -ef | grep nginx | grep master | grep -v grep | wc -l)
+  # 获取本机IP
+  get_script_ip() {
+    if command -v ip > /dev/null 2>&1; then
+      ip addr | awk '/inet / && !/127.0.0.1/ {sub("/.*", "", $2); print $2; exit}'
+    elif command -v ifconfig > /dev/null 2>&1; then
+      ifconfig | awk '/inet / && $2 != "127.0.0.1" {print $2; exit}'
+    else
+      echo "127.0.0.1"
+    fi
+  }
+
+  # 拷贝bin和conf目录到安装目录
+  if [ ! -d $nginx_home/conf/conf.d ]; then
+    mkdir -p $nginx_home/conf/conf.d
+  fi
+  cp -r $BASE_DIR/conf $nginx_home/
+  # 强制拷贝脚本文件
+  cp -rf $BASE_DIR/bin/*.sh $nginx_home/bin/
+  # 只有当配置文件不存在时才拷贝
+  for conf_file in $BASE_DIR/conf/conf.d/*; do
+    filename=$(basename $conf_file)
+    if [ ! -f $nginx_home/conf/conf.d/$filename ]; then
+      # 检查是否存在模板文件
+      if [ -f $conf_file.template ]; then
+        SERVER_IP=$(get_script_ip)
+        echo "使用IP $SERVER_IP 替换配置文件中的 {{SERVER_IP}} 占位符。"
+        sed "s/{{SERVER_IP}}/$SERVER_IP/g" $conf_file.template > $nginx_home/conf/conf.d/$filename
+      else
+        cp $conf_file $nginx_home/conf/conf.d/
+      fi
+      echo "配置文件 $filename 已拷贝至安装目录。"
+    fi
+  done
   $nginx_home/bin/ngx-black-ip.sh
   [ $ps_count -gt 0 ] && echo "nginx已经启动" && exit 0
   nginx -c $nginx_home/conf/nginx.conf -t && echo "start nginx..."
@@ -164,8 +193,8 @@ open_firewalld_port () {
 }
 
 # 添加自启动脚本
-add_systemd_service () {
-  cat <<EOF >/usr/lib/systemd/system/nginx.service
+add_systemd_service() {
+    cat <<EOF >/usr/lib/systemd/system/nginx.service
 [Unit]
 Description=The NGINX HTTP and reverse proxy server
 After=network.target

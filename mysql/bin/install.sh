@@ -266,7 +266,7 @@ fi
   sed -i "s#log-error=.*#log-error=$log_dir/error.log#g" "$cnf"
   chown -R ${usr}:${usr_group} "$log_dir"
   mkdirs "$data_dir"
-  chown -R ${usr}:${usr_group} "$base_dir/softs" "$install_dir" "$data_dir" "$log_dir"
+  chown -R ${usr}:${usr_group}  "$install_dir" "$data_dir" "$log_dir"
   chmod -R 755 "$data_dir" "$log_dir"
 }
 

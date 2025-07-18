@@ -258,7 +258,7 @@ fi
 echo ""
 echo "✅ 常用 Git 全局配置已完成！"
 echo ""
- 
+
 # === 自动测试 SSH 连接 github.com ===
 echo "正在自动测试 SSH 连接 github.com..."
 ssh -T git@github.com 2>&1 | tee /tmp/git_ssh_test.log | grep -q 'successfully authenticated'

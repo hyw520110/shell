@@ -127,3 +127,6 @@ if need_renew_certificate; then
 else
     echo "证书是最新的"
 fi
+
+# 清理临时文件
+rm -f api_certificate.txt api_supported_versions.txt api_supported_ciphers.txt
