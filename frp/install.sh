@@ -302,7 +302,7 @@ case $CHOICE in
         ./startup-frps.sh
 
         echo "安装并启动 frps 完成。"
-        setup_firewall_ports "7000/tcp" "7800/tcp" "7443/tcp" "7500/tcp"
+        setup_firewall_ports "6000/tcp" "7000/tcp" "7800/tcp" "7443/tcp" "7500/tcp"
         ;;
     c)
         if [ ! -f "${INSTALL_DIR}/${FRP_CLIENT_NAME}" ]; then
