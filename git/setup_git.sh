@@ -182,6 +182,8 @@ else
   git config --global init.defaultBranch main
   echo "已设置新仓库默认分支名为 main (git config --global init.defaultBranch main)"
 fi
+# 编辑器
+git config --global core.editor "vim"
 
 # 2. 颜色高亮
 if git config --global color.ui | grep -q auto; then :; else

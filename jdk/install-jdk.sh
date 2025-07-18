@@ -65,10 +65,23 @@ function get_user_home() {
 # 安装缺失的解压工具
 function install_extractor() {
   local ext=$1
+  local pkg_mgr
+  if command -v apt-get &> /dev/null; then
+      pkg_mgr="apt-get -y"
+  elif command -v yum &> /dev/null; then
+      pkg_mgr="yum install -y"
+  elif command -v dnf &> /dev/null; then
+      pkg_mgr="dnf install -y"
+  elif command -v brew &> /dev/null; then
+      pkg_mgr="brew install "
+  else
+      echo "无法识别包管理工具，请手动安装所需工具。"
+      exit 1
+  fi
   case "$ext" in
-    tar.gz|tgz) which gzip > /dev/null || apt-get update >/dev/null && apt-get install -y gzip >/dev/null ;;
-    tar.xz|txz) which xz > /dev/null || apt-get update >/dev/null && apt-get install -y xz-utils >/dev/null ;;
-    zip)        which unzip > /dev/null || apt-get update >/dev/null && apt-get install -y unzip >/dev/null ;;
+    tar.gz|tgz) which gzip > /dev/null || $pkg_mgr gzip ;;
+    tar.xz|txz) which xz > /dev/null || $pkg_mgr xz-utils  ;;
+    zip)        which unzip > /dev/null || $pkg_mgr unzip  ;;
     *)
       echo "不支持的压缩格式: $ext"
       exit 1
@@ -155,8 +168,8 @@ function switch_java() {
 
   # 使用 update-alternatives 设置默认 java
   if command -v update-alternatives &>/dev/null; then
-    sudo update-alternatives --install /usr/bin/java java "$home_dir/bin/java" 1
-    sudo update-alternatives --set java "$home_dir/bin/java"
+    update-alternatives --install /usr/bin/java java "$home_dir/bin/java" 1
+    update-alternatives --set java "$home_dir/bin/java"
     echo "已切换到 Java $version (路径: $home_dir)"
   else
     export JAVA_HOME="$home_dir"
@@ -192,6 +205,7 @@ export PATH=\$JAVA_HOME/bin:\$PATH
 EOF
 
   source "$profile_file"
+  echo "环境变量已更新，请重新启动终端或执行 'source $profile_file' 使设置生效。"
 }
 
 # 下载并解压 Java
@@ -211,6 +225,11 @@ function download_and_extract() {
   else
     echo "下载 $url 到 $gz_file..."
     curl -L "$url" -o "$gz_file"
+    if [ $? -ne 0 ]; then
+      echo "下载失败，请检查网络连接并重试。"
+      rm -f "$gz_file"
+      exit 1
+    fi
   fi
 
   echo "解压中..."
@@ -220,6 +239,9 @@ function download_and_extract() {
 
   # 创建符号链接
   local base_dir="$INSTALL_DIR/jdk-$version"
+  if [ -L "$base_dir" ]; then
+      echo "符号链接 $base_dir 已存在，将被覆盖。"
+  fi
   ln -sf "$extracted_dir" "$base_dir"
 }
 
