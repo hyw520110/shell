@@ -235,7 +235,7 @@ if git config --global core.quotepath | grep -q false; then :; else
 git config --global core.quotepath false
 echo "已设置 core.quotepath=false (显示中文路径)"
 fi
-
+# TODO 判断是否安装beyond compare，如安装没做软链接就做软链接，再更新git配置
 # 8. 合并工具（优先 beyond compare，其次 code，否则 vimdiff）
 if command -v bcompare >/dev/null 2>&1; then
   git config --global merge.tool bc
@@ -243,6 +243,7 @@ if command -v bcompare >/dev/null 2>&1; then
   git config --global mergetool.bc.trustExitCode true
   echo "已设置合并工具为 Beyond Compare (bcompare)"
 elif command -v bcomp >/dev/null 2>&1; then
+  # sudo ln -s /Applications/Beyond\ Compare.app/Contents/MacOS/bcomp /usr/local/bin/bcomp	
   git config --global merge.tool bc
   git config --global mergetool.bc.cmd 'bcomp "$LOCAL" "$REMOTE" "$BASE" "$MERGED"'
   git config --global mergetool.bc.trustExitCode true
