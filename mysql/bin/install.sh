@@ -18,16 +18,16 @@ log_dir=/var/log/mysql
 tmp_dir=/tmp
 
 if which rpm > /dev/null 2>&1 && which yum > /dev/null 2>&1; then
-    if [ "$version" = "5" ]; then
-      mysql_url=https://mirrors.aliyun.com/mysql/MySQL-5.7/mysql-5.7.36-el7-x86_64.tar.gz
-    else
-      mysql_url=https://mirrors.aliyun.com/mysql/MySQL-8.0/mysql-8.0.27-el7-x86_64.tar.gz
-	fi
+  if [ "$version" = "5" ]; then
+    mysql_url=https://mirrors.aliyun.com/mysql/MySQL-5.7/mysql-5.7.36-el7-x86_64.tar.gz
+  else
+    mysql_url=https://mirrors.aliyun.com/mysql/MySQL-8.0/mysql-8.0.27-el7-x86_64.tar.gz
+  fi
 elif which apt > /dev/null 2>&1; then
-    mysql_url=https://mirrors.aliyun.com/mysql/MySQL-8.0/mysql-8.0.28-linux-glibc2.17-x86_64-minimal.tar.xz
+  mysql_url=https://mirrors.aliyun.com/mysql/MySQL-8.0/mysql-8.0.28-linux-glibc2.17-x86_64-minimal.tar.xz
 else
     echo "不支持的操作系统"
-    exit 1
+  exit 1
 fi
 gz_file_name=${mysql_url##*/}
 gz_file=$tmp_dir/$gz_file_name
@@ -112,12 +112,12 @@ pre_check() {
     fi
   fi
   # root权限检测
-  if [ $(id -u) != "0" ]; then
-      echo "使用root运行此脚本安装mysql!"
+if [ $(id -u) != "0" ]; then
+    echo "使用root运行此脚本安装mysql!"
       echo "Usage: sudo $0 <version> [install_base_dir]"
       echo "支持版本: 5或8(默认)"
-      exit 1
-  fi
+    exit 1
+fi
 }
 
 # 检查MySQL版本并调整my.cnf兼容性
@@ -152,12 +152,12 @@ adjust_cnf_for_version() {
 }
 
 copy_files() {
-  if [ "$SOURCE_DIR" != "$install_dir" ]; then
-    echo "拷贝配置文件从 $SOURCE_DIR 到 $install_dir"
-    mkdir -p $install_dir
+if [ "$SOURCE_DIR" != "$install_dir" ]; then
+  echo "拷贝配置文件从 $SOURCE_DIR 到 $install_dir"
+  mkdir -p $install_dir
     cp -r $SOURCE_DIR/{bin,conf} $install_dir/
-    chown -R ${usr}:${usr_group} $install_dir
-  fi
+  chown -R ${usr}:${usr_group} $install_dir
+fi
 
   # 动态替换my.cnf中的路径，日志目录始终为/var/log/mysql
   local cnf_file="$install_dir/conf/my.cnf"
@@ -178,19 +178,19 @@ copy_files() {
 
 download_and_extract() {
   # 软件包不存在时下载
-  if [ ! -f $gz_file ] || ! check_file_integrity $gz_file; then
-    print "开始下载mysql安装包..."
+if [ ! -f $gz_file ] || ! check_file_integrity $gz_file; then
+  print "开始下载mysql安装包..."
     if ! safe_download "$mysql_url" "$gz_file"; then
-      print "无法下载MySQL安装包，请检查网络连接或手动下载后放置在/opt/softs目录"
-      exit 1
-    fi
-    if ! check_file_integrity $gz_file; then
-      print "下载的文件损坏或不完整，安装失败"
-      exit 1
-    fi
+    print "无法下载MySQL安装包，请检查网络连接或手动下载后放置在/opt/softs目录"
+    exit 1
   fi
-  # 解压
-  if [ -f $gz_file ]; then
+  if ! check_file_integrity $gz_file; then
+    print "下载的文件损坏或不完整，安装失败"
+    exit 1
+  fi
+fi
+# 解压
+if [ -f $gz_file ]; then
     tar -xf $gz_file -C ${base_dir}
     if [ $? -ne 0 ]; then
       print "解压文件失败，删除并重新下载"
@@ -199,9 +199,9 @@ download_and_extract() {
     fi
     # 提取解压目录名
     extract_dir=$(tar -tf $gz_file | head -1 | cut -d/ -f1)
-    install_dir=$base_dir/$extract_dir
-    data_dir=$install_dir/data
-  fi
+	install_dir=$base_dir/$extract_dir
+	data_dir=$install_dir/data
+fi
 }
 
 install_dependencies() {
@@ -215,35 +215,35 @@ install_dependencies() {
 }
 
 setup_user_and_system() {
-  if ! id -u $usr > /dev/null 2>&1; then
-    useradd -M -s /sbin/nologin $usr
-  fi
-  if ! getent group $usr_group > /dev/null 2>&1; then
-    groupadd $usr_group
-  fi	
-  limits=/etc/security/limits.conf
-  wfile "mysql    soft    nproc    16384" $limits
-  wfile "mysql    hard    nproc    16384" $limits
-  wfile "mysql    soft    nofile    65536" $limits
-  wfile "mysql    hard    nofile    65536" $limits
-  wfile "mysql    soft    stack    1024000" $limits
-  wfile "mysql    hard    stack    1024000" $limits
-  wfile "vm.swappiness = 5" /etc/sysctl.conf "sysctl -p"
+if ! id -u $usr > /dev/null 2>&1; then
+  useradd -M -s /sbin/nologin $usr
+fi
+if ! getent group $usr_group > /dev/null 2>&1; then
+  groupadd $usr_group
+fi
+limits=/etc/security/limits.conf
+wfile "mysql    soft    nproc    16384" $limits
+wfile "mysql    hard    nproc    16384" $limits
+wfile "mysql    soft    nofile    65536" $limits
+wfile "mysql    hard    nofile    65536" $limits
+wfile "mysql    soft    stack    1024000" $limits
+wfile "mysql    hard    stack    1024000" $limits
+wfile "vm.swappiness = 5" /etc/sysctl.conf "sysctl -p"
 }
 
 prepare_dirs() {
-  # 清理旧的日志目录和数据目录
-  if [ -d "$log_dir" ]; then
-    print "清理旧的日志目录: $log_dir"
-    rm -rf "$log_dir"
-  fi
-  mkdirs $log_dir $log_dir/binlog $log_dir/redolog $log_dir/undolog $install_dir
+# 清理旧的日志目录和数据目录
+if [ -d "$log_dir" ]; then
+  print "清理旧的日志目录: $log_dir"
+  rm -rf "$log_dir"
+fi
+mkdirs $log_dir $log_dir/binlog $log_dir/redolog $log_dir/undolog $install_dir 
 }
 
 create_default_cnf() {
   cnf=$install_dir/conf/my.cnf
-  if [ ! -f "$cnf" ]; then
-    print "配置文件 $cnf 不存在，创建默认配置"
+if [ ! -f "$cnf" ]; then
+  print "配置文件 $cnf 不存在，创建默认配置"
     mkdir -p $(dirname "$cnf")
     cat > "$cnf" << EOF
 [mysqld]
@@ -261,7 +261,7 @@ log_bin=mysql-bin
 binlog_format=mixed
 server-id=1
 EOF
-  fi
+fi
   sed -i "s#datadir=.*#datadir=$data_dir#g" "$cnf"
   sed -i "s#log-error=.*#log-error=$log_dir/error.log#g" "$cnf"
   chown -R ${usr}:${usr_group} "$log_dir"
@@ -276,31 +276,31 @@ initialize() {
     chown -R ${usr}:${usr_group} $install_dir/data
     chmod -R 755 $install_dir/data
     shell="$install_dir/bin/mysqld  --initialize --user=$usr --basedir=$install_dir --datadir=$install_dir/data --console --lower-case-table-names=1 --explicit_defaults_for_timestamp=true"
-    print "mysql初始化:$shell"
-    eval $shell > $log_dir/init.log 2>&1
-    if [ $? -ne 0 ]; then
-      print "mysql初始化失败!错误日志:"
-      cat $log_dir/init.log
-      exit 1
-    fi
-    pass=$(grep "password" $log_dir/init.log| awk -F ': ' '{print $2}')
-    echo -en "mysql临时密码:\033[31m $pass \033[0m \n"
-    rm -rf $log_dir/init.log
-    chown -R ${usr}:${usr_group} $log_dir
+  print "mysql初始化:$shell"
+  eval $shell > $log_dir/init.log 2>&1
+  if [ $? -ne 0 ]; then
+    print "mysql初始化失败!错误日志:"
+    cat $log_dir/init.log
+    exit 1
   fi
-  chmod 644 $cnf
+  pass=$(grep "password" $log_dir/init.log| awk -F ': ' '{print $2}')
+  echo -en "mysql临时密码:\033[31m $pass \033[0m \n"
+  rm -rf $log_dir/init.log
+  chown -R ${usr}:${usr_group} $log_dir
+fi
+chmod 644 $cnf
 }
 
 startup() {
   $install_dir/bin/startup.sh
-  [ $? -gt 0 ] && print "启动失败，查看错误日志:$err_file" && exit 1
-  ps -ef | grep mysql
+[ $? -gt 0 ] && print "启动失败，查看错误日志:$err_file" && exit 1
+ps -ef | grep mysql
 }
 
 setup_service() {
-  if [ `ls /usr/lib/systemd/system/ | grep mysql | grep -v grep | wc -l` -eq 0 ] && [ `ls /etc/systemd/system/ | grep mysql | grep -v grep | wc -l` -eq 0 ]; then
+if [ `ls /usr/lib/systemd/system/ | grep mysql | grep -v grep | wc -l` -eq 0 ] && [ `ls /etc/systemd/system/ | grep mysql | grep -v grep | wc -l` -eq 0 ]; then
     print "安装mysqld服务:/usr/lib/systemd/system/mysqld.service"
-    cat >> /usr/lib/systemd/system/mysqld.service << EOF
+  cat >> /usr/lib/systemd/system/mysqld.service << EOF
 [Unit]
 Description=mysql service
 [Service]
@@ -311,26 +311,26 @@ User=$usr
 [Install]
 WantedBy=multi-user.target
 EOF
-    systemctl daemon-reload
-    systemctl enable mysqld.service
-  fi
+  systemctl daemon-reload
+  systemctl enable mysqld.service
+fi
 }
 
 set_root_password_and_remote() {
-  if [ -n "$pass" ];then
-    read -t $input_time -p "输入新密码(超时时间$input_time 秒):" password
+if [ -n "$pass" ];then
+  read -t $input_time -p "输入新密码(超时时间$input_time 秒):" password
     [ ! -n "$password" ] && echo -en "\n密码输入超时, 默认密码:\033[31m $default_passwd \033[0m \n" && password="$default_passwd"
-  fi
-  if [ -n "$password" ]; then
+fi
+if [ -n "$password" ]; then
     $install_dir/bin/mysql -uroot -p${pass} --connect-expired-password <<EOF
-ALTER USER 'root'@'localhost' IDENTIFIED BY '$password';
-flush privileges;
-exit
+  ALTER USER 'root'@'localhost' IDENTIFIED BY '$password';
+  flush privileges;
+  exit
 EOF
-    pass=$password
-    print "修改密码为:$pass"
-  fi
-  if [ -n "$pass" ];then
+  pass=$password
+  print "修改密码为:$pass"
+fi
+if [ -n "$pass" ];then
     # 检查MySQL版本
     mysql_version=$($install_dir/bin/mysql -uroot -p${pass} -e 'select version();' 2>/dev/null | grep -Eo '^[0-9]+\.[0-9]+')
     major_version=$(echo $mysql_version | cut -d. -f1)
@@ -352,7 +352,7 @@ grant all privileges on *.* to 'root'@'%' with grant option;
 flush privileges;
 exit
 EOF
-    fi
+fi
   fi
 }
 
@@ -369,7 +369,7 @@ main() {
   setup_service
   sleep 3
   set_root_password_and_remote
-  print "MySQL安装完成"
+print "MySQL安装完成"
 }
 
 main "$@"
