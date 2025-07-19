@@ -24,7 +24,7 @@ MAC_JAVA_INFO=(
   [11]="https://github.com/adoptium/temurin11-binaries/releases/download/jdk-11.0.20.1%2B1/OpenJDK11U-jdk_x64_macosx.tar.gz"
   [17]="https://mirrors.huaweicloud.com/openjdk/17.0.2/openjdk-17.0.2_macos-x64_bin.tar.gz"
   [19]="https://mirrors.huaweicloud.com/openjdk/19.0.2/openjdk-19.0.2_macos-x64_bin.tar.gz"
-  [21]="https://mirrors.huaweicloud.com/openjdk/21.0.1/openjdk-21.0.1_macos-x64_bin.tar.gz"
+  [21]="https://mirrors.huaweicloud.com/openjdk/21.0.2/openjdk-21.0.2_macos-x64_bin.tar.gz"
 )
 
 # 使用说明
