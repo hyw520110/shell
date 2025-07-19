@@ -6,16 +6,13 @@ set -e
 
 # 公共变量定义
 SCRIPT_NAME=$(basename "$0")
-USAGE="用法: ./$SCRIPT_NAME [nvm版本] [node版本]
-示例: ./$SCRIPT_NAME v0.39.7 20.16.0"
-
+USAGE="用法: ./$SCRIPT_NAME [node版本] [nvm版本]"
 # 默认版本
-NVM_VERSION="${1:-v0.40.3}"
-NODE_VERSION="${2:-22.17.0}"  # 使用 LTS 版本
-
+NODE_VERSION="${1:-22.17.0}"  
+NVM_VERSION="${2:-v0.40.3}"
 # 官方默认镜像源地址
 OFFICIAL_REGISTRY="https://registry.npmjs.org/"
-# 国内镜像源（以淘宝镜像为例）
+# 国内镜像源 淘宝镜像
 TAOBAO_REGISTRY="https://registry.npmmirror.com/"
 
 # 日志函数
@@ -29,7 +26,7 @@ nvm_dir="$HOME/.nvm"
 if [ ! -d "$nvm_dir" ]; then
     nvm_dir="$HOME/.config/nvm"
 fi
-
+echo $USAGE
 # 检查 nvm 安装状态
 if [  -d "$nvm_dir" ]; then
     [ -f $nvm_dir/nvm.sh ] && source "$nvm_dir/nvm.sh" || echo_error "nvm.sh 文件不存在"

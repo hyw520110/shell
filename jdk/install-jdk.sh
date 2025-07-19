@@ -19,7 +19,12 @@ JAVA_INFO=(
 
 # macOS版本
 MAC_JAVA_INFO=(
+  [7]="https://cdn.azul.com/zulu/bin/zulu7.56.0.19-ca-jdk7.0.312-macosx_x64.tar.gz"
+  [8]="https://github.com/alibaba/dragonwell8/releases/download/dragonwell-8.11.12_jdk8u332-ga/Alibaba_Dragonwell_8.11.12_x64_macosx.tar.gz"
+  [11]="https://github.com/adoptium/temurin11-binaries/releases/download/jdk-11.0.20.1%2B1/OpenJDK11U-jdk_x64_macosx.tar.gz"
   [17]="https://mirrors.huaweicloud.com/openjdk/17.0.2/openjdk-17.0.2_macos-x64_bin.tar.gz"
+  [19]="https://mirrors.huaweicloud.com/openjdk/19.0.2/openjdk-19.0.2_macos-x64_bin.tar.gz"
+  [21]="https://mirrors.huaweicloud.com/openjdk/21.0.1/openjdk-21.0.1_macos-x64_bin.tar.gz"
 )
 
 # 使用说明
