@@ -182,7 +182,7 @@ function switch_java() {
 function set_environment_variables() {
   local home_dir=$1
   local user_home=$(get_user_home)
-  local profile_file="$user_home/.bash_profile"
+  local profile_file="$user_home/.bashrc"
 
   if [[ "$SHELL" == *"zsh"* ]]; then
     profile_file="$user_home/.zshrc"
@@ -196,6 +196,7 @@ function set_environment_variables() {
 
   # 删除旧的 JAVA_HOME 设置
   sed -i '/^export JAVA_HOME/d' "$profile_file"
+  # 应该修改PATH，而不是删除PATH
   sed -i '/^export PATH=.*\$JAVA_HOME/d' "$profile_file"
 
   # 添加新的设置
@@ -259,7 +260,7 @@ function install_java() {
   local base_dir="$INSTALL_DIR/jdk-$version"
 
   # 如果已经存在，则跳过
-  if [ -d "$base_dir" ]; then
+  if [ -d "$base_dir" ] && [ -x "$base_dir/bin/java" ]; then
     echo "Java $version 已经安装。"
     set_environment_variables "$base_dir"
     return
