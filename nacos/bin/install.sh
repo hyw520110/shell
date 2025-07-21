@@ -36,8 +36,8 @@ url="https://github.com/alibaba/nacos/releases/download/3.0.2/nacos-server-3.0.2
 gz_file_name=${url##*/}
 # 下载文件路径，文件名从下载url提取
 gz_file=/tmp/$gz_file_name
-# 解压临时目录
-tmp_dir=/tmp/${gz_file_name%*.tar.gz}
+# 解压临时目录，应该获取INSTALL_DIR的上级目录
+tmp_dir=/opt
 # 集群配置文件
 cluster_file=$BASE_DIR/conf/cluster.conf
 # 记录是否初始化第一次启动，初始提示修改配置文件，设置数据库密码
@@ -70,19 +70,30 @@ if [ ! -f $init_file ];then
   else
       MYSQL_IP="$MYSQL_SERVER"
   fi
-
+  sed -i "s/^# db.url.0/db.url.0/" $BASE_DIR/conf/application.properties
+  
+  sed -i "s#jdbc:mysql://127.0.0.1/jdbc:mysql://$MYSQL_SERVER/" $BASE_DIR/conf/application.properties
   # 提示用户输入 MySQL 用户名和密码
   read -p "请输入 MySQL 用户名 (默认: root): " MYSQL_USER
   MYSQL_USER="${MYSQL_USER:-root}"
 
   read -s -p "请输入 MySQL 密码: " MYSQL_PASSWORD
   echo
+  sed -i "s/^# db.user=/db.user=/"  $BASE_DIR/conf/application.properties
   sed -i "s/^db.user.0=.*/db.user.0=$MYSQL_USER/"  $BASE_DIR/conf/application.properties
+  sed -i "s/^# db.password=/db.password=/"  $BASE_DIR/conf/application.properties
   sed -i "s/^db.password.0=.*/db.password.0=$MYSQL_PASSWORD/"  $BASE_DIR/conf/application.properties
 
   echo "数据源配置:"
   grep "^db." $BASE_DIR/conf/application.properties
   touch $init_file
+  # 安全配置 注意重复执行时会反复修改密钥
+  # 检查openssl是否安装未安装则安装
+  secret_key=$(openssl rand -base64 32)
+  sed -i "s#nacos.core.auth.plugin.nacos.token.secret.key=.*#nacos.core.auth.plugin.nacos.token.secret.key=$secret_key#" $BASE_DIR/conf/application.properties
+  sed -i "s#nacos.core.auth.server.identity.key=.*#nacos.core.auth.server.identity.key=$(openssl rand -base64 32)#" $BASE_DIR/conf/application.properties
+  sed -i "s#nacos.core.auth.server.identity.value=.*#nacos.core.auth.server.identity.value=$(openssl rand -hex 16)#" $BASE_DIR/conf/application.properties
+  
 fi
 
 
@@ -113,13 +124,14 @@ EOF
 # 如未安装下载
 if [ ! -f $BASE_DIR/target/nacos-server.jar ];then
 	[ ! -f $gz_file ] && wget $url -O $gz_file
-	[ ! -d $tmp_dir ] &&  tar -zxf $gz_file -C ${tmp_dir%/*} 2>/dev/null
+	# 解压过程中获取解压目录名（nacos）
+	tar -zxf $gz_file -C ${tmp_dir%/*} 2>/dev/null
 	if [ $? -ne 0 ]; then
 	   echo "重新下载:wget $url -o $gz_file "
 	   #rm -rf $gz_file
 	   wget -c $url -O $gz_file && tar -zxf $gz_file -C ${tmp_dir%/*}
 	fi
-	rsync -aWPu $tmp_dir/target/* $BASE_DIR/target/ && rm -rf $tmp_dir
+	rsync -aWPu $tmp_dir/nacos/* $BASE_DIR/ && rm -rf $tmp_dir
 fi
 
 read -t 5 -n 1 -p "选择模式(单机y/n):" m && echo ""
