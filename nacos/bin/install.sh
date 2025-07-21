@@ -48,7 +48,7 @@ s_file=/usr/lib/systemd/system/nacos.service
 ip=$(hostname -I | awk '{print $1}')
 
 
-cd $CURRENT_DIR
+cd $BASE_DIR
 
 
 # 初始第一次 提示修改数据源配置
