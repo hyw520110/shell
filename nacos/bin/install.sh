@@ -51,9 +51,8 @@ ip=$(hostname -I | awk '{print $1}')
 cd $BASE_DIR
 
 
-# 初始第一次 提示修改数据源配置
-if [ ! -f $init_file ];then
-  # 检查 mysql-server 是否存在且可连通
+# 
+# 检查 mysql-server 是否存在且可连通
   MYSQL_SERVER="mysql-server"
   ping -c 1 "$MYSQL_SERVER" &> /dev/null
   if [ $? -ne 0 ]; then
@@ -67,23 +66,21 @@ if [ ! -f $init_file ];then
       grep "$MYSQL_SERVER" /etc/hosts >/dev/null 2>&1 && sed -i "/$MYSQL_SERVER/d" /etc/hosts
       # 添加自定义主机
       echo "$MYSQL_IP $MYSQL_SERVER" >> /etc/hosts
-  else
-      MYSQL_IP="$MYSQL_SERVER"
   fi
   sed -i "s/^# db.url.0/db.url.0/" $BASE_DIR/conf/application.properties
-  
-  sed -i "s#jdbc:mysql://127.0.0.1/jdbc:mysql://$MYSQL_SERVER/" $BASE_DIR/conf/application.properties
+  sed -i "s#127.0.0.1#$MYSQL_SERVER#" $BASE_DIR/conf/application.properties
   # 提示用户输入 MySQL 用户名和密码
   read -p "请输入 MySQL 用户名 (默认: root): " MYSQL_USER
   MYSQL_USER="${MYSQL_USER:-root}"
 
   read -s -p "请输入 MySQL 密码: " MYSQL_PASSWORD
   echo
-  sed -i "s/^# db.user=/db.user=/"  $BASE_DIR/conf/application.properties
+  MYSQL_PASSWORD="${MYSQL_PASSWORD:-123456}"
+  sed -i "s/^# db.user/db.user/"  $BASE_DIR/conf/application.properties
   sed -i "s/^db.user.0=.*/db.user.0=$MYSQL_USER/"  $BASE_DIR/conf/application.properties
-  sed -i "s/^# db.password=/db.password=/"  $BASE_DIR/conf/application.properties
+  sed -i "s/^# db.password/db.password/"  $BASE_DIR/conf/application.properties
   sed -i "s/^db.password.0=.*/db.password.0=$MYSQL_PASSWORD/"  $BASE_DIR/conf/application.properties
-
+  # init sql
   echo "数据源配置:"
   grep "^db." $BASE_DIR/conf/application.properties
   touch $init_file
@@ -94,7 +91,6 @@ if [ ! -f $init_file ];then
   sed -i "s#nacos.core.auth.server.identity.key=.*#nacos.core.auth.server.identity.key=$(openssl rand -base64 32)#" $BASE_DIR/conf/application.properties
   sed -i "s#nacos.core.auth.server.identity.value=.*#nacos.core.auth.server.identity.value=$(openssl rand -hex 16)#" $BASE_DIR/conf/application.properties
   
-fi
 
 
 # nacos已启动时提示并退出 
@@ -104,7 +100,8 @@ pid=`ps -ef |grep $BASE_DIR |grep -v "grep"|awk '{print $2}'|awk 'NR==1'` && [ -
 
 # 查看实时日志
 function tailfLog {
-	sleep 3 && tail $1 -n 100 $BASE_DIR/logs/start.out
+	sleep 3
+	[ -f $BASE_DIR/logs/startup.log ] && tail $1 -n 100 $BASE_DIR/logs/startup.log
 }
 # 判断文本在文件中不存在时，写入文本到文件,参数1：文本；参数2：文件路径;参数3可选：执行命令,文本写入后的加载命令
 function wfile {
@@ -125,16 +122,18 @@ EOF
 if [ ! -f $BASE_DIR/target/nacos-server.jar ];then
 	[ ! -f $gz_file ] && wget $url -O $gz_file
 	# 解压过程中获取解压目录名（nacos）
-	tar -zxf $gz_file -C ${tmp_dir%/*} 2>/dev/null
+	echo "tar -zxf $gz_file -C ${tmp_dir%} "
+	tar -zxf $gz_file -C ${tmp_dir%} 
 	if [ $? -ne 0 ]; then
 	   echo "重新下载:wget $url -o $gz_file "
 	   #rm -rf $gz_file
-	   wget -c $url -O $gz_file && tar -zxf $gz_file -C ${tmp_dir%/*}
+	   wget -c $url -O $gz_file && tar -zxf $gz_file -C ${tmp_dir%}
 	fi
-	rsync -aWPu $tmp_dir/nacos/* $BASE_DIR/ && rm -rf $tmp_dir
+	rsync -aWPu $tmp_dir/nacos/* $BASE_DIR/ 
 fi
 
-read -t 5 -n 1 -p "选择模式(单机y/n):" m && echo ""
+read -t 5 -n 1 -p "选择模式(单机y/n):" m
+echo ""
 m=${m:-y}
 if [ "y" == "$m" ]; then
   echo "单机模式启动..."  &&
@@ -157,7 +156,7 @@ EOF
   systemctl daemon-reload
   systemctl enable nacos.service
   fi
-  $CURRENT_DIR/startup.sh $mode
+  $INSTALL_DIR/bin/startup.sh $mode
   tailfLog && exit 0
 fi
 echo "集群模式启动..."
@@ -184,6 +183,6 @@ if [ ! -n "$ip" ];then
 	  fi 
 	done
 fi
-$CURRENT_DIR/startup.sh 
+$INSTALL_DIR/bin/startup.sh 
 [ ! -n "$ip" ] && tailfLog -f || tailfLog
 
