@@ -1,42 +1,46 @@
 #!/bin/bash
 
+# 定义下载目录变量
+DOWNLOAD_DIR="${HOME}/Downloads"
+MODEL_DIR="${HOME}/.ollama/models"
+
 # 设置环境变量
 export OLLAMA_HOST=0.0.0.0
 export OLLAMA_PORT=11434
-export OLLAMA_MODELS=~/.ollama/models
+export OLLAMA_MODELS=$MODEL_DIR
 export OLLAMA_DEBUG=1
 
 # 安装启动 ollama
 start_ollama() {
-	if command -v docker &> /dev/null; then
-	    # 基于Docker容器端口或容器状态检查 是否正在运行，
-	    if docker info > /dev/null 2>&1 ; then
-	        if docker ps 2>/dev/null | grep ollama | grep Up >/dev/null 2>&1 ; then
-	           echo "ollama服务已在运行" && exit 0 
-	        fi
-            if command -v docker-compose &>/dev/null ; then
-             	docker-compose up -d 
-		     	[ $? -eq 0 ] && echo "ollama服务已启动"  && exit 0
-		    else
-		     	echo "docker-compose未安装" && exit 1
-		    fi		
-        fi
-        # docker未启动则主机安装
+    if command -v docker &> /dev/null; then
+        # 基于Docker容器端口或容器状态检查 是否正在运行，
+        if docker info > /dev/null 2>&1 ; then
+            if docker ps 2>/dev/null | grep ollama | grep Up >/dev/null 2>&1 ; then
+               echo "ollama服务已在运行" && exit 0
+            fi
+          if command -v docker-compose &>/dev/null ; then
+              docker-compose up -d
+            [ $? -eq 0 ] && echo "ollama服务已启动"  && exit 0
+          else
+            echo "docker-compose未安装" && exit 1
+          fi
+      fi
     fi
-	if ! command -v ollama &> /dev/null; then
+    # docker未启动则主机安装
+    if ! command -v ollama &> /dev/null; then
 	    # 判断是否是macos系统
         if [[ "$OSTYPE" == "darwin"* ]]; then
            url=$(curl -s https://api.github.com/repos/ollama/ollama/releases/latest | grep browser_download_url|grep darwin.zip|awk -F': ' '{print $2}' | tr -d '"')
            zip_file=$(basename $url | tr -d '"')
-           [ ! -f ~/Downloads/$zip_file ] && wget https://github.com/ollama/ollama/releases/download/v0.9.2/ollama-darwin.zip -O ~/Downloads/$zip_file
-           [ ! -d /Applications/Ollama.app/Contents ] && unzip ~/Downloads/$zip_file -d /Applications/
+           [ ! -f $DOWNLOAD_DIR/$zip_file ] && wget https://github.com/ollama/ollama/releases/download/v0.9.2/ollama-darwin.zip -O $DOWNLOAD_DIR/$zip_file
+           [ ! -d /Applications/Ollama.app/Contents ] && unzip $DOWNLOAD_DIR/$zip_file -d /Applications/
            # 第一次要打开应用，执行安装后ollama命令行才能用
            [ ! -d /Applications/Ollama.app/Contents ] && echo "ollama安装失败，请手动安装" && exit 1
            ollama --version 2>/dev/null || open /Applications/Ollama.app
         else
            echo "开始安装 ollama..."
            curl -fsSL https://ollama.com/install.sh | sh
-           [ $? -ne 0 ] && wget --no-check-certificate https://ollama.com/download/ollama-linux-amd64.tgz  && sudo tar -C /usr -xzf ollama-linux-amd64.tgz
+           [ $? -ne 0 ] && wget -c --no-check-certificate https://ollama.com/download/ollama-linux-amd64.tgz -O $DOWNLOAD_DIR/ollama-linux-amd64.tgz && sudo tar -C /usr -xzf $DOWNLOAD_DIR/ollama-linux-amd64.tgz
         fi
     fi
     [ $? -ne 0 ] && echo "ollama安装失败，访问:https://ollama.com/download 下载安装" && exit 1

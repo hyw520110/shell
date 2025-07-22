@@ -89,12 +89,11 @@ check_docker_mirrors() {
         current_mirrors=$(cat /etc/docker/daemon.json | grep -A 2 "registry-mirrors")
         echo "当前镜像配置：$current_mirrors"
     else
-        # 新增交互式提示
-        echo_info "未检测到Docker镜像配置，默认10秒后不配置"
-        echo_info "按 Ctrl+C 取消配置"
-        sleep 10
-        echo_info "正在配置默认镜像..."
-        configure_docker_mirrors
+        read -t 10 -p "是否需要配置镜像(y/n,10秒后取消配置)" need_configure
+        if [ "$need_configure" == "y" ]; then
+            echo_info "正在配置默认镜像..."
+            configure_docker_mirrors
+        fi
     fi
 }
 
