@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # 定义下载目录变量
 DOWNLOAD_DIR="${HOME}/Downloads"
@@ -10,37 +11,112 @@ export OLLAMA_PORT=11434
 export OLLAMA_MODELS=$MODEL_DIR
 export OLLAMA_DEBUG=1
 
+# 检查ollama服务是否已启动
+check_ollama_service() {
+    # 检查端口是否监听
+    if ! nc -z "$OLLAMA_HOST" "$OLLAMA_PORT" 2>/dev/null; then
+        return 1
+    fi
+    
+    # 检查服务是否响应
+    if curl -s --connect-timeout 3 http://$OLLAMA_HOST:$OLLAMA_PORT >/dev/null; then
+        echo "ollama服务已启动"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# 下载文件函数
+download_file() {
+    local url=$1
+    local output=$2
+    
+    # 检查文件是否已存在且大小正常
+    if [ -f "$output" ] && [ -s "$output" ]; then
+        echo "文件已存在且大小正常，跳过下载: $output"
+        return 0
+    fi
+    
+    echo "正在下载: $url"
+    wget -c "$url" -O "$output"
+    return $?
+}
+
 # 安装启动 ollama
 start_ollama() {
+    # 尝试Docker方式启动
     if command -v docker &> /dev/null; then
-        # 基于Docker容器端口或容器状态检查 是否正在运行，
-        if docker info > /dev/null 2>&1 ; then
-            if docker ps 2>/dev/null | grep ollama | grep Up >/dev/null 2>&1 ; then
-               echo "ollama服务已在运行" && exit 0
+        if docker info > /dev/null 2>&1; then
+            # 检查Ollama容器状态
+            if docker ps --filter "name=ollama" --filter "status=running" | grep -q ollama; then
+                echo "ollama容器已在运行"
+                return 0
             fi
-          if command -v docker-compose &>/dev/null ; then
-              docker-compose up -d
-            [ $? -eq 0 ] && echo "ollama服务已启动"  && exit 0
-          else
-            echo "docker-compose未安装" && exit 1
-          fi
-      fi
-    fi
-    # docker未启动则主机安装
-    if ! command -v ollama &> /dev/null; then
-	    # 判断是否是macos系统
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-           url=$(curl -s https://api.github.com/repos/ollama/ollama/releases/latest | grep browser_download_url|grep darwin.zip|awk -F': ' '{print $2}' | tr -d '"')
-           zip_file=$(basename $url | tr -d '"')
-           [ ! -f $DOWNLOAD_DIR/$zip_file ] && wget https://github.com/ollama/ollama/releases/download/v0.9.2/ollama-darwin.zip -O $DOWNLOAD_DIR/$zip_file
-           [ ! -d /Applications/Ollama.app/Contents ] && unzip $DOWNLOAD_DIR/$zip_file -d /Applications/
-           # 第一次要打开应用，执行安装后ollama命令行才能用
-           [ ! -d /Applications/Ollama.app/Contents ] && echo "ollama安装失败，请手动安装" && exit 1
-           ollama --version 2>/dev/null || open /Applications/Ollama.app
+
+            # 检查是否存在已停止的ollama容器
+            if docker ps -a --filter "name=ollama" | grep -q ollama; then
+                echo "启动已存在的ollama容器..."
+                docker start ollama && echo "ollama容器已启动" && return 0
+            fi
+
+            # 尝试使用docker-compose启动
+            if command -v docker-compose &>/dev/null && [ -f "docker-compose.yml" ]; then
+                echo "使用docker-compose启动ollama..."
+                docker-compose up -d && echo "ollama容器已启动" && return 0
+            fi
+
+
         else
-           echo "开始安装 ollama..."
-           curl -fsSL https://ollama.com/install.sh | sh
-           [ $? -ne 0 ] && wget -c --no-check-certificate https://ollama.com/download/ollama-linux-amd64.tgz -O $DOWNLOAD_DIR/ollama-linux-amd64.tgz && sudo tar -C /usr -xzf $DOWNLOAD_DIR/ollama-linux-amd64.tgz
+            echo "Docker服务未启动，将尝试主机安装"
+        fi
+    fi
+    # 主机安装
+    if ! command -v ollama &> /dev/null; then
+        # 判断是否是macos系统
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # 获取最新版本的下载链接
+            url=$(wget -q -O- https://api.github.com/repos/ollama/ollama/releases/latest | grep browser_download_url | grep darwin.zip | awk -F': ' '{print $2}' | tr -d '"')
+            zip_file=$(basename "$url")
+            
+            # 下载文件
+            if [ ! -f "$DOWNLOAD_DIR/$zip_file" ]; then
+                download_file "$url" "$DOWNLOAD_DIR/$zip_file" || {
+                    echo "下载失败，请检查网络连接"
+                    return 1
+                }
+            fi
+            
+            # 解压并安装应用
+            if [ ! -d /Applications/Ollama.app/Contents ]; then
+                echo "正在安装ollama..."
+                unzip "$DOWNLOAD_DIR/$zip_file" -d /Applications/ || {
+                    echo "解压失败，请检查文件完整性"
+                    rm -f "$DOWNLOAD_DIR/$zip_file"
+                    return 1
+                }
+            fi
+            
+            # 确保命令行可用
+            if ! ollama --version >/dev/null 2>&1; then
+                echo "首次启动Ollama应用以完成安装..."
+                open /Applications/Ollama.app
+                # 等待应用启动
+                sleep 10
+            }
+        else
+            echo "开始安装ollama..."
+            wget -c  https://ollama.com/install.sh && sh install.sh || {
+					url=https://ollama.com/download/ollama-linux-amd64.tgz
+					file_name=$(basename $url)
+                    if [ ! -f "$DOWNLOAD_DIR/$file_name" ]; then
+                    download_file $url "$DOWNLOAD_DIR/$file_name" || {
+                        echo "下载ollama-linux-amd64.tgz失败，请检查网络连接"
+                        return 1
+                    }
+                fi
+                sudo tar -C /usr -xzf "$DOWNLOAD_DIR/$file_name"
+            }
         fi
     fi
     [ $? -ne 0 ] && echo "ollama安装失败，访问:https://ollama.com/download 下载安装" && exit 1
@@ -52,11 +128,22 @@ start_ollama() {
 	    fi
     fi
 
-    # 如果 systemd 服务未启动，则使用 nohup 启动 ollama serve
-    if ! pgrep -f 'ollama serve' > /dev/null; then
+    # 检查并启动ollama服务
+    if ! check_ollama_service; then
+        echo "正在启动ollama服务..."
         nohup ollama serve > ollama.log 2>&1 &
-        sleep 5
+        # 等待服务启动
+        for i in {1..10}; do
+            if check_ollama_service; then
+                echo "ollama服务已启动"
+                return 0
+            fi
+            sleep 1
+        done
+        echo "ollama服务启动失败，请查看ollama.log了解详情"
+        return 1
     fi
+    return 0
     ollama list
 }
 
@@ -116,12 +203,15 @@ demo_api_call() {
 main() {
     start_ollama
 
-    # 模型检测与用户输入处理
-    if ollama list | grep -v NAME | grep -q .; then
+    main() {
+        start_ollama
+
+        # 模型检测与用户输入处理
+        if ollama list | grep -v NAME | grep -q .; then
         echo "本地已存在模型，模型列表如下："
         ollama list
     else
-        read -t 5 -p "本地未检测到模型，请输入模型名称及参数量（如qwen3:8b或deepseek-r1:8b,5秒后使用默认值qwen3:8b）：" model_input
+        read -t 15 -p "本地未检测到模型，请输入模型名称及参数量（如qwen3:8b, deepseek-r1:8b或llama3:8b, 15秒后使用默认值qwen3:8b）：" model_input
         model_input=${model_input:-qwen3:8b}
         echo "使用模型：$model_input"
         start_model_in_tmux "$model_input"
