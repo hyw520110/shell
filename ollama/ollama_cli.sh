@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# ollama_client.sh - 用于连接和测试Ollama服务的客户端脚本
+# ollama_cli.sh - 用于连接和测试Ollama服务的客户端脚本
 # 用途: 测试Ollama服务连接并进行简单的文本生成交互
 # 参数: 可选的IP:PORT参数指定Ollama服务地址，默认使用本机IP:11434
 # 版本: 1.0
 # 作者: 你的名字
 # 使用示例:
-#   ./ollama_client.sh            # 使用本机IP:11434连接
-#   ./ollama_client.sh 192.168.1.100:11434  # 使用指定IP和端口连接
+#   ./ollama_cli.sh            # 使用本机IP:11434连接
+#   ./ollama_cli.sh 192.168.1.100:11434  # 使用指定IP和端口连接
 
 # 如果任何命令失败则立即退出
 set -e

@@ -39,8 +39,43 @@ start_ollama() {
            ollama --version 2>/dev/null || open /Applications/Ollama.app
         else
            echo "开始安装 ollama..."
-           curl -fsSL https://ollama.com/install.sh | sh
-           [ $? -ne 0 ] && wget -c --no-check-certificate https://ollama.com/download/ollama-linux-amd64.tgz -O $DOWNLOAD_DIR/ollama-linux-amd64.tgz && sudo tar -C /usr -xzf $DOWNLOAD_DIR/ollama-linux-amd64.tgz
+           
+           # 定义下载链接和目录
+           local primary_url="https://ollama.com/download/ollama-linux-amd64.tgz"
+           local backup_url="https://npmmirror.com/mirrors/ollama/ollama-linux-amd64.tgz"
+           
+           # 创建临时目录用于下载安装脚本
+           local temp_dir=$(mktemp -d)
+           local install_script="$temp_dir/install.sh"
+           
+           # 尝试下载安装脚本
+           if download_file "https://ollama.com/install.sh" "$temp_dir" 3 600; then
+               echo "下载安装脚本成功，正在执行..."
+               chmod +x "$install_script"
+               if [ -f "$install_script" ]; then
+                   . "$install_script"
+               else
+                   echo "安装脚本不存在，下载失败"
+                   exit 1
+               fi
+           else
+               echo "curl下载失败，尝试使用wget断点续传..."
+               
+               # 首先尝试使用主下载源
+               if download_file "$primary_url" "$DOWNLOAD_DIR" 3 600; then
+                   echo "主源下载成功"
+               else
+                   echo "主源下载失败，尝试使用备用源..."
+                   # 主源失败后使用备用源
+                   if ! download_file "$backup_url" "$DOWNLOAD_DIR" 3 600; then
+                       echo "下载失败，请检查网络连接或手动下载安装"
+                       exit 1
+                   fi
+               fi
+               
+               # 解压下载的文件
+               sudo tar -C /usr -xzf "$DOWNLOAD_DIR/ollama-linux-amd64.tgz"
+           fi
         fi
     fi
     [ $? -ne 0 ] && echo "ollama安装失败，访问:https://ollama.com/download 下载安装" && exit 1
@@ -58,6 +93,89 @@ start_ollama() {
         sleep 5
     fi
     ollama list
+}
+
+# 通用下载函数
+# 参数:
+#   $1 - 下载链接
+#   $2 - 下载目录
+#   $3 - 重试次数（可选，默认3次）
+#   $4 - 超时时间（可选，默认无）
+# 输出:
+#   0 - 下载成功
+#   1 - 下载失败
+download_file() {
+    local url="$1"
+    local download_dir="$2"
+    local max_retries=${3:-3}  # 默认3次重试
+    local timeout_opt=""
+    
+    # 检查是否提供了超时时间
+    if [ -n "$4" ] && [ $4 -gt 0 ]; then
+        # 根据操作系统选择合适的timeout命令参数格式
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS使用秒数前缀格式
+            timeout_opt="-t $4"
+        else
+            # Linux使用--preserve-status格式
+            timeout_opt="--preserve-status --kill-after=10 $4"
+        fi
+    fi
+    
+    # 创建下载目录
+    mkdir -p "$download_dir"
+    
+    # 获取文件名
+    local filename=$(basename "$url")
+    local download_path="$download_dir/$filename"
+    
+    # 记录开始时间
+    local start_time=$(date +%s)
+    
+    # 尝试下载
+    local retry=0
+    while [ $retry -le $max_retries ]; do
+        echo "尝试下载 $filename: $url"
+        echo "下载开始时间: $(date)"
+        echo "目标路径: $download_path"
+        
+        # 使用timeout控制下载时间（如果已启用）
+        local cmd="wget -c --no-check-certificate -q -O \"$download_path\" \"$url\""
+        if [ -n "$timeout_opt" ]; then
+            cmd="timeout $timeout_opt $cmd"
+        fi
+        
+        if eval $cmd; then
+            local end_time=$(date +%s)
+            local duration=$((end_time - start_time))
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] 下载完成: $filename"
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] 下载耗时: $(($duration / 60))分$((duration % 60))秒"
+            return 0
+        else
+            local exit_code=$?
+            
+            # 检查是否是超时
+            if [ -n "$timeout_opt" ] && [ $exit_code -eq 124 ]; then
+                echo "[$(date +'%Y-%m-%d %H:%M:%S')] 下载超时，清理部分下载文件..."
+                rm -f "$download_path"
+            else
+                echo "[$(date +'%Y-%m-%d %H:%M:%S')] 下载失败，错误代码: $exit_code"
+            fi
+            
+            if [ $retry -lt $max_retries ]; then
+                echo "[$(date +'%Y-%m-%d %H:%M:%S')] 下载失败，$((retry+1))秒后重试... (尝试次数: $((retry+1))/$max_retries)"
+                sleep $((retry+1))
+                retry=$((retry+1))
+            else
+                echo "[$(date +'%Y-%m-%d %H:%M:%S')] 达到最大重试次数，下载失败"
+                return 1
+            fi
+        fi
+    done
+    
+    # 返回下载失败
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] 下载失败，未知错误"
+    return 1
 }
 
 # 检查并安装 tmux
