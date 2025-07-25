@@ -3,9 +3,12 @@
 # ollama_cli.sh - 用于连接和测试Ollama服务的客户端脚本
 # 用途: 测试Ollama服务连接并进行简单的文本生成交互
 # 参数: 可选的IP:PORT参数指定Ollama服务地址，默认使用本机IP:11434
+# 版本: 1.0
+# 作者: 你的名字
 # 使用示例:
 #   ./ollama_cli.sh            # 使用本机IP:11434连接
 #   ./ollama_cli.sh 192.168.1.100:11434  # 使用指定IP和端口连接
+#   ./ollama_cli.sh -s false   # 禁用流式输出
 
 # 如果任何命令失败则立即退出
 set -e
@@ -116,6 +119,24 @@ get_available_memory() {
     fi
 }
 
+# 显示帮助信息
+show_help() {
+    echo "用法: $0 [IP:PORT] [-s|--stream true|false]"
+    echo ""
+    echo "Ollama客户端脚本，用于与Ollama服务进行交互"
+    echo ""
+    echo "参数说明:"
+    echo "  IP:PORT               Ollama服务地址，默认为localhost:11434"
+    echo "  -s, --stream [true|false] 是否启用流式输出，默认为true"
+    echo "  --help                显示此帮助信息"
+    echo ""
+    echo "示例:"
+    echo "  $0                     # 使用localhost:11434连接，启用流式输出"
+    echo "  $0 192.168.1.100:11434 # 使用指定IP和端口连接，启用流式输出"
+    echo "  $0 -s false            # 使用localhost:11434连接，禁用流式输出"
+    echo "  $0 192.168.1.100:11434 -s false # 使用指定IP和端口连接，禁用流式输出"
+}
+
 # 信号处理函数
 handle_signal() {
     echo "
@@ -128,9 +149,40 @@ trap handle_signal INT TERM
 
 # 主函数
 # 参数:
-#   $1 - 可选的IP:PORT参数
+#   $@ - 命令行参数
 main() {
-    local ip_port="$1"
+    local ip_port=""
+    local stream=true
+    
+    # 解析命令行参数
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -s|--stream)
+                if [[ "$2" == "false" || "$2" == "true" ]]; then
+                    stream=$2
+                    shift 2
+                else
+                    stream=true
+                    shift
+                fi
+                ;;
+            --help)
+                show_help
+                exit 0
+                ;;
+            -*)
+                echo "未知参数: $1"
+                show_help
+                exit 1
+                ;;
+            *)
+                if [[ -z "$ip_port" ]]; then
+                    ip_port="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
 
     # 如果未指定IP和端口，则使用localhost（因为Ollama服务监听在0.0.0.0）
     if [ -z "$ip_port" ]; then
@@ -206,7 +258,12 @@ main() {
         done
     fi
 
-    echo "使用模型: $selected_model"
+    # 显示流式输出状态
+    if [ "$stream" = true ]; then
+        echo "使用模型: $selected_model (流式输出已启用)"
+    else
+        echo "使用模型: $selected_model (流式输出已禁用)"
+    fi
 
     # 循环获取用户输入并调用API
     while true; do
@@ -218,48 +275,76 @@ main() {
 
         if [ -n "$prompt" ]; then
             api_url="http://$ip:$port/api/generate"
-            # 修复变量引用问题，使用双引号包围整个JSON，并使用jq转义特殊字符
-            response=$(curl -s -X POST "$api_url" -H "Content-Type: application/json" -d "{\"model\":\"$selected_model\",\"prompt\":\"$prompt\",\"stream\":false,\"options\":{\"num_ctx\":512}}")
-
-            # 检查curl是否执行成功
-            if [ $? -ne 0 ]; then
-                echo "错误: 无法连接到Ollama服务"
-                continue
-            fi
-
-            # 检查响应中是否有错误信息
-            if echo "$response" | jq -e .error >/dev/null 2>&1; then
-                echo "API调用出错:"
-                error_msg=$(echo "$response" | jq -r '.error')
-                echo "$error_msg"
-                
-                # 如果是内存不足的错误，提供解决方案建议
-                if [[ "$error_msg" == *"memory"* ]]; then
-                    echo ""
-                    echo "提示: 您可以尝试以下解决方案:"
-                    echo "1. 使用更小的模型，例如: gemma:2b, phi3:3.8b"
-                    echo "2. 拉取量化版本的模型，例如: qwen3:0.5b 或 qwen3:1.8b"
-                    echo "3. 增加系统交换空间"
-                    echo "4. 调整模型参数，如减小 num_ctx 值"
-                fi
-                continue
-            fi
-
-            echo "
+            
+            # 根据stream参数决定调用方式
+            if [ "$stream" = true ]; then
+                echo "
 响应结果:"
-            echo "$response" | jq -r '.response'
+                # 流式输出处理
+                curl -s -N -X POST "$api_url" -H "Content-Type: application/json" -d "{\"model\":\"$selected_model\",\"prompt\":\"$prompt\",\"stream\":true,\"options\":{\"num_ctx\":4096}}" | \
+                while IFS= read -r line; do
+                    # 检查是否有错误
+                    if echo "$line" | jq -e .error >/dev/null 2>&1; then
+                        echo "API调用出错:"
+                        echo "$line" | jq -r '.error'
+                        break
+                    fi
+                    
+                    # 提取响应内容
+                    content=$(echo "$line" | jq -r '.response // empty')
+                    if [ -n "$content" ]; then
+                        printf "%s" "$content"
+                    fi
+                    
+                    # 检查是否完成
+                    if echo "$line" | jq -e .done >/dev/null 2>&1; then
+                        if echo "$line" | jq -r .done | grep -q true; then
+                            echo ""  # 添加换行
+                            break
+                        fi
+                    fi
+                done
+            else
+                # 非流式输出处理
+                response=$(curl -s -X POST "$api_url" -H "Content-Type: application/json" -d "{\"model\":\"$selected_model\",\"prompt\":\"$prompt\",\"stream\":false,\"options\":{\"num_ctx\":4096}}")
+
+                # 检查curl是否执行成功
+                if [ $? -ne 0 ]; then
+                    echo "错误: 无法连接到Ollama服务"
+                    continue
+                fi
+
+                # 检查响应中是否有错误信息
+                if echo "$response" | jq -e .error >/dev/null 2>&1; then
+                    echo "API调用出错:"
+                    error_msg=$(echo "$response" | jq -r '.error')
+                    echo "$error_msg"
+                    
+                    # 如果是内存不足的错误，提供解决方案建议
+                    if [[ "$error_msg" == *"memory"* ]]; then
+                        echo ""
+                        echo "提示: 您可以尝试以下解决方案:"
+                        echo "1. 使用更小的模型，例如: gemma:2b, phi3:3.8b"
+                        echo "2. 拉取量化版本的模型，例如: qwen3:0.5b 或 qwen3:1.8b"
+                        echo "3. 增加系统交换空间"
+                        echo "4. 调整模型参数，如减小 num_ctx 值"
+                    fi
+                    continue
+                fi
+
+                echo "
+响应结果:"
+                echo "$response" | jq -r '.response'
+            fi
             echo ""
         fi
     done
 }
 
 # 脚本入口
-if [ $# -gt 1 ]; then
-    echo "用法: $0 [IP:PORT]"
-    echo "示例:"
-    echo "  $0                # 使用localhost:11434连接"
-    echo "  $0 192.168.1.100:11434  # 使用指定IP和端口连接"
+if [ $# -gt 4 ]; then
+    show_help
     exit 1
 fi
 
-main $1
+main "$@"
