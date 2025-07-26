@@ -159,7 +159,7 @@ update_config_value() {
         echo "正在更新配置文件：$config_file 中的配置项 '$key'..."
         # 判断指定的值是否为空,如果为空则只取消注释即可不要更改值
         if [ -z "$value" ]; then
-            sed_inplace "s|^[[:space:]]*#*[[:space:]]*${sed_key}=.*|${key}=|" "$config_file"
+            sed_inplace "s|^#*[[:space:]]*${sed_key}=|${key}=|" "$config_file"
         else
             sed_inplace "s|^[[:space:]]*#*[[:space:]]*${sed_key}=.*|${key}=${value}|" "$config_file"
         fi
