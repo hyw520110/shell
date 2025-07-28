@@ -1,8 +1,11 @@
 #!/bin/bash
 # mysql启动脚本
-
+# 获取当前脚本的绝对路径（解析符号链接）
+SOURCE="$(readlink -f "${BASH_SOURCE[0]}")"
+# 获取脚本所在目录的绝对路径
+SCRIPT_DIR="$(dirname "$SOURCE")"
 # 通过find_mysql.sh查找安装目录
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+#SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 INSTALL_DIR="$(bash "$SCRIPT_DIR/find_mysql.sh" "$1")"
 if [ -z "$INSTALL_DIR" ]; then
   echo "未找到MySQL安装目录，退出。"
@@ -12,7 +15,10 @@ fi
 # 日志目录和日志文件
 LOG_DIR="/var/log/mysql"
 LOG_FILE="$LOG_DIR/startup.log"
-
+SED_INPLACE_OPT=""
+if [ "$OS" == "Darwin" ]; then
+  SED_INPLACE_OPT="''"
+fi
 # 日志函数
 log() {
   echo "$(date +"%Y-%m-%d %H:%M:%S") - $1" | tee -a "$LOG_FILE"
@@ -32,8 +38,10 @@ if [ ! -f "$cnf" ]; then
 fi
 
 # 从配置文件中提取端口号和数据目录
+  # 从配置文件中提取端口号、数据目录和socket路径
 port=$(grep '^port' "$cnf" | head -n 1 | cut -d'=' -f2 | xargs)
 datadir=$(grep '^datadir' "$cnf" | cut -d'=' -f2 | xargs)
+socket_path=$(grep '^socket' "$cnf" | head -n 1 | cut -d'=' -f2 | xargs)
 
 # 进程已启动时 提示退出
 if pgrep -f "$INSTALL_DIR/bin/mysqld" > /dev/null; then
@@ -42,9 +50,16 @@ if pgrep -f "$INSTALL_DIR/bin/mysqld" > /dev/null; then
 fi
 
 # 端口占用时 提示退出
-if netstat -tlnp | grep ":$port" > /dev/null; then
-  log "端口 $port 已被占用"
-  exit 1
+if [ "$(uname)" == "Linux" ]; then
+  if netstat -tlnp | grep ":$port" > /dev/null; then
+    log "端口 $port 已被占用"
+    exit 1
+  fi
+elif [ "$(uname)" == "Darwin" ]; then
+  if lsof -i :$port > /dev/null; then
+    log "端口 $port 已被占用"
+    exit 1
+  fi
 fi
 
 # 检查Docker环境
@@ -72,12 +87,7 @@ create_dirs() {
         chown -R "$user:$user" "$dir"
         chmod -R 755 "$dir"
       fi
-      if [ ! -d "$value" ] && [ ! -f "$value" ]; then
-        log "创建文件: $value"
-        touch "$value"
-        chown "$user:$user" "$value"
-        chmod 644 "$value"
-      fi
+      
     fi
   done < <(grep -E '^[^#].*=' "$config_file")
 }
@@ -99,7 +109,7 @@ else
 
   # 启动 MySQL
   log "启动MySQL..."
-  shell="$INSTALL_DIR/bin/mysqld_safe --defaults-file=\"$cnf\" --user=\"$usr\" &"
+  shell="$INSTALL_DIR/bin/mysqld_safe --defaults-file=$cnf --user=$usr --socket=$socket_path &"
   eval $shell
 
   # 检查启动结果

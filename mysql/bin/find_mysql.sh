@@ -1,6 +1,8 @@
 #!/bin/bash
 # 查找MySQL安装目录，优先参数指定，否则自动递归/opt查找，或从进程中检测
 
+OS=$(uname)
+
 find_mysql_dirs() {
   local search_dir="$1"
   find "$search_dir" -type f -name mysqld 2>/dev/null | awk -F'/bin/mysqld' '{print $1}' | sort -u
@@ -18,13 +20,25 @@ proc_dir=""
 proc_pid=$(pgrep -f mysqld | head -n1)
 if [ -n "$proc_pid" ]; then
   # 尝试从进程命令行参数中提取 basedir
-  proc_cmd=$(ps -p $proc_pid -o args=)
-  proc_dir=$(echo "$proc_cmd" | grep -oP -- '--basedir=\K[^ ]+')
-  if [ -z "$proc_dir" ]; then
-    # fallback: 从进程路径推断
-    proc_path=$(readlink -f /proc/$proc_pid/exe 2>/dev/null)
-    if [ -n "$proc_path" ]; then
-      proc_dir=$(dirname $(dirname "$proc_path"))
+  if [ "$OS" == "Linux" ]; then
+    proc_cmd=$(ps -p $proc_pid -o args=)
+    proc_dir=$(echo "$proc_cmd" | grep -oP -- '--basedir=\K[^ ]+')
+    if [ -z "$proc_dir" ]; then
+      # fallback: 从进程路径推断
+      proc_path=$(readlink -f /proc/$proc_pid/exe 2>/dev/null)
+      if [ -n "$proc_path" ]; then
+        proc_dir=$(dirname $(dirname "$proc_path"))
+      fi
+    fi
+  elif [ "$OS" == "Darwin" ]; then
+    proc_cmd=$(ps -p $proc_pid -o command=)
+    proc_dir=$(echo "$proc_cmd" | grep -E -- '--basedir=([^\ ]+)' | awk -F'--basedir=' '{print $2}' | awk '{print $1}')
+    if [ -z "$proc_dir" ]; then
+      # fallback: 从进程路径推断
+      proc_path=$(echo "$proc_cmd" | awk '{print $1}')
+      if [ -n "$proc_path" ]; then
+        proc_dir=$(dirname $(dirname "$proc_path"))
+      fi
     fi
   fi
   if [ -n "$proc_dir" ] && [ -d "$proc_dir" ] && [ -f "$proc_dir/bin/mysqld" ]; then
@@ -34,7 +48,12 @@ if [ -n "$proc_pid" ]; then
 fi
 
 # 3. 自动查找
-mapfile -t dirs < <(find_mysql_dirs "/opt")
+# 3. 自动查找
+dirs=()
+while IFS= read -r line; do
+  dirs+=("$line")
+done < <(find_mysql_dirs "/opt")
+
 for d in "${dirs[@]}"; do
   if [ -d "$d" ] && [ -f "$d/bin/mysqld" ]; then
     echo "$d"
