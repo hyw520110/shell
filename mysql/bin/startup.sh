@@ -1,5 +1,14 @@
 #!/bin/bash
 # mysql启动脚本
+
+# 检查是否以root或sudo运行，如果不是则自动使用sudo重新运行
+if [ "$EUID" -ne 0 ] && [ -z "$ALREADY_ELEVATED" ]; then
+  echo "需要root权限来启动MySQL服务，正在使用sudo执行..."
+  export ALREADY_ELEVATED=true
+  sudo -E "$0" "$@"
+  exit $?
+fi
+
 # 获取当前脚本的绝对路径（解析符号链接）
 SOURCE="$(readlink -f "${BASH_SOURCE[0]}")"
 # 获取脚本所在目录的绝对路径
@@ -38,7 +47,7 @@ if [ ! -f "$cnf" ]; then
 fi
 
 # 从配置文件中提取端口号和数据目录
-  # 从配置文件中提取端口号、数据目录和socket路径
+# 从配置文件中提取端口号、数据目录和socket路径
 port=$(grep '^port' "$cnf" | head -n 1 | cut -d'=' -f2 | xargs)
 datadir=$(grep '^datadir' "$cnf" | cut -d'=' -f2 | xargs)
 socket_path=$(grep '^socket' "$cnf" | head -n 1 | cut -d'=' -f2 | xargs)
@@ -67,7 +76,13 @@ if which docker > /dev/null 2>&1; then
   name=$(grep -m 1 'container_name:' "$INSTALL_DIR/docker-compose.yml" 2>/dev/null | awk -F': ' '{print $2}')
   if [ -n "$name" ] && docker ps -a 2>/dev/null | grep -q "$name"; then
     log "检测到Docker环境，启动容器..."
-    docker-compose up -d
+    if [ "$EUID" -ne 0 ] && groups | grep -q docker; then
+      # 用户在docker组中，可以直接运行docker命令
+      docker-compose up -d
+    else
+      # 用户不在docker组中或以root运行，使用sudo运行docker命令
+      sudo -u "#$(id -u)" -g "#$(id -g)" docker-compose up -d
+    fi
     exit 0
   fi
 fi
