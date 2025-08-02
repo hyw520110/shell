@@ -3,20 +3,21 @@
 # 配置变量
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 CONF_DIR=${DIR}/conf
-DOWNLOAD_URL="https://dist.apache.org/repos/dist/release/rocketmq/5.3.1/rocketmq-all-5.3.1-bin-release.zip"
+DOWNLOAD_URL="https://dist.apache.org/repos/dist/release/rocketmq/5.3.3/rocketmq-all-5.3.3-bin-release.zip"
 # https://github.com/apache/rocketmq-externals/releases
-DOWNLOAD_DIR="/opt/softs"
+DOWNLOAD_DIR="/tmp"
 ZIP_FILE=$(basename "$DOWNLOAD_URL")
 EXTRACT_DIR=$(basename "${DOWNLOAD_URL%.*}")
 TEMP_EXTRACT_DIR="/tmp/${EXTRACT_DIR}"
-IP=$(/opt/shell/ip.sh)
-export ROCKETMQ_HOME="$DIR"
+IP=$(../linux/ip.sh)
+INSTALL_DIR=${1:-$HOME/rocketmq}
+export ROCKETMQ_HOME="$INSTALL_DIR"
 
 
 # 检查并下载/解压安装包
 check_and_extract() {
-  if [ ! -d "$DIR/bin" ] || [ ! -d "$DIR/conf" ] || [ ! -d "$DIR/lib" ]; then
-    echo "检测到缺少必要目录，开始下载和解压 RocketMQ 安装包"
+  if [ ! -d "$INSTALL_DIR/bin" ] || [ ! -d "$INSTALL_DIR/conf" ] || [ ! -d "$INSTALL_DIR/lib" ]; then
+    echo "检测未安装，开始下载和解压 RocketMQ 安装包"
     # 检查并下载 ZIP 文件
     if [ ! -f "$DOWNLOAD_DIR/$ZIP_FILE" ]; then
       [ ! -d "$DOWNLOAD_DIR" ] && echo "创建下载目录: $DOWNLOAD_DIR" && mkdir -p "$DOWNLOAD_DIR"
@@ -29,10 +30,9 @@ check_and_extract() {
       echo "解压 RocketMQ 安装包: $DOWNLOAD_DIR/$ZIP_FILE 到 $TEMP_EXTRACT_DIR"
       unzip -d "$TEMP_EXTRACT_DIR" "$DOWNLOAD_DIR/$ZIP_FILE"
     fi
-    
-    # 拷贝解压后的文件到当前脚本目录
-    echo "拷贝解压后的文件到当前脚本目录: $DIR"
-    rsync -av --delete "$TEMP_EXTRACT_DIR/" "$DIR/"
+    [ ! -d $INSTALL_DIR ] && echo "$INSTALL_DIR 安装目录不存在" && mkdir -p $INSTALL_DIR
+    echo "cp -r $TEMP_EXTRACT_DIR/ $INSTALL_DIR/"
+    #rsync -av --delete "$TEMP_EXTRACT_DIR/" "$INSTALL_DIR/"
   fi
 }
 
@@ -67,21 +67,21 @@ modify_namesrv() {
 }
 
 start_namesrv() {
-  echo "启动NameServer:$DIR/bin/mqnamesrv -n $IP:9876 > /dev/null 2>&1 &"
-  nohup $DIR/bin/mqnamesrv -n $IP:9876 > /dev/null 2>&1 &
+  echo "启动NameServer:$INSTALL_DIR/bin/mqnamesrv -n $IP:9876 > /dev/null 2>&1 &"
+  nohup $INSTALL_DIR/bin/mqnamesrv -n $IP:9876 > /dev/null 2>&1 &
 }
 
 start_broker() {
   local BROKER_CONF=$1
   local AUTO_CREATE_TOPIC_ENABLE=$2
-  if ! grep -q "jdk-11" "$DIR/bin/mqbroker";then
-   sed -i '2iJAVA_HOME=$(dirname $(dirname $(readlink -f $(update-alternatives --list java | grep "jdk-11"))))'  $DIR/bin/mqbroker
+  if ! grep -q "jdk-11" "$INSTALL_DIR/bin/mqbroker";then
+   sed -i '2iJAVA_HOME=$(dirname $(dirname $(readlink -f $(update-alternatives --list java | grep "jdk-11"))))'  $INSTALL_DIR/bin/mqbroker
   fi
-  if ! grep -q "jdk-11" "$DIR/bin/runbroker.sh";then
-    sed -i '2iJAVA_HOME=$(dirname $(dirname $(readlink -f $(update-alternatives --list java | grep "jdk-11"))))'  $DIR/bin/runbroker.sh
+  if ! grep -q "jdk-11" "$INSTALL_DIR/bin/runbroker.sh";then
+    sed -i '2iJAVA_HOME=$(dirname $(dirname $(readlink -f $(update-alternatives --list java | grep "jdk-11"))))'  $INSTALL_DIR/bin/runbroker.sh
   fi
   echo "启动 Broker: $BROKER_CONF"
-  nohup sh $DIR/bin/mqbroker -c "$BROKER_CONF" autoCreateTopicEnable="$AUTO_CREATE_TOPIC_ENABLE" > /dev/null 2>&1 &
+  nohup sh $INSTALL_DIR/bin/mqbroker -c "$BROKER_CONF" autoCreateTopicEnable="$AUTO_CREATE_TOPIC_ENABLE" > /dev/null 2>&1 &
 }
 
 stop_processes() {
@@ -138,7 +138,7 @@ sync_to_remote() {
   local REMOTE_HOST=$1
   local REMOTE_USER=$2
   echo "同步目录到远程主机: $REMOTE_HOST"
-  rsync -av --delete "$DIR" "$REMOTE_USER@$REMOTE_HOST:$DIR"
+  rsync -av --delete "$INSTALL_DIR" "$REMOTE_USER@$REMOTE_HOST:$INSTALL_DIR"
 }
 
 # 在远程主机上启动服务
@@ -146,8 +146,8 @@ start_remote_services() {
   local REMOTE_HOST=$1
   local REMOTE_USER=$2
   echo "启动远程主机上的 NameServer 和 Broker 服务"
-  ssh "$REMOTE_USER@$REMOTE_HOST" "nohup $DIR/bin/mqnamesrv -n $IP:9876 > /dev/null 2>&1 &"
-  ssh "$REMOTE_USER@$REMOTE_HOST" "nohup sh $DIR/bin/mqbroker -c \"$CONF_DIR/$CONF_SUBDIR/broker-b.conf\" autoCreateTopicEnable=true > /dev/null 2>&1 &"
+  ssh "$REMOTE_USER@$REMOTE_HOST" "nohup $INSTALL_DIR/bin/mqnamesrv -n $IP:9876 > /dev/null 2>&1 &"
+  ssh "$REMOTE_USER@$REMOTE_HOST" "nohup sh $INSTALL_DIR/bin/mqbroker -c \"$CONF_DIR/$CONF_SUBDIR/broker-b.conf\" autoCreateTopicEnable=true > /dev/null 2>&1 &"
 }
 
 # 检查是否已启动
