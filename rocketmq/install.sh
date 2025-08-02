@@ -2,17 +2,23 @@
 
 # 配置变量
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-CONF_DIR=${DIR}/conf
+
 DOWNLOAD_URL="https://dist.apache.org/repos/dist/release/rocketmq/5.3.3/rocketmq-all-5.3.3-bin-release.zip"
 # https://github.com/apache/rocketmq-externals/releases
 DOWNLOAD_DIR="/tmp"
 ZIP_FILE=$(basename "$DOWNLOAD_URL")
 EXTRACT_DIR=$(basename "${DOWNLOAD_URL%.*}")
-TEMP_EXTRACT_DIR="/tmp/${EXTRACT_DIR}"
+TEMP_EXTRACT_DIR="/tmp"
 IP=$(../linux/ip.sh)
 INSTALL_DIR=${1:-$HOME/rocketmq}
+CONF_DIR=${INSTALL_DIR}/conf
 export ROCKETMQ_HOME="$INSTALL_DIR"
+OS=$(uname)
 
+SED_INPLACE_OPT=""
+if [ "$OS" == "Darwin" ]; then
+  SED_INPLACE_OPT="''"
+fi
 
 # 检查并下载/解压安装包
 check_and_extract() {
@@ -26,13 +32,13 @@ check_and_extract() {
     fi
     
     # 解压 ZIP 文件
-    if [ ! -d "$TEMP_EXTRACT_DIR" ]; then
+    if [ ! -d "$TEMP_EXTRACT_DIR/${EXTRACT_DIR}" ]; then
       echo "解压 RocketMQ 安装包: $DOWNLOAD_DIR/$ZIP_FILE 到 $TEMP_EXTRACT_DIR"
       unzip -d "$TEMP_EXTRACT_DIR" "$DOWNLOAD_DIR/$ZIP_FILE"
     fi
     [ ! -d $INSTALL_DIR ] && echo "$INSTALL_DIR 安装目录不存在" && mkdir -p $INSTALL_DIR
-    echo "cp -r $TEMP_EXTRACT_DIR/ $INSTALL_DIR/"
-    #rsync -av --delete "$TEMP_EXTRACT_DIR/" "$INSTALL_DIR/"
+    echo "cp -r $TEMP_EXTRACT_DIR/${EXTRACT_DIR}/ $INSTALL_DIR/"
+    rsync -az  $TEMP_EXTRACT_DIR/${EXTRACT_DIR}/  $INSTALL_DIR/
   fi
 }
 
@@ -43,7 +49,8 @@ modify_key_value() {
   local CONF_FILE=$3
   echo "修改配置文件: $CONF_FILE"
   if grep -q "^$KEY=" "$CONF_FILE"; then
-    sed -i "s|^$KEY=.*|$KEY=$VALUE|" "$CONF_FILE"
+  	#echo "更新配置： $KEY=$VALUE  $CONF_FILE"
+    sed -i $SED_INPLACE_OPT "s#^$KEY=.*#$KEY=$VALUE#" $CONF_FILE
   else
     echo "$KEY=$VALUE" >> "$CONF_FILE"
   fi
@@ -75,10 +82,18 @@ start_broker() {
   local BROKER_CONF=$1
   local AUTO_CREATE_TOPIC_ENABLE=$2
   if ! grep -q "jdk-11" "$INSTALL_DIR/bin/mqbroker";then
-   sed -i '2iJAVA_HOME=$(dirname $(dirname $(readlink -f $(update-alternatives --list java | grep "jdk-11"))))'  $INSTALL_DIR/bin/mqbroker
+      if [[ "$OS" == "Darwin" ]]; then
+          sed -i $SED_INPLACE_OPT  '2i\'$'\n''JAVA_HOME=$(dirname $(dirname $(readlink -f $(update-alternatives --list java | grep "jdk-11"))))'$'\n'  $INSTALL_DIR/bin/mqbroker
+      else
+          sed -i $SED_INPLACE_OPT '2iJAVA_HOME=$(dirname $(dirname $(readlink -f $(update-alternatives --list java | grep "jdk-11"))))'  $INSTALL_DIR/bin/mqbroker
+      fi
   fi
   if ! grep -q "jdk-11" "$INSTALL_DIR/bin/runbroker.sh";then
-    sed -i '2iJAVA_HOME=$(dirname $(dirname $(readlink -f $(update-alternatives --list java | grep "jdk-11"))))'  $INSTALL_DIR/bin/runbroker.sh
+      if [[ "$OS" == "Darwin" ]]; then
+          sed -i $SED_INPLACE_OPT '2i\'$'\n''JAVA_HOME=$(dirname $(dirname $(readlink -f $(update-alternatives --list java | grep "jdk-11"))))'$'\n'  $INSTALL_DIR/bin/runbroker.sh
+      else
+          sed -i $SED_INPLACE_OPT '2iJAVA_HOME=$(dirname $(dirname $(readlink -f $(update-alternatives --list java | grep "jdk-11"))))'  $INSTALL_DIR/bin/runbroker.sh
+      fi
   fi
   echo "启动 Broker: $BROKER_CONF"
   nohup sh $INSTALL_DIR/bin/mqbroker -c "$BROKER_CONF" autoCreateTopicEnable="$AUTO_CREATE_TOPIC_ENABLE" > /dev/null 2>&1 &
@@ -157,7 +172,8 @@ echo "选择模式："
 echo "1、2m-noslave(多Master无Slave模式)"
 echo "2、2m-2s-async(多Master多Slave异步复制模式)"
 echo "3、2m-2s-sync(多Master多Slave同步复制模式)"
-read -t 5 -p "输入数字选择模式(开发环境推荐2m-noslave,生产环境推荐2m-2s-async) > " MODE
+# -t 30
+read  -p "输入数字选择模式(开发环境推荐2m-noslave,生产环境推荐2m-2s-async) > " MODE
 MODE=${MODE:-1}
 
 while true; do

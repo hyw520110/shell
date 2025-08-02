@@ -4,10 +4,6 @@
 usr="mysql"
 usr_group="mysql"
 
-if [ "$OS" == "Darwin" ]; then
-  usr="_mysql"
-  usr_group="_mysql"
-fi
 port=3306
 # 修改密码输入超时
 input_time=30
@@ -22,6 +18,11 @@ log_dir=/var/log/mysql
 tmp_dir=/tmp
 # Detect OS
 OS=$(uname)
+
+if [ "$OS" == "Darwin" ]; then
+  usr="_mysql"
+  usr_group="_mysql"
+fi
 if [ "$OS" == "Linux" ]; then
   if which rpm > /dev/null 2>&1 && which yum > /dev/null 2>&1; then
     if [ "$version" = "5" ]; then
