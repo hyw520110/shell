@@ -78,17 +78,11 @@ find_bcompare_dir() {
 
 # 主函数
 main() {
-    echo_info "开始破解 Beyond Compare 4..."
     
     # 步骤1: 修改BCompare文件
     echo_step "步骤1: 修改BCompare文件"
     
     # 删除注册表数据
-    if [ -f ~/.config/bcompare/registry.dat ]; then
-        echo_info "删除 registry.dat..."
-        rm -rf ~/.config/bcompare/registry.dat
-
-    fi
     [ -d ~/.config/bcomapre ] && rm -rf ~/.config/bcomapre
     # 查找BCompare文件位置
     dir=$(find_bcompare_dir)
@@ -123,16 +117,15 @@ GXN1eh9FbDiX1ACdd7XKMV7hL7x0ClBJLUJ-zFfKofjaj2yxE53xauIfkqZ8FoLpcZ0Ux6McTyNmODDS
 EOF
     
     # 确保配置目录存在
-    mkdir -p ~/.config/bcompare
-    
+    #[ ! -d ~/.config/bcompare ] && mkdir -p ~/.config/bcompare
     # 复制密钥文件到用户配置目录
-    cp /tmp/BC4Key.txt ~/.config/bcompare/BC4Key.txt
+    #cp /tmp/BC4Key.txt ~/.config/bcompare/BC4Key.txt
     
     # 步骤3: 为所有用户注册bcompare命令
     echo_step "步骤3: 为所有用户注册bcompare命令"
     echo_info "复制密钥文件到系统目录..."
-    exec_sudo mkdir -p /etc/bcompare/
-    exec_sudo cp /tmp/BC4Key.txt /etc/bcompare/
+    [ ! -d /etc/bcompare/ ] && exec_sudo mkdir -p /etc/bcompare/
+    [ -d /etc/bcompare/ ] && exec_sudo cp /tmp/BC4Key.txt /etc/bcompare/
     
     # 清理临时文件
     rm -f /tmp/BC4Key.txt
@@ -140,9 +133,9 @@ EOF
     echo_info "Beyond Compare 4 破解完成！"
     echo_info "请按以下步骤完成激活："
     echo_info "1. 打开 Beyond Compare 4"
-    echo_info "2. 在弹出的密钥输入界面，输入以下密钥："
+    echo_info "2. 密钥输入界面，输入以下密钥："
     echo_info "   GXN1eh9FbDiX1ACdd7XKMV7hL7x0ClBJLUJ-zFfKofjaj2yxE53xauIfkqZ8FoLpcZ0Ux6McTyNmODDSvSIHLYhg1QkTxjCeSCk6ARz0ABJcnUmd3dZYJNWFyJun14rmGByRnVPL49QH+Rs0kjRGKCB-cb8IT4Gf0Ue9WMQ1A6t31MO9jmjoYUeoUmbeAQSofvuK8GN1rLRv7WXfUJ0uyvYlGLqzq1ZoJAJDyo0Kdr4ThF-IXcv2cxVyWVW1SaMq8GFosDEGThnY7C-SgNXW30jqAOgiRjKKRX9RuNeDMFqgP2cuf0NMvyMrMScnM1ZyiAaJJtzbxqN5hZOMClUTE+++"
-    echo_info "3. 如果程序正在运行，请重启程序以使更改生效。"
+    echo_info "3. 如果程序正在运行，请重启使更改生效。"
 }
 
 # 帮助信息
