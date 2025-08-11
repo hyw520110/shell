@@ -15,13 +15,87 @@ CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BASE_DIR=${CURRENT_DIR%/*}
 cd $BASE_DIR
 
+# 全局变量定义
+PKG_INSTALLER=""
+PKG_UPDATE=""
+PKG_PREFIX=""
+
+# 检测操作系统类型和包管理器
+detect_os() {
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        if command -v apt-get > /dev/null 2>&1; then
+            PKG_INSTALLER="apt-get install -y"
+            PKG_UPDATE="apt-get update"
+        elif command -v yum > /dev/null 2>&1; then
+            PKG_INSTALLER="yum -y install"
+        fi
+        echo "linux"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        PKG_INSTALLER="brew install"
+        PKG_UPDATE="brew update"
+        echo "macos"
+    else
+        echo "unknown"
+    fi
+}
+
+# 通用文件操作权限检查
+ensure_write_permission() {
+    local path="$1"
+    local path_type="$2"
+    
+    if [ ! -w "$path" ]; then
+        echo "$path_type $path 无写权限，正在修复..."
+        if [ "$OS_TYPE" = "macos" ]; then
+            sudo chown $(whoami):staff "$path"
+        else
+            sudo chown $(usr):$(group) "$path"
+        fi
+        echo "✓ 已修复 $path_type 权限: $path"
+    fi
+}
+
+# 通用目录创建函数，自动处理权限（简化版）
+create_dir_with_permission() {
+    local dir_path
+    for dir_path in "$@"; do
+        if [ ! -d "$dir_path" ]; then
+            echo "创建目录: $dir_path"
+            
+            # 尝试直接创建目录
+            if mkdir -p "$dir_path" 2>/dev/null; then
+                echo "✓ 成功创建目录: $dir_path"
+            else
+                # 无权限，尝试使用sudo
+                echo "需要sudo权限创建目录: $dir_path"
+                if sudo mkdir -p "$dir_path" 2>/dev/null; then
+                    echo "✓ 使用sudo成功创建目录: $dir_path"
+                else
+                    echo "✗ 无法创建目录 $dir_path，即使有sudo权限"
+                    return 1
+                fi
+            fi
+        fi
+        ensure_write_permission "$dir_path" "目录"
+    done
+}
+
+usage(){
+	echo "用法: $1 [安装目录] [安装用户]"
+    echo "示例: $1 $nginx_home $usr"
+}
+OS_TYPE=$(detect_os)
+
 # 检查是否是root用户,不是则退出程序；检查是否有wget应用,没有则帮其装上
 check () {
-  # 检查root权限
-  if [ "$(id -u)" != "0" ]; then
+  # 检查root权限 - macOS不需要root，Linux需要
+  if [ "$OS_TYPE" != "macos" ] && [ "$(id -u)" != "0" ]; then
     echo "请使用sudo或root权限运行本脚本！"
-    echo "用法: sudo $0 [安装目录] [安装用户]"
-    echo "示例: sudo $0 /opt/nginx nginxuser"
+    usage "sudo $0"
+    exit 1
+  elif [ "$OS_TYPE" = "macos" ] && [ "$(id -u)" = "0" ]; then
+    echo "macOS下请不要使用root权限运行，Homebrew不允许root运行"
+    usage "$0"
     exit 1
   fi
   #检查nginx是否已经安装，已安装检测配置是否正确，配置正确就启动nginx
@@ -29,59 +103,63 @@ check () {
     start_nginx && exit 0
   fi
   #未安装执行安装前的检查
-  # 检查用户和组
-  if ! id -u $usr > /dev/null 2>&1; then
-    useradd -M -s /sbin/nologin $usr
-  fi
-  if ! getent group $group > /dev/null 2>&1; then
-    groupadd $group
-  fi
-  # 检测并修改配置文件用户配置
-  if [ "`grep '^user ' $BASE_DIR/conf/nginx.conf | awk '{print $2}'`" != "${usr};" ]; then
+  if [ "$OS_TYPE" != "macos" ]; then
+  	# 检测添加用户
+    if ! id -u $usr > /dev/null 2>&1; then
+      useradd -M -s /sbin/nologin $usr
+    fi
+    if ! getent group $group > /dev/null 2>&1; then
+      groupadd $group
+    fi
     sed -i "s#^user .*;#user $usr;#" $BASE_DIR/conf/nginx.conf
-  fi
-  if [ ! -e /usr/bin/wget ]; then
-    # 检查包管理器
-    if command -v apt-get > /dev/null 2>&1; then
-      apt-get update
-      apt-get install -y wget build-essential libpcre3 libpcre3-dev zlib1g zlib1g-dev libssl-dev libgeoip-dev
-    elif command -v yum > /dev/null 2>&1; then
-      yum -y install wget epel-release gcc pcre pcre-devel zlib zlib-devel openssl openssl-devel geoip-devel
-    else
-      echo "未知的包管理器，无法继续"
-      exit 1
-    fi
   else
-    # 即使wget已装，也要确保PCRE、GeoIP等依赖已装
-    if command -v apt-get > /dev/null 2>&1; then
-      apt-get update
-      apt-get install -y build-essential libpcre3 libpcre3-dev zlib1g zlib1g-dev libssl-dev libgeoip-dev
-    elif command -v yum > /dev/null 2>&1; then
-      yum -y install gcc pcre pcre-devel zlib zlib-devel openssl openssl-devel geoip-devel
-    fi
+  	# macOS下注释掉user配置，使用当前用户
+    sed -i '' 's/^user/#user/' $BASE_DIR/conf/nginx.conf 2>/dev/null || sed -i.bak 's/^user/#user/' $BASE_DIR/conf/nginx.conf  
   fi
 
-  # 安装 Perl 开发库
-  if command -v apt-get > /dev/null 2>&1; then
-    apt-get update && apt-get install -y libperl-dev
-  elif command -v yum > /dev/null 2>&1; then
-    yum -y install perl-ExtUtils-Embed
-  else
-    echo "未知的包管理器，无法安装Perl开发库"
-    exit 1
+  # 动态安装依赖
+  install_dependencies() {
+    local packages="$1"
+    local package_name="$2"
+    
+    if [ -n "$PKG_INSTALLER" ]; then
+      echo "安装 $package_name..."
+      
+      # 更新包管理器缓存（仅Linux）
+      if [ "$OS_TYPE" != "macos" ] && [ -n "$PKG_UPDATE" ]; then
+        eval "$PKG_UPDATE"
+      fi
+      
+      # 安装依赖包
+      eval "$PKG_INSTALLER $packages" || {
+        echo "✗ 安装 $package_name 失败"
+        return 1
+      }
+      echo "✓ 成功安装 $package_name"
+    else
+      echo "✗ 未找到支持的包管理器"
+      return 1
+    fi
+  }
+
+  # 根据操作系统安装依赖
+  if [ "$OS_TYPE" = "linux" ]; then
+    # Linux依赖
+    if command -v apt-get > /dev/null 2>&1; then
+      install_dependencies "wget build-essential libpcre3 libpcre3-dev zlib1g zlib1g-dev libssl-dev libgeoip-dev libperl-dev" "Linux编译依赖"
+    elif command -v yum > /dev/null 2>&1; then
+      install_dependencies "wget epel-release gcc pcre pcre-devel zlib zlib-devel openssl openssl-devel geoip-devel perl-ExtUtils-Embed" "Linux编译依赖"
+    fi
+  elif [ "$OS_TYPE" = "macos" ]; then
+    # macOS依赖
+    install_dependencies "wget pcre openssl zlib perl" "macOS编译依赖"
   fi
 }
 
 # 下载、解压nginx
 download_nginx () {
-  if [ ! -d ${nginx_home} ]; then
-    mkdir -p ${nginx_home}
-  fi
-  # 解压临时目录
-  echo "tmp:$tmp_dir"
-  if [ ! -d $tmp_dir ];then
-    mkdir -p $tmp_dir
-  fi
+  # 使用通用函数批量创建目录
+  create_dir_with_permission "$nginx_home" "$tmp_dir"
   [ ! -d ${gz_file%/*} ] && mkdir ${gz_file%/*}
   if [ ! -f $gz_file ];then
     echo "wget $url -O $gz_file"
@@ -94,15 +172,38 @@ download_nginx () {
 install_nginx () {
   download_nginx
   [ -d $tmp_dir ] && cd $tmp_dir
-  err_log=$(grep error_log $BASE_DIR/conf/nginx.conf | awk '{print $2}' | tr -d ';'
-)
-  access_log=$(grep access_log $BASE_DIR/conf/nginx.conf | awk '{print $2}' | tr -d ';'
-)
+  err_log=$(grep error_log $BASE_DIR/conf/nginx.conf | awk '{print $2}' | tr -d ';')
+  access_log=$(grep access_log $BASE_DIR/conf/nginx.conf | awk '{print $2}' | tr -d ';')
+  pid_dir=$(grep pid $BASE_DIR/conf/nginx.conf | awk '{print $2}' | tr -d ';'|xargs dirname)
   log_dir=${access_log%/*}
-  [ ! -d $log_dir ] && mkdir -p $log_dir && touch $err_log $access_log
-  # 设置日志目录权限
-  echo "chown -R ${usr}:${group} ${log_dir}" && chown -R ${usr}:${group} ${log_dir}
-  configure_command="./configure --prefix=${nginx_home} --user=$usr --group=$group --error-log-path=$err_log --http-log-path=$access_log --pid-path=$log_dir/nginx.pid --with-threads --with-http_stub_status_module --with-compat --with-debug --with-file-aio --with-http_addition_module --with-http_auth_request_module --with-http_dav_module --with-http_degradation_module --with-http_flv_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_mp4_module --with-http_perl_module=dynamic --with-http_random_index_module --with-http_realip_module --with-http_secure_link_module --with-http_slice_module --with-http_ssl_module --with-http_sub_module --with-http_v2_module --with-http_geoip_module=dynamic"
+  echo "pid_dir:$pid_dir"
+  # 保持使用系统日志目录，处理权限问题
+  echo "正在创建系统日志目录..."
+  create_dir_with_permission "$log_dir" "$pid_dir"
+  
+  # 确保日志文件存在
+  [ ! -f "$err_log" ] && sudo touch "$err_log" 2>/dev/null || true
+  [ ! -f "$access_log" ] && sudo touch "$access_log" 2>/dev/null || true
+  
+  # 设置系统目录权限
+  echo "正在设置系统目录权限..."
+  if [ "$OS_TYPE" != "macos" ]; then
+    sudo chown -R ${usr}:${group} ${log_dir} /var/run 2>/dev/null || true
+  else
+    # macOS下使用当前用户权限
+    sudo chown -R $(whoami):admin ${log_dir} /var/run 2>/dev/null || true
+  fi
+  
+  # 确保nginx有权限写入
+  sudo chmod 755 /var/log/nginx /var/run 2>/dev/null || true
+  # 根据操作系统调整configure参数
+  if [ "$OS_TYPE" = "macos" ]; then
+    # macOS不支持file-aio和GeoIP，移除相关参数
+    configure_command="./configure --prefix=${nginx_home} --user=$usr --group=$group --error-log-path=$err_log --http-log-path=$access_log --pid-path=/var/run/nginx.pid --with-threads --with-http_stub_status_module --with-compat --with-debug --with-http_addition_module --with-http_auth_request_module --with-http_dav_module --with-http_degradation_module --with-http_flv_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_mp4_module --with-http_perl_module=dynamic --with-http_random_index_module --with-http_realip_module --with-http_secure_link_module --with-http_slice_module --with-http_ssl_module --with-http_sub_module --with-http_v2_module"
+  else
+    # Linux支持所有参数
+    configure_command="./configure --prefix=${nginx_home} --user=$usr --group=$group --error-log-path=$err_log --http-log-path=$access_log --pid-path=/var/run/nginx.pid --with-threads --with-http_stub_status_module --with-compat --with-debug --with-file-aio --with-http_addition_module --with-http_auth_request_module --with-http_dav_module --with-http_degradation_module --with-http_flv_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_mp4_module --with-http_perl_module=dynamic --with-http_random_index_module --with-http_realip_module --with-http_secure_link_module --with-http_slice_module --with-http_ssl_module --with-http_sub_module --with-http_v2_module --with-http_geoip_module=dynamic"
+  fi
   echo $configure_command
   if $configure_command; then
     echo "nginx: 配置成功"
@@ -124,8 +225,22 @@ install_nginx () {
 
 # 启动nginx
 start_nginx () {
-  # 将nginx设为全局命令
-  [ ! -f /usr/bin/nginx ] && ln -s $nginx_home/sbin/nginx /usr/bin/nginx
+  # 创建软链接 - 避免使用系统目录，改为用户可访问的路径
+  local bin_dir="$HOME/bin"
+  if [ ! -d "$bin_dir" ]; then
+    mkdir -p "$bin_dir"
+  fi
+  
+  # 尝试创建软链接到用户bin目录
+  ln -sf "$nginx_home/sbin/nginx" "$bin_dir/nginx" 2>/dev/null || {
+    echo "警告: 无法创建软链接到$bin_dir/nginx"
+  }
+  
+  # 如果PATH包含用户bin目录，添加到PATH
+  if [[ ":$PATH:" != *":$bin_dir:"* ]]; then
+    echo "提示: 如需全局访问nginx，请将 $bin_dir 添加到PATH环境变量"
+    echo "临时运行: export PATH=\"$bin_dir:\$PATH\""
+  fi
   #检测nginx是否已经启动
   ps_count=$(ps -ef | grep nginx | grep master | grep -v grep | wc -l)
   # 获取本机IP
@@ -139,32 +254,63 @@ start_nginx () {
     fi
   }
 
-  # 拷贝bin和conf目录到安装目录
-  if [ ! -d $nginx_home/conf/conf.d ]; then
-    mkdir -p $nginx_home/conf/conf.d
-  fi
+    # 批量创建所有需要的目录
+  create_dir_with_permission "$nginx_home/www" "$nginx_home/conf" "$nginx_home/bin" "$nginx_home/logs"
+  
+  # 使用权限检查函数复制文件
+  ensure_write_permission "$nginx_home/conf" "nginx配置目录权限"
   cp -r $BASE_DIR/conf $nginx_home/
+  
+  ensure_write_permission "$nginx_home/bin" "nginx脚本目录权限"
   # 强制拷贝脚本文件
   cp -rf $BASE_DIR/bin/*.sh $nginx_home/bin/
-  # 只有当配置文件不存在时才拷贝
-  for conf_file in $BASE_DIR/conf/conf.d/*; do
-    filename=$(basename $conf_file)
-    if [ ! -f $nginx_home/conf/conf.d/$filename ]; then
-      # 检查是否存在模板文件
-      if [ -f $conf_file.template ]; then
-        SERVER_IP=$(get_script_ip)
-        echo "使用IP $SERVER_IP 替换配置文件中的 {{SERVER_IP}} 占位符。"
-        sed "s/{{SERVER_IP}}/$SERVER_IP/g" $conf_file.template > $nginx_home/conf/conf.d/$filename
-      else
-        cp $conf_file $nginx_home/conf/conf.d/
+  chmod +x $nginx_home/bin/*.sh
+  
+  # 使用rsync同步配置文件，保留模板文件
+  if command -v rsync >/dev/null 2>&1; then
+    echo "正在同步配置文件到 $nginx_home/conf/..."
+    rsync -a --quiet --exclude='*.template' "$BASE_DIR/conf/" "$nginx_home/conf/"
+    echo "✓ 配置文件已同步"
+  else
+    echo "正在拷贝配置文件到 $nginx_home/conf/..."
+    cp -r "$BASE_DIR/conf"/* "$nginx_home/conf/"
+  fi
+
+  # 智能IP检测和替换（简化版）
+  smart_ip_replacement() {
+    local conf_dir="$1"
+    local current_ip=$(get_script_ip)
+    
+    echo "检测配置文件中的IP地址..."
+    
+    # 查找所有配置文件
+    find "$conf_dir" -name "*.conf" -type f | while read -r conf_file; do
+      # 处理模板文件
+      local template_file="${conf_file%.*}.template"
+      if [ -f "$template_file" ]; then
+        echo "处理模板文件: $template_file"
+        sed "s/{{SERVER_IP}}/$current_ip/g" "$template_file" > "$conf_file"
+        echo "✓ 模板文件已应用"
+        continue
       fi
-      echo "配置文件 $filename 已拷贝至安装目录。"
-    fi
-  done
+      
+      # 简单的IP替换（避免复杂嵌套）
+      if grep -q "{{SERVER_IP}}" "$conf_file" 2>/dev/null; then
+        sed -i.bak "s/{{SERVER_IP}}/$current_ip/g" "$conf_file"
+        echo "已替换配置文件中的占位符: $conf_file"
+      fi
+      
+      # 清理备份文件
+      [ -f "${conf_file}.bak" ] && rm "${conf_file}.bak"
+    done
+  }
+  
+  # 执行智能IP替换
+  smart_ip_replacement "$nginx_home/conf"
   $nginx_home/bin/ngx-black-ip.sh
   [ $ps_count -gt 0 ] && echo "nginx已经启动" && exit 0
-  nginx -c $nginx_home/conf/nginx.conf -t && echo "start nginx..."
-  if $nginx_home/sbin/nginx -c $nginx_home/conf/nginx.conf; then
+  "$nginx_home/sbin/nginx" -c "$nginx_home/conf/nginx.conf" -t && echo "start nginx..."
+  if "$nginx_home/sbin/nginx" -c "$nginx_home/conf/nginx.conf"; then
     echo "Nginx: 启动成功"
     # 访问80端口，查看是否是nginx页面
     ps -ef | grep nginx
@@ -177,14 +323,22 @@ start_nginx () {
 extract_web_root_from_conf() {
   local conf_dir="$1"
   local base_dir="$2"
+  # 确保配置目录存在
+  if [ ! -d "$conf_dir" ]; then
+    mkdir -p "$conf_dir"
+    return
+  fi
+  
   # 提取所有 root 和 alias 路径
-  grep -Eh '^[\s]*(root|alias) ' "$conf_dir"/*.conf | awk '{print $2}' | tr -d ';' | sort -u | while read path; do
-    if [[ "$path" == /* ]]; then
-      echo "$path"
-    else
-      echo "$base_dir/$path"
-    fi
-  done
+  if ls "$conf_dir"/*.conf 1> /dev/null 2>&1; then
+    grep -Eh '^[\s]*(root|alias) ' "$conf_dir"/*.conf 2>/dev/null | awk '{print $2}' | tr -d ';' | sort -u | while read path; do
+      if [[ "$path" == /* ]]; then
+        echo "$path"
+      else
+        echo "$base_dir/$path"
+      fi
+    done
+  fi
 }
 
 # 获取所有 web 根目录
@@ -195,37 +349,46 @@ for web_root in $web_roots; do
   if [ ! -d "$web_root" ]; then
     echo "创建 web 根目录: $web_root"
     mkdir -p "$web_root"
-    chown -R $usr:$group "$web_root"
+    if [ "$OS_TYPE" != "macos" ]; then
+      chown -R $usr:$group "$web_root"
+    fi
     chmod -R 755 "$web_root"
     echo "<h1>Welcome to Nginx</h1>" > "$web_root/index.html"
   else
     echo "web 根目录已存在: $web_root"
-    chown -R $usr:$group "$web_root" || true
+    if [ "$OS_TYPE" != "macos" ]; then
+      chown -R $usr:$group "$web_root" || true
+    fi
     chmod -R 755 "$web_root" || true
   fi
 done
 
 # 开放服务器防火墙80端口给外界
 open_firewalld_port () {
-  if command -v firewall-cmd > /dev/null 2>&1; then
-    if firewall-cmd --state | grep 'running' > /dev/null 2>&1; then
-      firewall-cmd --permanent --add-port=80/tcp
-      firewall-cmd --reload
-      echo '80端口已经开启，可通过浏览器进行访问服务器80端口'
-    else
-      echo '防火墙未运行，80端口可能未开放'
+  if [ "$OS_TYPE" = "macos" ]; then
+    # macOS防火墙配置
+    if command -v /usr/libexec/ApplicationFirewall/socketfilterfw > /dev/null 2>&1; then
+      echo "macOS防火墙配置：请手动在系统偏好设置 > 安全性与隐私 > 防火墙中添加nginx端口80的例外"
     fi
-  elif command -v ufw > /dev/null 2>&1; then
-    ufw allow 80/tcp
-    ufw reload
-    echo '80端口已经开启，可通过浏览器进行访问服务器80端口'
   else
-    echo '未找到防火墙管理工具，80端口可能未开放'
+    # Linux防火墙配置
+    if command -v firewall-cmd > /dev/null 2>&1; then
+      if firewall-cmd --state | grep 'running' > /dev/null 2>&1; then
+        firewall-cmd --permanent --add-port=80/tcp
+        firewall-cmd --reload
+        echo '80端口已经开启，可通过浏览器进行访问服务器80端口'
+      fi
+    elif command -v ufw > /dev/null 2>&1; then
+      ufw allow 80/tcp
+      ufw reload
+      echo '80端口已经开启，可通过浏览器进行访问服务器80端口'
+    fi
   fi
 }
 
 # 添加自启动脚本
 add_systemd_service() {
+  if [ "$OS_TYPE" = "linux" ]; then
     cat <<EOF >/usr/lib/systemd/system/nginx.service
 [Unit]
 Description=The NGINX HTTP and reverse proxy server
@@ -244,13 +407,16 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
 
-  systemctl daemon-reload
-  systemctl enable nginx
-  systemctl start nginx
+    systemctl daemon-reload
+    systemctl enable nginx
+    systemctl start nginx
+  elif [ "$OS_TYPE" = "macos" ]; then
+    echo "macOS下不安装自启动服务"
+  fi
 }
 
 check
 install_nginx
-add_systemd_service
 start_nginx
+add_systemd_service
 open_firewalld_port

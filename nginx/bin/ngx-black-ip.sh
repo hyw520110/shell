@@ -26,8 +26,8 @@ ENABLE_BLACKLIST=${ENABLE_BLACKLIST:-0}
 remove_cron_job() {
   echo "正在清理可能存在的定时任务..."
   # 使用更精确的匹配删除当前脚本的定时任务
-  (crontab -l 2>/dev/null | grep -v "$(basename $f)") | crontab - 2>/dev/null || true
-  sudo sh -c "(crontab -l 2>/dev/null | grep -v \"$(basename $f)\") | crontab -" 2>/dev/null || true
+  (crontab -l 2>/dev/null | grep -v "$(basename "$f")") | crontab - 2>/dev/null || true
+  sudo sh -c '(crontab -l 2>/dev/null | grep -v "$(basename "$f")") | crontab -' 2>/dev/null || true
 }
 
 if [[ "$ENABLE_BLACKLIST" != "1" || "$1" == "off" || "$1" == "--disable" ]]; then
