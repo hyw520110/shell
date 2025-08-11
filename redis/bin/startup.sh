@@ -6,7 +6,8 @@ port=${2:-6379}
 CURRENT_DIR=`cd $(dirname $0); pwd -P`
 BASE_DIR=${CURRENT_DIR%/*}
 conf_dir="$BASE_DIR/conf"
-log_dir=/var/log/redis
+# 系统日志目录
+system_log_dir=/var/log/redis
 
 # 检测操作系统类型
 OS_TYPE=$(uname)
@@ -86,6 +87,12 @@ start_systemd_services() {
 startup(){
     local conf_file="$1"
     
+    # 检查配置文件是否存在
+    if [ ! -f "$conf_file" ]; then
+        echo "错误: 配置文件不存在: $conf_file"
+        return 1
+    fi
+    
     # 获取日志文件路径
     local logfile=$(grep "^logfile " "$conf_file" | awk '{print $2}')
     
@@ -97,13 +104,20 @@ startup(){
     # 确保日志目录存在且有权限
     local logdir=$(dirname "$logfile")
     if [ ! -d "$logdir" ]; then
-        mkdir -p "$logdir"
+        echo "正在创建日志目录: $logdir"
+        if [[ "$logdir" == /var/log/* ]]; then
+            # 系统日志目录需要sudo权限
+            if ! sudo mkdir -p "$logdir" 2>/dev/null && ! mkdir -p "$logdir" 2>/dev/null; then
+                echo "警告: 无法创建日志目录 $logdir"
+            fi
+        else
+            mkdir -p "$logdir"
+        fi
     fi
     
     # 检查日志目录权限
     if [ ! -w "$logdir" ]; then
-        echo "警告: 没有对日志目录 $logdir 的写权限，将使用默认日志设置"
-        # 使用配置文件中的默认设置
+        echo "警告: 没有对日志目录 $logdir 的写权限"
     fi
     
     $BASE_DIR/bin/redis-server "$conf_file"
@@ -117,6 +131,10 @@ startup(){
         echo "日志文件位置: $logfile"
     else
         echo "Redis 启动失败，请检查配置和日志"
+        # 显示systemd状态（如果使用systemd）
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl status redis.service --no-pager 2>/dev/null || echo "未找到redis systemd服务"
+        fi
         return 1
     fi
 }

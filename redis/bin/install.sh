@@ -19,7 +19,10 @@ INSTALL_DIR="${1:-/opt/redis}"
 num=${2:-1}
 # 端口，集群模式为起始端口
 port=${3:-6379}
+# 系统服务目录
 service_dir=/usr/lib/systemd/system
+# 系统日志目录
+system_log_dir=/var/log/redis
 
 # 检测操作系统类型
 OS_TYPE=$(uname)
@@ -32,6 +35,67 @@ else
     SED_I_ARG="-i"
     SED_CMD="sed -i"
 fi
+
+# 检查并安装编译依赖
+install_dependencies() {
+    echo "检查系统依赖..."
+    
+    local missing_deps=()
+    
+    # 检查基础编译工具
+    if ! command -v gcc >/dev/null 2>&1; then
+        missing_deps+=("gcc")
+    fi
+    
+    if ! command -v g++ >/dev/null 2>&1; then
+        missing_deps+=("g++")
+    fi
+    
+    if ! command -v make >/dev/null 2>&1; then
+        missing_deps+=("make")
+    fi
+    
+    if ! command -v wget >/dev/null 2>&1; then
+        missing_deps+=("wget")
+    fi
+    
+    # 检查开发库
+    if ! ldconfig -p 2>/dev/null | grep -q "libjemalloc"; then
+        if command -v apt-get >/dev/null 2>&1; then
+            missing_deps+=("libjemalloc-dev")
+        elif command -v yum >/dev/null 2>&1; then
+            missing_deps+=("jemalloc-devel")
+        elif command -v dnf >/dev/null 2>&1; then
+            missing_deps+=("jemalloc-devel")
+        fi
+    fi
+    
+    # 如果有缺失的依赖，则安装
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        echo "检测到缺失的依赖: ${missing_deps[*]}"
+        echo "正在安装缺失的依赖..."
+        
+        if command -v apt-get >/dev/null 2>&1; then
+            # Debian/Ubuntu系统
+            echo "检测到 Debian/Ubuntu 系统"
+            sudo apt-get update
+            sudo apt-get install -y "${missing_deps[@]}"
+        elif command -v yum >/dev/null 2>&1; then
+            # CentOS/RHEL系统
+            echo "检测到 CentOS/RHEL 系统"
+            sudo yum install -y "${missing_deps[@]}"
+        elif command -v dnf >/dev/null 2>&1; then
+            # Fedora系统
+            echo "检测到 Fedora 系统"
+            sudo dnf install -y "${missing_deps[@]}"
+        else
+            echo "警告: 无法识别的包管理器，请手动安装以下依赖：${missing_deps[*]}"
+            read -p "按回车键继续，或 Ctrl+C 退出..." dummy
+        fi
+    else
+        echo "所有依赖已安装"
+    fi
+}
 
 # 检查是否已安装
 if [ -x "$INSTALL_DIR/bin/redis-server" ]; then
@@ -55,6 +119,9 @@ else
     fi
   fi
   
+  # 安装编译依赖
+  install_dependencies
+  
   # 下载源码包
   if [ ! -f "$gz_file" ]; then
     echo "正在下载 Redis 源码包..."
@@ -74,8 +141,12 @@ else
   cd "$tmp_dir/$extra_dir_name"
   echo "正在编译..."
   
+  # 设置环境变量以正确链接jemalloc
+  export USE_JEMALLOC=yes
+  export MALLOC=jemalloc
+  
   # 编译源码
-  make
+  make BUILD_TLS=yes STD=-std=gnu99
 
   # 安装
   echo "正在安装到 $INSTALL_DIR..."
@@ -83,9 +154,9 @@ else
 fi
 
 # 复制配置文件和脚本
-#echo "cp -r $BASE_DIR/ $INSTALL_DIR/"
-cp -r $BASE_DIR/ $INSTALL_DIR/
-chmod +x  $INSTALL_DIR/bin/*.sh
+echo "cp -r $BASE_DIR/* $INSTALL_DIR/"
+cp -r $BASE_DIR/* $INSTALL_DIR/
+chmod +x $INSTALL_DIR/bin/*.sh 2>/dev/null 
 
 # 安装自启动服务
 install-service(){
@@ -99,11 +170,18 @@ install-service(){
     local conf_file=$2
     local service_name=$3
     local p=$4
+    
+    # 确保service目录存在
+    if [ ! -d "$service_dir" ]; then
+        if ! sudo mkdir -p "$service_dir" 2>/dev/null && ! mkdir -p "$service_dir" 2>/dev/null; then
+            echo "警告: 无法创建服务目录 $service_dir"
+            return 1
+        fi
+    fi
+    
     if [ ! -f $service_dir/$service_name.service ];then
-        # 确保service目录存在
-        mkdir -p $service_dir
-        
-cat > $service_dir/$service_name.service << EOF
+        # 使用sudo tee命令创建服务文件，避免直接写入系统目录的权限问题
+        sudo tee "$service_dir/$service_name.service" > /dev/null << EOF
 [Unit]
 Description=redis
 After=network.target
@@ -117,18 +195,33 @@ PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
 EOF
-         # 重新加载systemd
-	    if ! systemctl daemon-reload 2>/dev/null; then
-	      echo "警告: 无法重新加载systemd守护进程"
-	      return 1
-	    fi
-	        # 启用服务
-	    if ! systemctl enable "$service_name.service" 2>/dev/null; then
-	      echo "警告: 无法启用服务 $service_name"
-	      return 1
-	    fi
+        
+        # 检查服务文件是否创建成功
+        if [ $? -ne 0 ]; then
+            echo "警告: 无法创建systemd服务文件 $service_dir/$service_name.service"
+            return 1
+        else
+            echo "systemd服务文件已创建到 $service_dir/$service_name.service"
+        fi
+        
+        # 重新加载systemd
+        if ! sudo systemctl daemon-reload 2>/dev/null && ! systemctl daemon-reload 2>/dev/null; then
+            echo "警告: 无法重新加载systemd守护进程"
+            return 1
+        else
+            echo "systemd守护进程已重新加载"
+        fi
+            
+        # 启用服务
+        if ! sudo systemctl enable "$service_name.service" 2>/dev/null && ! systemctl enable "$service_name.service" 2>/dev/null; then
+            echo "警告: 无法启用服务 $service_name"
+            return 1
+        else
+            echo "服务 $service_name 已启用"
+        fi
     fi
 }
+
 # 创建密码函数
 generate_password() {
     # 生成随机密码
@@ -156,14 +249,57 @@ handle_config() {
         fi
     fi
     #echo "conf_file:$conf_file"
-    $SED_CMD "s/^port .*/port $port/" $conf_file
-    $SED_CMD "s/# requirepass foobared/requirepass $password/" "$conf_file"
+    
+    # 检查配置文件是否存在
+    if [ ! -f "$conf_file" ]; then
+        echo "错误: 配置文件 $conf_file 不存在"
+        return 1
+    fi
+    
+    # 转义可能引起sed命令错误的特殊字符（仅对密码等文本字段）
+    local escaped_password=$(printf '%s\n' "$password" | sed -e 's/[\/&]/\\&/g')
+    
+    # 使用正确的sed语法处理配置文件，确保路径中的特殊字符被正确处理
+    $SED_CMD "s/^port .*/port $port/" "$conf_file"
+    $SED_CMD "s/# requirepass foobared/requirepass $escaped_password/" "$conf_file"
     $SED_CMD "s/appendonly no/appendonly yes/" "$conf_file"
     $SED_CMD "s/bind 127.0.0.1/bind 0.0.0.0/" "$conf_file"
     $SED_CMD "s/# replica-read-only yes/replica-read-only no/" "$conf_file"
+    
+    # 处理日志目录
+    local logfile_path="$INSTALL_DIR/logs/redis-$port.log"
+    local system_logfile_path="$system_log_dir/redis-$port.log"
+    
+    # 检查是否使用系统日志目录
+    if [[ ! "$logfile_path" =~ ^/var/log/ ]]; then
+        read -t 8 -p "建议修改为系统日志目录: $system_logfile_path 是否修改? (Y/n): " confirm_modify
+        echo
+        if [[ "$confirm_modify" != [n] ]]; then
+            logfile_path="$system_logfile_path"
+            # 创建系统日志目录（需要sudo权限）
+            if ! sudo mkdir -p "$system_log_dir" 2>/dev/null && ! mkdir -p "$system_log_dir" 2>/dev/null; then
+                echo "警告: 无法创建系统日志目录 $system_log_dir，将使用原路径"
+                logfile_path="$INSTALL_DIR/logs/redis-$port.log"
+            else
+                # 设置日志目录权限
+                if ! sudo chown $(id -u):$(id -g) "$system_log_dir" 2>/dev/null && ! chown $(id -u):$(id -g) "$system_log_dir" 2>/dev/null; then
+                    echo "警告: 无法设置日志目录权限"
+                fi
+            fi
+        fi
+    fi
+    
+    # 创建日志目录（如果使用默认路径）
+    if [[ "$logfile_path" == "$INSTALL_DIR/logs/redis-$port.log" ]]; then
+        mkdir -p "$INSTALL_DIR/logs"
+    fi
+    
+    # 使用不同的分隔符处理包含路径的配置项，避免路径中的斜杠干扰sed命令
     $SED_CMD "s#dir ./#dir $INSTALL_DIR/data/$port#" "$conf_file" && mkdir -p "$INSTALL_DIR/data/$port"
-    $SED_CMD "s#logfile /var/log/redis/6379.log#logfile $INSTALL_DIR/logs/redis-$port.log#" "$conf_file"
-    $SED_CMD "s#pidfile /var/run/redis_6379.pid#pidfile $INSTALL_DIR/redis-$port.pid#" "$conf_file"
+    # 使用正则表达式替换日志文件路径，提高通用性
+    $SED_CMD "s#logfile .*\.log#logfile $logfile_path#" "$conf_file"
+    # 使用正则表达式替换pid文件路径，提高通用性
+    $SED_CMD "s#pidfile .*\.pid#pidfile $INSTALL_DIR/redis-$port.pid#" "$conf_file"
     
     # 集群模式特有配置
     if [ "$is_cluster" = "yes" ]; then
@@ -171,7 +307,7 @@ handle_config() {
         $SED_CMD "s/# cluster-config-file nodes.conf/cluster-config-file nodes-$port.conf/" "$conf_file"
         $SED_CMD "s/# cluster-node-timeout 15000/cluster-node-timeout 15000/" "$conf_file"
         $SED_CMD "s/protected-mode yes/protected-mode no/" "$conf_file"
-        $SED_CMD "s/# masterauth foobared/masterauth $password/" "$conf_file"
+        $SED_CMD "s/# masterauth foobared/masterauth $escaped_password/" "$conf_file"
     fi
 }
 

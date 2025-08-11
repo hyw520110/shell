@@ -1,23 +1,35 @@
 #!/bin/bash
 # druid数据源密码加密配置, 指定密码(参数1)或随机密码(不传参数时) 
 
+set -e
+
 dir=/opt/webapps
 echo "usage:$0 [\$pwd]"
 pwd=$1
 [ ! -n "$pwd" ] && pwd=`tr -dc A-Za-z0-9_ </dev/urandom | head -c 8 | xargs` && echo "random pwd:$pwd" 
 
-jar=`find $dir -name "druid*.jar" |grep -v starter |head -n 1`
-[ ! -f $jar ] && jar=`find ~ -name "druid*.jar" |grep -v starter |head -n 1`
+[ -d $dir ] && jar=`find $dir -name "druid*.jar" |grep -v starter |head -n 1`
+[ ! -f "$jar" ] && jar=`find ~ -name "druid*.jar" |grep -v starter |head -n 1`
 
-[ ! -f $jar ] && echo "druid*.jar not found!" && exit 1
+if [ ! -f "$jar" ]; then
+    echo "druid*.jar not found!" 
+    exit 1
+fi
 
-shell="java -cp $jar com.alibaba.druid.filter.config.ConfigTools $pwd"
-echo $shell
-result=`exec $shell`
-#echo "$result"
+echo "Executing: java -cp $jar com.alibaba.druid.filter.config.ConfigTools $pwd"
+result=$(java -cp "$jar" com.alibaba.druid.filter.config.ConfigTools "$pwd")
+echo "$result"
 
-pubKey=`echo $result|grep publicKey|awk -F'publicKey:' '{print $2}'|awk '{print $1}'`
-pass=`echo $result|awk -F'password:' '{print $2}'`
+# 更准确地提取密码和公钥
+pass=$(echo "$result" | grep "^password:" | cut -d':' -f2)
+pubKey=$(echo "$result" | grep "^publicKey:" | cut -d':' -f2)
+
+# 检查结果是否成功提取
+if [ -z "$pass" ] || [ -z "$pubKey" ]; then
+    echo "Error: Failed to extract password or publicKey from result"
+    exit 1
+fi
+
 echo "password:$pass"
 echo "publicKey:$pubKey"
 echo "" 
