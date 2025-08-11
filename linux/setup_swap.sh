@@ -101,10 +101,11 @@ main() {
             update_choice=${update_choice:-3}
             if [[ "$update_choice" == "1" ]]; then
                 echo "将禁用并删除现有swapfile，准备更新..." >&2
-                sudo swapoff "$swap_status"
+                sudo swapoff "$swap_status" 2>/dev/null || echo "警告: swapoff 失败，可能是文件已经关闭"
                 sudo rm -f "$swap_status"
                 if [ -n "$swap_status" ]; then
-                    sudo sed -i "\|$swap_status|d" /etc/fstab
+                    # 使用不同的分隔符避免路径中包含/导致的问题
+                    sudo sed -i "\#$swap_status#d" /etc/fstab 2>/dev/null || echo "警告: 从fstab中删除条目失败"
                 fi
                 SWAP_FILE_PATH="$swap_status"
                 total_swap_mb=0  # 关键：重置 swap 总量，保证建议正确
@@ -138,9 +139,10 @@ main() {
         file_choice=${file_choice:-3}
         if [[ "$file_choice" == "1" ]]; then
             echo "将禁用并删除现有swapfile，准备更新..."
-            sudo swapoff "$SWAP_FILE_PATH"
+            sudo swapoff "$SWAP_FILE_PATH" 2>/dev/null || echo "警告: swapoff 失败，可能是文件已经关闭"
             sudo rm -f "$SWAP_FILE_PATH"
-            sudo sed -i "/$SWAP_FILE_PATH/d" /etc/fstab
+            # 使用不同的分隔符避免路径中包含/导致的问题
+            sudo sed -i "\#$SWAP_FILE_PATH#d" /etc/fstab 2>/dev/null || echo "警告: 从fstab中删除条目失败"
             break
         elif [[ "$file_choice" == "2" ]]; then
             echo -n "请输入新的swap文件路径: "
