@@ -10,6 +10,8 @@ OS_TYPE=$(uname -s)
 port=8848
 # 获取用户输入的安装目录，如果未输入则使用默认路径
 INSTALL_DIR="${1:-/opt/nacos}"
+# 获取用户输入的源码目录，如果未输入则使用默认下载方式
+SOURCE_DIR="$2"
 
 # 获取当前脚本所在目录和项目根目录
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -26,8 +28,6 @@ cluster_file=$BASE_DIR/conf/cluster.conf
 init_file=~/.nacos_init
 # 自启动服务脚本 (仅Linux)
 s_file=/usr/lib/systemd/system/nacos.service
-
-# --- 函数定义 ---
 
 # 获取本机主 IP 地址（跨平台）
 get_main_ip() {
@@ -49,6 +49,33 @@ get_main_ip() {
 # 获取本机IP
 ip=$(get_main_ip)
 
+check_java_version() {
+	version=${1:-17}
+    # 检查Java是否安装
+    if ! command -v java &> /dev/null; then
+        echo "错误：Java未安装，请先安装Java $version。"
+        return 1
+    fi
+    # 获取Java版本信息（处理不同平台的输出）
+    java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}')
+    # 提取主版本号
+    if [[ $java_version == 1.* ]]; then
+        # 处理旧版Java格式 (1.x.x)
+        major_version=$(echo "$java_version" | awk -F '.' '{print $2}')
+    else
+        # 处理新版Java格式 (x.x.x)
+        major_version=$(echo "$java_version" | awk -F '.' '{print $1}')
+    fi
+
+    # 检查主版本是否为17
+    if [[ $major_version == $version ]]; then
+        echo "Java版本符合要求：$$version"
+        return 0
+    else
+        echo "需要Java $$version，但当前版本是 $major_version"
+        return 1
+    fi
+}
 # 兼容不同系统的sed -i命令
 sed_inplace() {
     if [ "$OS_TYPE" = "Darwin" ]; then
@@ -60,9 +87,9 @@ sed_inplace() {
 
 # 查看实时日志
 tailfLog() {
-    sleep 3
     local log_file="$BASE_DIR/logs/startup.log"
-    local tail_opts="$1" # e.g., -f
+    [ ! -f $log_file ] && sleep 5
+    local tail_opts="$1" 
     if [ -f "$log_file" ]; then
         tail -n 100 "$tail_opts" "$log_file"
     else
@@ -109,6 +136,60 @@ download_and_extract() {
     fi
 }
 
+# 从源码构建并安装
+build_from_source() {
+    local source_dir="$1"
+    local target_dir="$2"
+    
+    echo "从源码目录构建: $source_dir"
+    
+    # 检查源码目录是否存在
+    if [ ! -d "$source_dir" ]; then
+        echo "错误：源码目录 $source_dir 不存在"
+        exit 1
+    fi
+    
+    # 检查是否包含pom.xml文件
+    if [ ! -f "$source_dir/pom.xml" ]; then
+        echo "错误：源码目录中未找到 pom.xml 文件"
+        exit 1
+    fi
+    
+    # 检查distribution/target目录下是否已经有.tar.gz文件
+    local dist_target_dir="$source_dir/distribution/target"
+    local tar_gz_file=$(find "$dist_target_dir" -name "*.tar.gz" -type f 2>/dev/null | head -n 1)
+    
+    if [ -z "$tar_gz_file" ]; then
+        echo "未在 $dist_target_dir 目录下找到 .tar.gz 文件，开始编译源码..."
+        
+        # 进入源码目录并执行mvn命令
+        cd "$source_dir"
+        mvn -Prelease-nacos clean install -Dmaven.test.skip=true -Drat.skip=true
+        
+        # 再次查找.tar.gz文件
+        tar_gz_file=$(find "$dist_target_dir" -name "*.tar.gz" -type f 2>/dev/null | head -n 1)
+        
+        if [ -z "$tar_gz_file" ]; then
+            echo "错误：编译完成后仍未在 $dist_target_dir 目录下找到 .tar.gz 文件"
+            exit 1
+        fi
+    else
+        echo "找到已有的构建文件: $tar_gz_file"
+    fi
+    
+    # 解压.tar.gz文件到安装目录
+    echo "正在解压 $tar_gz_file 到 $target_dir ..."
+    mkdir -p "$target_dir"
+    tar -zxf "$tar_gz_file" -C "$target_dir" --strip-components=1
+    
+    if [ $? -ne 0 ]; then
+        echo "解压失败，请检查压缩包或权限。"
+        exit 1
+    fi
+    
+    echo "源码构建并解压完成。"
+}
+
 # 安装主函数
 install_main() {
     if [ ! -f "$INSTALL_DIR/target/nacos-server.jar" ] || [ ! -d "$INSTALL_DIR/conf" ]; then
@@ -116,24 +197,31 @@ install_main() {
         if [ ! -w "$tmp_dir" ]; then
             echo "错误：临时目录 $tmp_dir 没有写权限。" && exit 1
         fi
-
-        extracted_name=$(tar -tzf "$gz_file" | head -1 | cut -f1 -d"/")
-        # 智能解压逻辑：如果安装目录是nacos结尾则直接解压到安装目录，否则解压到临时目录再拷贝到安装目录
-        if [ "$(basename $INSTALL_DIR)" != "$extracted_name" ]; then
-            download_and_extract $tmp_dir
-            echo "拷贝到安装目录：$INSTALL_DIR"
-            rsync -aWPu "$tmp_dir/$extracted_name/*" "$INSTALL_DIR/"
+        
+        # 如果提供了源码目录，则从源码构建
+        if [ -n "$SOURCE_DIR" ]; then
+            build_from_source "$SOURCE_DIR" "$INSTALL_DIR"
         else
-            echo "解压到安装目录：$INSTALL_DIR"
-            download_and_extract $(dirname "$INSTALL_DIR")
+            # 原有的下载安装逻辑
+            extracted_name=$(tar -tzf "$gz_file" | head -1 | cut -f1 -d"/")
+            # 智能解压逻辑：如果安装目录是nacos结尾则直接解压到安装目录，否则解压到临时目录再拷贝到安装目录
+            if [ "$(basename $INSTALL_DIR)" != "$extracted_name" ]; then
+                download_and_extract $tmp_dir
+                echo "拷贝到安装目录：$INSTALL_DIR"
+                rsync -aWPu "$tmp_dir/$extracted_name/*" "$INSTALL_DIR/"
+            else
+                echo "解压到安装目录：$INSTALL_DIR"
+                download_and_extract $(dirname "$INSTALL_DIR")
+            fi
         fi
-         if [ "$SUDO_USER" != "" ]; then
-              # 如果是通过sudo运行，则将所有权设置给sudo的原始用户
-              chown -R $(id -u $SUDO_USER):$(id -g $SUDO_USER) $INSTALL_DIR
-          else
-              # 否则使用当前用户
-              chown -R $(id -u):$(id -g) $INSTALL_DIR
-          fi
+        
+        if [ "$SUDO_USER" != "" ]; then
+             # 如果是通过sudo运行，则将所有权设置给sudo的原始用户
+             chown -R $(id -u $SUDO_USER):$(id -g $SUDO_USER) $INSTALL_DIR
+         else
+             # 否则使用当前用户
+             chown -R $(id -u):$(id -g) $INSTALL_DIR
+         fi
         echo "Nacos安装完成。"
     else
         echo "Nacos已安装，跳过安装过程。"
@@ -154,14 +242,14 @@ update_config_value() {
     sed_key=$(echo "$key" | sed -e 's/\./\\./g')
 
     # 检查key是否存在（无论是否被注释）
-    if grep -qE "^[[:space:]]*#?[[:space:]]*${sed_key}" "$config_file"; then
+    if grep -qE "^#?[[:space:]]*${sed_key}" "$config_file"; then
         # 如果存在，则替换该行，取消注释并设置为新值
         echo "正在更新配置文件：$config_file 中的配置项 '$key'..."
         # 判断指定的值是否为空,如果为空则只取消注释即可不要更改值
         if [ -z "$value" ]; then
             sed_inplace "s|^#*[[:space:]]*${sed_key}=|${key}=|" "$config_file"
         else
-            sed_inplace "s|^[[:space:]]*#*[[:space:]]*${sed_key}=.*|${key}=${value}|" "$config_file"
+            sed_inplace "s|^#*[[:space:]]*${sed_key}=.*|${key}=${value}|" "$config_file"
         fi
     else
         # 如果不存在，则在文件末尾添加
@@ -171,6 +259,36 @@ update_config_value() {
     return 0
 }
 
+# 检查MySQL连接是否可达
+check_mysql_connection() {
+    local mysql_host="$1"
+    local mysql_port="$2"
+    
+    echo "正在检查MySQL连接: $mysql_host:$mysql_port..."
+    
+    # 使用nc命令检查端口连通性
+    if command -v nc >/dev/null 2>&1; then
+        if nc -z "$mysql_host" "$mysql_port" 2>/dev/null; then
+            return 0
+        else
+            return 1
+        fi
+    # 使用telnet命令检查端口连通性
+    elif command -v telnet >/dev/null 2>&1; then
+        if timeout 5 telnet "$mysql_host" "$mysql_port" 2>&1 | grep -q "Connected"; then
+            return 0
+        else
+            return 1
+        fi
+    else
+        # 如果没有nc或telnet，则尝试ping主机
+        if ping -c 1 "$mysql_host" >/dev/null 2>&1; then
+            return 0
+        else
+            return 1
+        fi
+    fi
+}
 
 # 检查是否以 root 权限运行
 if [ "$(id -u)" != "0" ]; then
@@ -204,31 +322,107 @@ echo "--- 开始配置数据库 ---"
 update_config_value "$conf_file" "spring.datasource.platform" "mysql"
 update_config_value "$conf_file" "db.num" "1"
 
-# 检查 mysql-server 是否可解析
-MYSQL_HOST="mysql-server"
-if grep -q "$MYSQL_HOST" $conf_file && ! ping -c 1 "$MYSQL_HOST" &> /dev/null; then
-    echo "无法连接到默认MySQL主机 '$MYSQL_HOST'。"
-    read -p "请输入 MySQL 服务器 IP 地址 (默认为: $ip): " MYSQL_IP
-    MYSQL_IP=${MYSQL_IP:-$ip}
-    sed -i '' "s#mysql-server#$MYSQL_IP#" "$conf_file"
+
+# 提取配置文件中的MySQL连接信息
+# 首先尝试获取未注释的配置
+DB_URL=$(grep "^db.url.0=" "$conf_file" | head -n 1 | cut -d'=' -f2-)
+if [ -z "$DB_URL" ]; then
+    # 尝试获取被注释掉的配置（兼容前面可能有0个或多个空格的情况）
+    DB_URL=$(grep "^#[[:space:]]*db.url.0=" "$conf_file" | head -n 1 | cut -d'=' -f2-)
 fi
-update_config_value "$conf_file" "db.url.0"
+# 从URL中提取主机和端口，仅提取//和第一个?之间的内容
+MYSQL_HOST="127.0.0.1"
+MYSQL_PORT="3306"
+HOST_AND_PORT=""
 
-read -p "请输入 MySQL 用户名 (默认: root): " MYSQL_USER
-MYSQL_USER="${MYSQL_USER:-root}"
-read -s -p "请输入 MySQL 密码 (如果留空将生成随机密码): " MYSQL_PASSWORD
-echo
-
-if [ -z "$MYSQL_PASSWORD" ]; then
-    MYSQL_PASSWORD=$(LC_CTYPE=C tr -dc 'a-zA-Z0-9' < /dev/urandom | fold -w 8 | head -n 1)
-    echo "已生成随机密码: $MYSQL_PASSWORD"
+if [ -n "$DB_URL" ]; then
+    # 提取//和第一个?之间的内容，然后从中提取主机和端口
+    HOST_AND_PORT=$(echo "$DB_URL" | sed -E 's/.*jdbc:mysql:\/\/([^\/?]+).*/\1/')
+    if [ -n "$HOST_AND_PORT" ]; then
+        # 进一步提取主机:端口部分（处理可能的路径）
+        HOST_PORT_PART=$(echo "$HOST_AND_PORT" | cut -d'/' -f1)
+        MYSQL_HOST=$(echo "$HOST_PORT_PART" | cut -d':' -f1)
+        MYSQL_PORT=$(echo "$HOST_PORT_PART" | cut -d':' -f2)
+    fi
+fi
+# echo "$MYSQL_HOST:$MYSQL_PORT"
+# 如果配置文件中的连接信息不可达，则提示用户输入
+if [ -n "$MYSQL_HOST" ] && [ -n "$MYSQL_PORT" ]; then
+    if ! check_mysql_connection "$MYSQL_HOST" "$MYSQL_PORT"; then
+        echo "配置文件中的MySQL连接 ($MYSQL_HOST:$MYSQL_PORT) 不可达"
+        read -p "请输入 MySQL 服务器主机名/IP (默认为: $MYSQL_HOST): " MYSQL_HOST
+        MYSQL_HOST=${MYSQL_HOST:-$MYSQL_HOST}
+        read -p "请输入 MySQL 服务器端口 (默认为: $MYSQL_PORT): " PORT
+        MYSQL_PORT=${PORT:-$MYSQL_PORT}
+        # 直接替换URL中的主机和端口部分
+        NEW_DB_URL=$(echo "$DB_URL" | sed "s|$HOST_AND_PORT|$MYSQL_HOST:$MYSQL_PORT|")
+        NEW_DB_URL=${NEW_DB_URL//&/\\&}
+        update_config_value "$conf_file" "db.url.0" "$NEW_DB_URL"
+    else
+        echo "配置文件中的MySQL连接 ($MYSQL_HOST:$MYSQL_PORT) 可达"
+        # 如果连接可达，取消注释配置项
+        update_config_value "$conf_file" "db.url.0" "$DB_URL"
+    fi
+else
+    echo "未在配置文件中找到有效的MySQL连接信息"
 fi
 
-update_config_value "$conf_file" "db.user.0" "$MYSQL_USER"
-update_config_value "$conf_file" "db.password.0" "$MYSQL_PASSWORD"
+
+# 提取配置文件中的MySQL用户名
+DB_USER=$(grep "^db.user=" "$conf_file" | sed 's/^db.user=//' | head -n 1)
+if [ -z "$DB_USER" ]; then
+    # 尝试获取被注释掉的配置
+    DB_USER=$(grep "^#db.user=" "$conf_file" | sed 's/^#db.user=//' | head -n 1)
+    if [ -n "$DB_USER" ]; then
+        # 如果找到被注释的配置，使用它作为默认值
+        read -p "请输入 MySQL 用户名 (默认: $DB_USER): " MYSQL_USER
+        MYSQL_USER=${MYSQL_USER:-$DB_USER}
+    else
+        # 如果没有找到任何配置，使用root作为默认值
+        read -p "请输入 MySQL 用户名 (默认: root): " MYSQL_USER
+        MYSQL_USER=${MYSQL_USER:-root}
+    fi
+else
+    # 如果找到已启用的配置，使用它作为默认值
+    read -p "请输入 MySQL 用户名 (默认: $DB_USER): " MYSQL_USER
+    MYSQL_USER=${MYSQL_USER:-$DB_USER}
+fi
+
+# 更新用户名配置
+update_config_value "$conf_file" "db.user" "$MYSQL_USER"
+
+# 处理MySQL密码
+DB_PASSWORD=$(grep "^db.password=" "$conf_file" | sed 's/^db.password=//' | head -n 1)
+if [ -z "$DB_PASSWORD" ]; then
+    # 尝试获取被注释掉的配置
+    DB_PASSWORD=$(grep "^#db.password=" "$conf_file" | sed 's/^#db.password=//' | head -n 1)
+fi
+
+# 提示用户输入密码
+while true; do
+    if [ -n "$DB_PASSWORD" ]; then
+        # 如果找到配置，将其作为默认值显示（但不显示在命令行上）
+        read -s -p "请输入 MySQL 密码 (已配置): " MYSQL_PASSWORD
+        echo
+    else
+        # 没有找到配置，提示输入密码
+        read -s -p "请输入 MySQL 密码: " MYSQL_PASSWORD
+        echo
+    fi
+    
+    # 检查密码是否为空
+    if [ -z "$MYSQL_PASSWORD" ]; then
+        echo "错误：MySQL密码不能为空，请重新输入。"
+    else
+        break
+    fi
+done
+
+# 更新密码配置
+update_config_value "$conf_file" "db.password" "$MYSQL_PASSWORD"
 
 echo "数据源已更新:"
-grep "^db." "$conf_file"
+grep "db" "$conf_file" 
 touch "$init_file"
 
 # 安全配置
@@ -240,7 +434,17 @@ identity_value=$(LC_CTYPE=C tr -dc 'A-Za-z0-9+/=' < /dev/urandom | head -c 44)
 update_config_value "$conf_file" "nacos.core.auth.plugin.nacos.token.secret.key" "$secret_key"
 update_config_value "$conf_file" "nacos.core.auth.server.identity.key" "$identity_key"
 update_config_value "$conf_file" "nacos.core.auth.server.identity.value" "$identity_value"
-
+# java17的话需要在启动脚本中添加JVM参数不然会启动报错
+if check_java_version 17; then
+  # 添加解决Java 17容器兼容性问题的JVM参数
+	OPT="${JAVA_OPT} --add-opens java.base/jdk.internal.platform=ALL-UNNAMED -XX:-UseContainerSupport"
+	# 判断启动脚本中是否有JVM参数UseContainerSupport，如果没有则使用sed添加
+	if ! grep -q "UseContainerSupport" "$BASE_DIR/bin/startup.sh"; then
+	    echo "当前是java17需在启动脚本中添加JVM参数:$OPT"
+        # 因为启动脚本中有多行JAVA_OPT,所以需要使用sed添加，添加到# JVM Configuration的后2行
+        #sed_inplace '/^[[:space:]]*#\{1,\}[[:space:]]*JVM Configuration/,+1 {/^[[:space:]]*#\{1,\}[[:space:]]*JVM Configuration/ {n;n} s/^/JAVA_OPT=\"\$JAVA_OPT -XX:\+UseContainerSupport\"\n/}' "$BASE_DIR/bin/startup.sh"
+	fi
+fi
 # 模式选择与启动
 read  -n 1 -p "是否以单机模式启动? (Y/n): " choice
 echo
@@ -254,7 +458,7 @@ if [[ "$choice" =~ ^[Yy]$ ]]; then
       else
           "$BASE_DIR/bin/startup.sh" -m standalone
       fi
-    tailfLog
+    tailfLog -f
     exit 0
 fi
 
