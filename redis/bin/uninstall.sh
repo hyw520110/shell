@@ -19,6 +19,51 @@ fi
 # 检测操作系统类型
 OS_TYPE=$(uname)
 
+# 清理环境变量
+cleanup_environment() {
+    echo "正在清理环境变量..."
+
+    # 优先尝试清理系统级配置
+    local profile_script="/etc/profile.d/redis.sh"
+    if [ -f "$profile_script" ]; then
+        if [ -w "$profile_script" ] || sudo -n true 2>/dev/null; then
+            echo "正在删除系统级环境变量配置文件 $profile_script..."
+            sudo rm -f "$profile_script"
+            echo "系统级配置已删除。"
+            echo -e "\033[33m请重新登录或启动新 shell 以使更改完全生效。\033[0m"
+            return
+        fi
+    fi
+
+    # 如果系统级文件不存在或无法删除，则回退到用户级清理
+    echo "未找到或无法删除系统级配置文件，将尝试清理用户级配置..."
+    local shell_type
+    shell_type=$(basename "$SHELL")
+    local rc_file
+    
+    if [ "$shell_type" = "bash" ]; then
+        rc_file="$HOME/.bashrc"
+    elif [ "$shell_type" = "zsh" ]; then
+        rc_file="$HOME/.zshrc"
+    else
+        echo "不支持的 shell 类型: $shell_type。无法自动清理用户级环境变量。"
+        return
+    fi
+    
+    if [ -f "$rc_file" ]; then
+        # 使用标记来查找并删除整个Redis配置块
+        if [[ "$OS_TYPE" == "Darwin" ]]; then
+            sed -i.bak '/# START REDIS CONFIG/,/# END REDIS CONFIG/d' "$rc_file"
+        else
+            sed -i.bak '/^# START REDIS CONFIG$/,/^# END REDIS CONFIG$/d' "$rc_file"
+        fi
+        echo "已从 $rc_file 中删除 Redis 用户级环境变量配置。"
+        echo -e "\033[33m请运行 source $rc_file 或重新启动终端使更改生效。\033[0m"
+    else
+        echo "配置文件 $rc_file 未找到，无需清理。"
+    fi
+}
+
 # 检查安装目录是否存在
 if [ ! -d "$INSTALL_DIR" ]; then
     echo "错误: 未安装"
@@ -109,8 +154,7 @@ if [[ "$OS_TYPE" != "Darwin" ]]; then
     sudo -n find /etc/systemd/system -name "*redis*" -delete 2>/dev/null || find /etc/systemd/system -name "*redis*" -delete 2>/dev/null
 fi
 
+# 清理环境变量
+cleanup_environment
+
 echo "✅ Redis 卸载完成"
-echo ""
-echo "注意:"
-echo "1. 如果您手动修改过系统配置文件，请手动清理"
-echo "2. 如果您设置了环境变量，请手动移除"
