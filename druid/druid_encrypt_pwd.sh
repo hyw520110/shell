@@ -4,12 +4,15 @@
 set -e
 
 dir=/opt/webapps
+mvn_repo=~/.m2/repository/
+
 echo "usage:$0 [\$pwd]"
 pwd=$1
 [ ! -n "$pwd" ] && pwd=`tr -dc A-Za-z0-9_ </dev/urandom | head -c 8 | xargs` && echo "random pwd:$pwd" 
 
 [ -d $dir ] && jar=`find $dir -name "druid*.jar" |grep -v starter |head -n 1`
-[ ! -f "$jar" ] && jar=`find ~ -name "druid*.jar" |grep -v starter |head -n 1`
+[ ! -f "$jar" ] && jar=$(find $mvn_repo -name 'druid-*.jar' -not -name '*-sources.jar' -not -path '*starter*' | sed -E 's#.*/druid-(.+)\.jar$#\1#' | sort -V | tail -n1 | xargs -I {} find $mvn_repo -name "druid-{}.jar")
+
 
 if [ ! -f "$jar" ]; then
     echo "druid*.jar not found!" 
