@@ -1,23 +1,15 @@
 #!/bin/bash
 
-# 定义备份目录（支持命令行参数）
-BACKUP_DIR=${1:-"$HOME/backup"}
+# This script backs up various system configurations and lists of installed software.
 
-# 创建备份目录（如果不存在）
-mkdir -p "$BACKUP_DIR"
+set -eo pipefail
 
-# 获取当前日期
-CURRENT_DATE=$(date +%F)
+# --- Configuration ---
+# Default backup directory, timestamped to prevent overwriting previous backups.
+BACKUP_DIR="${1:-$HOME/system_backup_$(date +%Y%m%d_%H%M%S)}"
 
-# 备份环境变量
-echo "正在备份环境变量..."
-env > "$BACKUP_DIR/环境变量_$CURRENT_DATE.txt"
-
-# 备份环境变量配置文件（如 .bashrc, .bash_profile, .profile 等）
-echo "正在备份环境变量配置文件..."
-
-# 定义需要备份的环境变量文件列表
-ENV_FILES=(
+# Files to backup (relative to HOME or absolute)
+ENV_CONFIG_FILES=(
     "$HOME/.bashrc"
     "$HOME/.bash_profile"
     "$HOME/.profile"
@@ -26,76 +18,97 @@ ENV_FILES=(
     "/etc/profile"
     "/etc/bash.bashrc"
     "/etc/environment"
+    "/etc/fstab" # Example: add other critical config files
+    "/etc/ssh/sshd_config"
 )
-
-# 遍历所有环境变量文件并备份
-for file in "${ENV_FILES[@]}"; do
-    if [[ -f "$file" ]]; then
-        # 构造目标备份路径，保留原始路径结构
-        relative_path="${file#/}"  # 去掉路径开头的 "/"
-        backup_file="$BACKUP_DIR/$relative_path"
-        backup_dir=$(dirname "$backup_file")
-
-        # 创建备份目录（如果不存在）
-        mkdir -p "$backup_dir"
-
-        # 复制文件到备份路径
-        cp -v "$file" "$backup_file"
-    fi
-done
-
-# 备份已安装的软件清单
-echo "正在备份已安装的软件清单..."
-
-# 清空或创建最终输出文件
-SOFTWARE_LIST_FILE="$BACKUP_DIR/已安装软件包清单_$CURRENT_DATE.txt"
-> "$SOFTWARE_LIST_FILE"
-
-# 使用 dpkg-query 获取所有已安装软件包的信息，并将软件包名称写入文件
-dpkg -l | awk '/^ii/{print $2}' | sort >> "$SOFTWARE_LIST_FILE"
-
-# 生成软件清单文件
-echo "正在生成软件清单文件..."
-SOFTWARE_LIST_FILE="$BACKUP_DIR/已安装软件清单_$CURRENT_DATE.txt"
-> "$SOFTWARE_LIST_FILE"
-
-# 定义要检查的目录
-DIRECTORIES=(
+# Directories to scan for .desktop files (for user-installed apps)
+DESKTOP_SCAN_DIRS=(
     "/var/lib/linglong/"
     "/opt/apps/"
     "$HOME/.local/share/applications/"
 )
+# --- End Configuration ---
 
-# 遍历每个目录
-for dir in "${DIRECTORIES[@]}"; do
-    # 检查目录是否存在
-    if [ -d "$dir" ]; then
-        # 查找目录下的所有 .desktop 文件
-        for file in $(find "$dir" -type f -name "*.desktop"); do
-            # 提取 Name 字段
-            NAME=$(grep -Po '^Name=\K.*' "$file")
-            # 提取 Path 字段
-            PATH_FIELD=$(grep -Po '^Path=\K.*' "$file")
-            # 如果 Path 字段为空，则尝试提取 Exec 字段
-            if [ -z "$PATH_FIELD" ]; then
-                EXEC_FIELD=$(grep -Po '^Exec=\K.*' "$file")
-                # 从 Exec 字段中提取目录
-                if [ -n "$EXEC_FIELD" ]; then
-                    PATH_FIELD=$(dirname "$EXEC_FIELD")
-                fi
-            fi
-            # 写入软件清单文件
-            if [ -n "$NAME" ] && [ -n "$PATH_FIELD" ]; then
-                echo "# $NAME = $PATH_FIELD" >> "$SOFTWARE_LIST_FILE"
-            fi
-        done
+# --- Helper Functions ---
+log_message() { echo "[信息] $1"; }
+error_exit() { echo "[错误] $1" >&2; exit 1; }
+
+# --- Main Logic ---
+main() {
+    # 1. Check for root privileges
+    if [ "$(id -u)" -ne 0 ]; then
+        log_message "警告: 当前为非root用户。部分文件（如 /etc 下的文件）可能无法备份。"
+        # error_exit "此脚本必须以root权限运行。" # Uncomment to make root mandatory
     fi
-done
 
-echo "软件清单已生成：$SOFTWARE_LIST_FILE"
+    log_message "正在创建备份目录: $BACKUP_DIR"
+    mkdir -p "$BACKUP_DIR"
 
-# 输出备份完成信息
-echo "备份完成： $BACKUP_DIR"
-echo "执行恢复脚本：sudo $BACKUP_DIR/recovery.sh"
-cp ./recovery.sh "$BACKUP_DIR/"
-chmod +x "$BACKUP_DIR"/*.sh
+    # 2. 备份当前环境变量
+    log_message "正在备份当前环境变量..."
+    env > "$BACKUP_DIR/environment_variables.txt"
+
+    # 3. 备份环境变量配置文件
+    log_message "正在备份环境变量配置文件..."
+    for file in "${ENV_CONFIG_FILES[@]}"; do
+        if [[ -f "$file" ]]; then
+            local backup_path="${BACKUP_DIR}/configs/${file#/}" # Reconstruct path structure
+            mkdir -p "$(dirname "$backup_path")"
+            cp -p "$file" "$backup_path" # -p preserves permissions, timestamps
+            log_message "  已备份: $file"
+        else
+            log_message "  跳过 (未找到): $file"
+        fi
+    done
+
+    # 4. 备份已安装的软件包清单 (Debian/Ubuntu)
+    local installed_packages_file="$BACKUP_DIR/installed_packages_list.txt"
+    if command -v dpkg &>/dev/null; then
+        log_message "正在备份已安装的Debian软件包清单..."
+        dpkg -l | awk '/^ii/{print $2}' | sort > "$installed_packages_file"
+        log_message "  已生成: $installed_packages_file"
+    else
+        log_message "跳过Debian软件包清单备份 (dpkg 未找到)。"
+    fi
+
+    # 5. 备份通过 .desktop 文件识别的应用清单
+    log_message "正在生成通过 .desktop 文件识别的应用清单..."
+    local desktop_app_list_file="$BACKUP_DIR/installed_desktop_applications.txt"
+    > "$desktop_app_list_file" # Create/clear the file
+
+    for dir in "${DESKTOP_SCAN_DIRS[@]}"; do
+        if [ -d "$dir" ]; then
+            log_message "  正在扫描目录: $dir"
+            # 使用 find -print0 | while read -r -d '' 这种安全方式处理文件名
+            find "$dir" -type f -name "*.desktop" -print0 | while IFS= read -r -d '' desktop_file; do
+                local name=$(grep -Po '^Name=\K.*' "$desktop_file" || true) # || true prevents script exit on grep failure
+                local exec_cmd=$(grep -Po '^Exec=\K.*' "$desktop_file" || true)
+                
+                if [ -n "$name" ] && [ -n "$exec_cmd" ]; then
+                    echo "Name: $name" >> "$desktop_app_list_file"
+                    echo "Exec: $exec_cmd" >> "$desktop_app_list_file"
+                    echo "Path: $desktop_file" >> "$desktop_app_list_file"
+                    echo "---" >> "$desktop_app_list_file"
+                fi
+            done
+        else
+            log_message "  跳过 (目录不存在): $dir"
+        fi
+    done
+    log_message "  已生成: $desktop_app_list_file"
+
+    # 6. 复制配套的恢复脚本
+    if [ -f "./recovery.sh" ]; then
+        log_message "正在复制 recovery.sh 到备份目录..."
+        cp -p "./recovery.sh" "$BACKUP_DIR/"
+        chmod +x "$BACKUP_DIR/recovery.sh"
+        log_message "  已复制并授权: $BACKUP_DIR/recovery.sh"
+    else
+        log_message "警告: 当前目录未找到 recovery.sh。跳过复制。"
+    fi
+
+    log_message "备份完成。所有备份文件存储在: $BACKUP_DIR"
+}
+
+# 执行主函数
+main "$@"

@@ -1,41 +1,43 @@
 #!/bin/bash
 
-# 检查是否以root身份运行
-if [ "$(id -u)" != "0" ]; then
-    echo "请以root身份运行此脚本."
+# 脚本功能：在while循环中持续监控TCP连接，使用单个awk高效解析。
+
+set -eo pipefail
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "错误: 此脚本需要root权限才能查看所有进程信息。" >&2
     exit 1
 fi
 
-# 定义列标题
-column_headers="Proto\tLocal Address\tRemote Address\tPID/Program name"
-echo "当前活动的网络连接:"
-echo -e "$column_headers"
+# 检查ss命令是否存在
+if ! command -v ss &>/dev/null;
+    then error_exit "错误: 'ss' 命令未找到。请安装 'iproute2' 包。"
+fi
 
-# 使用ss命令列出所有网络连接，并显示PID和程序路径
+# 主循环
 while true; do
-    # 获取ss命令的输出
-    ss_output=$(ss -tnlp)
-
-    # 遍历每一行输出
-    while IFS= read -r line; do
-        # 提取协议
-        proto=$(echo "$line" | awk '{print $1}')
-        
-        # 提取本地地址
-        local_addr=$(echo "$line" | awk -F' ' '{print $5}' | sed 's/users://')
-        
-        # 提取远程地址
-        remote_addr=$(echo "$line" | awk -F' ' '{print $6}' | sed 's/users://')
-        
-        # 提取PID
-        pid=$(echo "$line" | awk '{print $9}' | cut -d':' -f1)
-        
-        # 获取程序名称
-        program=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
-        
-        # 输出格式化的结果
-        printf "%s\t%s\t%s\t%d/%s\n" "$proto" "$local_addr" "$remote_addr" "$pid" "$program"
-    done <<< "$ss_output"
+    # 清屏，实现类似'top'的刷新效果
+    clear
     
-    sleep 5 # 每隔5秒刷新一次输出
+    echo "正在监控活动的TCP连接... (按 Ctrl+C 退出)"
+    echo "最后更新: $(date)"
+    echo "--------------------------------------------------------------------------"
+    printf "% -6s %-25s %-25s %s\n" "协议" "本地地址:端口" "对端地址:端口" "进程信息"
+    echo "--------------------------------------------------------------------------"
+    
+    # 使用单个awk命令完成所有解析和格式化工作，性能极高
+    # ss -tnp: 显示活动的TCP连接，并显示进程信息
+    ss -tnp | awk '
+        NR > 1 {
+            # ss的输出格式为: State Recv-Q Send-Q Local-Address:Port Peer-Address:Port Users
+            proto = $1
+            local_addr = $4
+            peer_addr = $5
+            process_info = $6
+            printf "% -6s %-25s %-25s %s\n", proto, local_addr, peer_addr, process_info
+        }
+    '
+    
+    # 刷新间隔
+    sleep 5
 done
