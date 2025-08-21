@@ -3,6 +3,8 @@
 
 num=${1:-1}
 port=${2:-6379}
+conf_to_use=${3} # 接收第三个参数作为指定配置文件
+
 CURRENT_DIR=`cd $(dirname $0); pwd -P`
 BASE_DIR=${CURRENT_DIR%/*}
 conf_dir="$BASE_DIR/conf"
@@ -40,6 +42,78 @@ check_install_permissions() {
     fi
     return 0
 }
+
+# 启动 redis-server 并打印进程
+startup(){
+    local conf_file="$1"
+    
+    # 检查配置文件是否存在
+    if [ ! -f "$conf_file" ]; then
+        echo "错误: 配置文件不存在: $conf_file"
+        return 1
+    fi
+    
+    # 获取日志文件路径
+    local logfile=$(grep "^logfile " "$conf_file" | awk '{print $2}')
+    
+    # 如果配置文件中没有指定日志文件，则使用默认路径
+    if [ -z "$logfile" ]; then
+        logfile="$BASE_DIR/logs/redis.log"
+    fi
+    
+    # 确保日志目录存在且有权限
+    local logdir=$(dirname "$logfile")
+    if [ ! -d "$logdir" ]; then
+        echo "正在创建日志目录: $logdir"
+        if [[ "$logdir" == /var/log/* ]]; then
+            # 系统日志目录需要sudo权限
+            if ! sudo mkdir -p "$logdir" 2>/dev/null && ! mkdir -p "$logdir" 2>/dev/null; then
+                echo "警告: 无法创建日志目录 $logdir"
+            fi
+        else
+            mkdir -p "$logdir"
+        fi
+    fi
+    
+    # 检查日志目录权限
+    if [ ! -w "$logdir" ]; then
+        echo "警告: 没有对日志目录 $logdir 的写权限"
+    fi
+    
+    $BASE_DIR/bin/redis-server "$conf_file"
+    
+    # 等待Redis启动
+    sleep 2
+    
+    if is_redis_running; then
+        echo "Redis 启动成功，进程信息如下："
+        ps -ef|grep "redis-server"|grep -v grep
+        echo "日志文件位置: $logfile"
+    else
+        echo "Redis 启动失败，请检查配置和日志"
+        # 显示systemd状态（如果使用systemd）
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl status redis.service --no-pager 2>/dev/null || echo "未找到redis systemd服务"
+        fi
+        return 1
+    fi
+}
+
+# 如果通过参数指定了配置文件，则直接使用它启动
+if [ -n "$conf_to_use" ] && [ -f "$conf_to_use" ]; then
+    echo "正在使用指定的配置文件启动: $conf_to_use"
+    # 需要 is_redis_running 函数，所以要先定义或移到前面
+    is_redis_running() {
+      [ `ps -ef|grep "redis-server"|grep -v grep|wc -l` -gt 0 ]
+    }
+    if is_redis_running; then
+      echo "Redis 已经启动，进程信息如下："
+      ps -ef|grep $BASE_DIR|grep -v grep
+      exit 0
+    fi
+    startup "$conf_to_use"
+    exit $?
+fi
 
 cd $BASE_DIR
 

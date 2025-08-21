@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # redis install script
-# 用法: ./install.sh [INSTALL_DIR] [节点数] [端口]
+# 用法: ./install.sh [INSTALL_DIR] [节点数] [端口] [REDIS_VERSION]
 
 set -e
 # 当前脚本目录
 SCRIPT_DIR="$(cd "$(dirname "$0")"; pwd)"
 # 当前脚本父目录
 BASE_DIR=$(cd "$SCRIPT_DIR/.."; pwd)
+# Redis版本
+redis_version=${4:-"8.0.3"}
 # 下载地址和压缩包名
-#url=https://github.com/redis/redis/archive/7.0.5.tar.gz
-url="https://github.com/redis/redis/archive/refs/tags/8.0.3.tar.gz"
+url="https://github.com/redis/redis/archive/refs/tags/${redis_version}.tar.gz"
 gz_file_name=${url##*/}
 tmp_dir=/tmp
 gz_file=$tmp_dir/$gz_file_name
@@ -153,9 +154,12 @@ else
   make PREFIX="$INSTALL_DIR" install
 fi
 
-# 复制配置文件和脚本
-echo "cp -r $BASE_DIR/* $INSTALL_DIR/"
-cp -r $BASE_DIR/* $INSTALL_DIR/
+echo "复制配置文件和脚本..." 
+if command -v rsync >/dev/null 2>&1; then
+    rsync -a --exclude='.git' "$BASE_DIR/" "$INSTALL_DIR/"
+else
+    cp -rp "$BASE_DIR"/* "$INSTALL_DIR/"
+fi
 chmod +x $INSTALL_DIR/bin/*.sh 2>/dev/null 
 
 # 安装自启动服务
@@ -261,43 +265,60 @@ handle_config() {
     
     # 使用正确的sed语法处理配置文件，确保路径中的特殊字符被正确处理
     $SED_CMD "s/^port .*/port $port/" "$conf_file"
-    $SED_CMD "s/# requirepass foobared/requirepass $escaped_password/" "$conf_file"
+
+    # --- 密码处理开始 ---
+    # 1. 为确保密码不冲突，首先删除所有以 requirepass 开头的行（无论是否被注释）
+    $SED_CMD '/^[[:space:]]*requirepass/d' "$conf_file"
+
+    # 2. 然后，在标准模板行下方，插入新的、唯一的密码配置
+    $SED_CMD "/# requirepass foobared/a requirepass $escaped_password" "$conf_file"
+    # --- 密码处理结束 ---
+
     $SED_CMD "s/appendonly no/appendonly yes/" "$conf_file"
     $SED_CMD "s/bind 127.0.0.1/bind 0.0.0.0/" "$conf_file"
-    $SED_CMD "s/# replica-read-only yes/replica-read-only no/" "$conf_file"
+    # 保持副本为只读，更安全
+    #$SED_CMD "s/# replica-read-only yes/replica-read-only no/" "$conf_file"
     
-    # 处理日志目录
-    local logfile_path="$INSTALL_DIR/logs/redis-$port.log"
-    local system_logfile_path="$system_log_dir/redis-$port.log"
-    
-    # 检查是否使用系统日志目录
-    if [[ ! "$logfile_path" =~ ^/var/log/ ]]; then
-        read -t 8 -p "建议修改为系统日志目录: $system_logfile_path 是否修改? (Y/n): " confirm_modify
+    # --- 日志目录处理开始 ---
+    # 从配置文件中读取当前的日志路径（忽略前导空格）
+    current_logfile=$(grep -E '^[[:space:]]*logfile' "$conf_file" | awk '{print $2}')
+
+    # 如果配置文件中没有日志路径，或者路径不是/var/log开头，则提示用户
+    if [ -z "$current_logfile" ] || [[ ! "$current_logfile" =~ ^/var/log/ ]]; then
+        system_logfile_path="$system_log_dir/redis-$port.log"
+        read -t 10 -p "建议修改为系统日志目录: $system_logfile_path 是否修改? (Y/n): " confirm_modify || true
         echo
-        if [[ "$confirm_modify" != [n] ]]; then
-            logfile_path="$system_logfile_path"
-            # 创建系统日志目录（需要sudo权限）
-            if ! sudo mkdir -p "$system_log_dir" 2>/dev/null && ! mkdir -p "$system_log_dir" 2>/dev/null; then
-                echo "警告: 无法创建系统日志目录 $system_log_dir，将使用原路径"
-                logfile_path="$INSTALL_DIR/logs/redis-$port.log"
+        if [[ "$confirm_modify" != [nN] ]]; then
+            logfile_to_set="$system_logfile_path"
+            # 优先使用sudo创建目录和文件，并设置正确的所有者
+            if sudo mkdir -p "$system_log_dir" && sudo touch "$logfile_to_set" && sudo chown "$(id -u):$(id -g)" "$logfile_to_set"; then
+                # 同时确保目录本身也属于当前用户，以便redis进程有权限访问
+                sudo chown "$(id -u):$(id -g)" "$system_log_dir"
+                echo "日志文件已在 $logfile_to_set 创建并设置好权限。"
             else
-                # 设置日志目录权限
-                if ! sudo chown $(id -u):$(id -g) "$system_log_dir" 2>/dev/null && ! chown $(id -u):$(id -g) "$system_log_dir" 2>/dev/null; then
-                    echo "警告: 无法设置日志目录权限"
-                fi
+                echo "警告: 无法创建系统日志目录或文件，或无法设置权限。将使用安装目录下的logs/作为备用。"
+                logfile_to_set="$INSTALL_DIR/logs/redis-$port.log"
             fi
+        else
+            logfile_to_set="$INSTALL_DIR/logs/redis-$port.log"
         fi
+        
+        # 更新配置文件中的日志路径
+        logdir_to_set=$(dirname "$logfile_to_set")
+        if [[ ! "$logfile_to_set" =~ ^/var/log/ ]]; then # 如果不是系统日志，则在安装目录下创建
+             mkdir -p "$logdir_to_set"
+        fi
+
+        # 如果配置文件中已存在 logfile 行，则修改它，否则就添加新行
+        if grep -q -E '^[[:space:]]*logfile' "$conf_file"; then
+            $SED_CMD "s#^[[:space:]]*logfile .*#logfile $logfile_to_set#" "$conf_file"
+        else
+            echo "logfile $logfile_to_set" >> "$conf_file"
+        fi
+    else
+        echo "日志文件已配置为系统路径: $current_logfile，无需修改。"
     fi
-    
-    # 创建日志目录（如果使用默认路径）
-    if [[ "$logfile_path" == "$INSTALL_DIR/logs/redis-$port.log" ]]; then
-        mkdir -p "$INSTALL_DIR/logs"
-    fi
-    
-    # 使用不同的分隔符处理包含路径的配置项，避免路径中的斜杠干扰sed命令
-    $SED_CMD "s#dir ./#dir $INSTALL_DIR/data/$port#" "$conf_file" && mkdir -p "$INSTALL_DIR/data/$port"
-    # 使用正则表达式替换日志文件路径，提高通用性
-    $SED_CMD "s#logfile .*\.log#logfile $logfile_path#" "$conf_file"
+    # --- 日志目录处理结束 ---
     # 使用正则表达式替换pid文件路径，提高通用性
     $SED_CMD "s#pidfile .*\.pid#pidfile $INSTALL_DIR/redis-$port.pid#" "$conf_file"
     
@@ -308,8 +329,78 @@ handle_config() {
         $SED_CMD "s/# cluster-node-timeout 15000/cluster-node-timeout 15000/" "$conf_file"
         $SED_CMD "s/protected-mode yes/protected-mode no/" "$conf_file"
         $SED_CMD "s/# masterauth foobared/masterauth $escaped_password/" "$conf_file"
+    else
+        # 单机模式下，如果bind 0.0.0.0，也禁用保护模式
+        $SED_CMD "s/protected-mode yes/protected-mode no/" "$conf_file"    
     fi
 }
+
+# 设置环境变量
+setup_environment() {
+    echo "正在配置环境变量..."
+
+    # 优先尝试在 /etc/profile.d 中进行系统级配置
+    if [ -d "/etc/profile.d" ]; then
+        if [ -w "/etc/profile.d" ] || sudo -n true 2>/dev/null; then
+            echo "检测到 sudo 权限或 /etc/profile.d 写权限，将进行系统级配置。"
+            local profile_script="/etc/profile.d/redis.sh"
+            # 使用 sudo tee 写入文件，以处理权限问题
+            sudo tee "$profile_script" > /dev/null << EOF
+#!/bin/sh
+export REDIS_HOME=${INSTALL_DIR}
+export PATH=$REDIS_HOME/bin:$PATH
+EOF
+            sudo chmod +x "$profile_script"
+            echo "环境变量已配置,加载配置执行: source $profile_script"
+            echo -e "\033[33m或启动新 shell 以使配置生效。\033[0m"
+            return
+        fi
+    fi
+
+    # 如果系统级配置失败，则回退到用户级配置
+    echo "警告: 无 sudo 权限或无法写入 /etc/profile.d。"
+    echo "将回退到用户级别配置 (~/.bashrc, ~/.zshrc)..."
+    
+    local shell_type
+    shell_type=$(basename "$SHELL")
+    local rc_file
+
+    if [ "$shell_type" = "bash" ]; then
+        rc_file="$HOME/.bashrc"
+    elif [ "$shell_type" = "zsh" ]; then
+        rc_file="$HOME/.zshrc"
+    else
+        echo "不支持的 shell 类型: $shell_type"
+        echo "请手动将以下内容添加到您的 shell 配置文件中:"
+        echo "export REDIS_HOME=$INSTALL_DIR"
+        echo 'export PATH=$REDIS_HOME/bin:$PATH'
+        return
+    fi
+
+    # 检查并设置 REDIS_HOME
+    if grep -q "export REDIS_HOME=" "$rc_file"; then
+        # 如果存在，则更新
+        sed -i.bak "s|export REDIS_HOME=.*|export REDIS_HOME=$INSTALL_DIR|g" "$rc_file"
+        echo "已更新 $rc_file 中的 REDIS_HOME"
+    else
+        # 如果不存在，则添加
+        echo "" >> "$rc_file"
+        echo "export REDIS_HOME=$INSTALL_DIR" >> "$rc_file"
+        echo "已将 REDIS_HOME 添加到 $rc_file"
+    fi
+    
+    # 检查并设置 PATH
+    # 使用更健壮的方式检查 $REDIS_HOME/bin 是否已在 PATH 中
+    if ! grep -q 'export PATH=.*$REDIS_HOME/bin' "$rc_file"; then
+        echo 'export PATH=$REDIS_HOME/bin:$PATH' >> "$rc_file"
+        echo "已将 Redis bin 目录添加到 $rc_file 的 PATH 中"
+    else
+        echo "PATH 配置已包含 Redis bin 目录，无需修改。"
+    fi
+	
+    echo -e "\033[33m请运行 source $rc_file 或重新启动终端使配置生效。\033[0m"
+}
+
 
 # 初始化集群或单机配置
 cd "$INSTALL_DIR"
@@ -338,7 +429,31 @@ if [ $num -gt 1 ]; then
     
     echo "✅ Redis 集群模式已初始化，节点数: $num，起始端口: $port"
     echo "生成的密码: $password"
-    echo "请手动启动各节点并创建集群。"
+    echo "提示: 可以使用以下命令修改密码 (将 NEW_PASSWORD 替换为新密码):"
+    echo "  redis-cli -a '$password' -p $port config set requirepass NEW_PASSWORD"
+    
+    echo "正在启动所有集群节点..."
+    $INSTALL_DIR/bin/startup.sh "$num" "$port"
+    
+    echo "等待节点启动..."
+    sleep 8 # 等待几秒钟确保所有进程已启动
+
+    echo "正在创建集群..."
+    # 使用 expect 来处理 redis-cli 的交互式输入
+    if command -v expect >/dev/null 2>&1; then
+        expect <<EOF
+spawn $INSTALL_DIR/bin/redis-cli --cluster create $cluster_nodes --cluster-replicas 1 -a "$password"
+expect "Type 'yes' to accept):"
+send "yes\r"
+expect eof
+EOF
+    else
+        echo "警告: 'expect' 命令未安装。请手动执行以下命令创建集群:"
+        echo "$INSTALL_DIR/bin/redis-cli --cluster create $cluster_nodes --cluster-replicas 1 -a \"$password\""
+        echo "并在提示时输入 'yes'"
+    fi
+
+    echo "✅ Redis 集群已创建成功！"
     
 else
     # 单机模式
@@ -350,14 +465,24 @@ else
     
     echo "✅ Redis 单机模式已初始化，端口: $port"
     echo "生成的密码: $password"
+    echo "提示: 您可以使用以下命令修改密码 (将 NEW_PASSWORD 替换为您的新密码):"
+    echo "  $INSTALL_DIR/bin/redis-cli -a '$password' -p $port config set requirepass NEW_PASSWORD"
 	  
 	# 动态安装配置完成后调用安装目录下的启动脚本
 	if [ -f "$INSTALL_DIR/bin/startup.sh" ] && [ -x "$INSTALL_DIR/bin/startup.sh" ]; then
+	  echo "正在停止任何可能在运行的旧 Redis 实例..."
+	  # 允许停止失败（例如，如果服务本来就没在运行），并等待2秒确保端口释放
+	  $INSTALL_DIR/bin/stop.sh || true
+	  sleep 2
+
 	  echo "正在启动 Redis..."
-	  $INSTALL_DIR/bin/startup.sh "$num" "$port"
+	  # 将配置文件路径作为第3个参数传递给 startup.sh
+	  $INSTALL_DIR/bin/startup.sh "$num" "$port" "$conf_file"
 	else
 	  echo "提示: 您可以手动执行以下命令启动 Redis:"
 	  echo "  $INSTALL_DIR/bin/startup.sh"
 	fi
 fi
 
+# 设置环境变量
+setup_environment
