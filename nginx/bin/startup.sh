@@ -12,6 +12,14 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# 导入公共函数库
+if [ -f "$CURRENT_DIR/check_nginx_running.sh" ]; then
+    source "$CURRENT_DIR/check_nginx_running.sh"
+else
+    echo -e "${RED}错误: 未找到公共函数库: $CURRENT_DIR/check_nginx_running.sh${NC}"
+    exit 1
+fi
+
 # 获取本机IP（macOS兼容方式）
 get_ip() {
     if command -v ip > /dev/null 2>&1; then
@@ -67,14 +75,23 @@ find_nginx_executable() {
     return 1
 }
 
-# 检查Nginx是否已启动
-check_nginx_running() {
-    if command -v pgrep > /dev/null 2>&1; then
-        [ $(pgrep nginx | wc -l) -gt 0 ] && return 0
+# 检查是否以root权限运行
+check_root() {
+    if [[ $EUID -eq 0 ]]; then
+        return 0
     else
-        [ $(ps -ef | grep nginx | grep -v grep | wc -l) -gt 0 ] && return 0
+        return 1
     fi
-    return 1
+}
+
+# 尝试使用sudo执行命令
+sudo_exec() {
+    if command -v sudo > /dev/null 2>&1; then
+        sudo "$@"
+    else
+        echo -e "${RED}错误: 需要root权限但未找到sudo命令${NC}"
+        return 1
+    fi
 }
 
 # 启动主机模式Nginx
@@ -84,25 +101,28 @@ start_host_nginx() {
     local nginx_bin=$(find_nginx_executable)
     if [ -z "$nginx_bin" ]; then
         echo -e "${RED}错误: 未找到nginx执行文件${NC}"
-        echo "已搜索以下位置:"
-        echo "  /usr/bin/nginx"
-        echo "  /usr/local/bin/nginx"
-        echo "  /usr/local/nginx/sbin/nginx"
-        echo "  /opt/nginx/sbin/nginx"
-        echo "  $HOME/nginx/sbin/nginx"
-        echo "  /usr/local/opt/nginx/bin/nginx (macOS Homebrew)"
-        echo "以及PATH环境变量中的nginx"
         return 1
     fi
     
     echo -e "${GREEN}找到nginx执行文件: $nginx_bin${NC}"
-    BASE_DIR=$(dirname $nginx_bin)
-    # 检查配置文件
-    if [ ! -f "$BASE_DIR/conf/nginx.conf" ]; then
-        echo -e "${RED}错误: Nginx配置文件不存在: $BASE_DIR/conf/nginx.conf${NC}"
-        return 1
+    
+    # 处理软链接情况：如果nginx是软链接，解析其真实路径
+    local real_nginx_bin="$nginx_bin"
+    if [ -L "$nginx_bin" ]; then
+        real_nginx_bin=$(readlink -f "$nginx_bin")
+        echo -e "${GREEN}解析软链接: $nginx_bin -> $real_nginx_bin${NC}"
+        nginx_bin=$real_nginx_bin
     fi
     
+    # 获取nginx真实路径的目录
+    BASE_DIR=$(dirname $(dirname "$real_nginx_bin"))
+    CONF_DIR="$BASE_DIR/conf"
+    # 检查配置文件
+    if [ ! -f "$CONF_DIR/nginx.conf" ]; then
+        echo -e "${RED}错误: Nginx配置文件不存在: $CONF_DIR/nginx.conf${NC}"
+        return 1
+    fi
+    echo -e "${GREEN}配置目录: $CONF_DIR${NC}"
     if check_nginx_running; then
         echo -e "${YELLOW}Nginx已经在运行中...${NC}"
         if command -v pgrep > /dev/null 2>&1; then
@@ -114,7 +134,7 @@ start_host_nginx() {
     fi
     
     echo "启动Nginx..."
-    "$nginx_bin" -c "$BASE_DIR/conf/nginx.conf"
+    $nginx_bin -c "$CONF_DIR/nginx.conf" 2>/dev/null || sudo $nginx_bin -c "$CONF_DIR/nginx.conf"
     sleep 2
     
     if check_nginx_running; then
