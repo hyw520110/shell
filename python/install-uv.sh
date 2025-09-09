@@ -1,47 +1,55 @@
 #!/bin/bash
 set -euo pipefail  # 严格模式：错误退出、未定义变量退出、管道失败退出
 
-# 常量定义
+# === 常量定义 ===
 readonly UV_INSTALL_SCRIPT_URL="https://astral.sh/uv/install.sh"
 readonly UV_INSTALL_DIR="$HOME/.local/bin"
 readonly UV_BINARY="$UV_INSTALL_DIR/uv"
+readonly DEFAULT_PYPI_MIRROR="https://pypi.tuna.tsinghua.edu.cn/simple"  # 默认使用清华源
+readonly ALIYUN_PYPI_MIRROR="https://mirrors.aliyun.com/pypi/simple"
+# === 函数定义 ===
 
-# 检测操作系统类型
 detect_os() {
-
+    # 检测操作系统类型（可扩展）
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        echo "Linux"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "macOS"
+    elif [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+        echo "Windows"
+    else
+        echo "Unknown"
+    fi
 }
 
-# 安装依赖（自动安装 curl）
 install_dependency() {
     local install_cmd
     if command -v apt &> /dev/null; then
-        install_cmd="sudo apt update && sudo apt install -y curl"
+        install_cmd="sudo apt update && sudo apt install -y $1"
     elif command -v yum &> /dev/null; then
-        install_cmd="sudo yum install -y curl"   
+        install_cmd="sudo yum install -y $1"   
     elif command -v dnf &> /dev/null; then
-        install_cmd="sudo dnf install -y curl"
+        install_cmd="sudo dnf install -y $1"
     elif command -v brew &> /dev/null; then
-        install_cmd="brew install curl"
+        install_cmd="brew install $1"
     else
-        echo "不支持的操作系统，windows安装(PowerShell)：irm https://astral.sh/uv/install.ps1 | iex" 
+        echo "❌ 不支持的操作系统，Windows 安装命令：irm https://astral.sh/uv/install.ps1 | iex" 
         exit 1
     fi
-    echo "▶ 检测到 curl 未安装，自动安装..."
+    echo "▶ 检测到 $1 未安装，自动安装..."
     if ! eval "$install_cmd"; then
-        echo "❌ 依赖安装失败，请手动安装 curl 并重试。" >&2
+        echo "❌ 依赖安装失败，请手动安装 $1 并重试。" >&2
         exit 1
     fi
-    echo "✓ curl 安装成功！"
+    echo "✓ $1 安装成功！"
 }
 
-# 依赖检查（自动安装 curl）
 check_dependencies() {
     if ! command -v curl >/dev/null 2>&1; then
-        install_dependency
+        install_dependency curl
     fi
 }
 
-# 安装 UV
 install_uv() {
     # 检查是否已安装
     if [ -x "$UV_BINARY" ]; then
@@ -56,10 +64,15 @@ install_uv() {
     fi
 }
 
-# 配置环境变量
 configure_path() {
     local target_path="$UV_INSTALL_DIR"
     local shell_profile
+    local pypi_mirror="$DEFAULT_PYPI_MIRROR"
+
+    # 使用用户指定的镜像（优先级高于默认）
+    if [ -n "${UV_INDEX_URL:-}" ]; then
+        pypi_mirror="$UV_INDEX_URL"
+    fi
 
     # 创建安装目录（如果不存在）
     mkdir -p "$target_path"
@@ -93,16 +106,24 @@ configure_path() {
             echo "✓ 永久添加路径到 $shell_profile..."
             echo "export PATH=\"$target_path:\$PATH\"" >> "$shell_profile"
         fi
+
+        # 配置 PyPI 镜像（仅在未设置时添加）
         if ! grep -qF "UV_INDEX_URL" "$shell_profile"; then
-	        echo 'export UV_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple"' >> "$shell_profile"
+            echo "✓ 永久添加 PyPI 镜像配置到 $shell_profile..."
+            echo "export UV_INDEX_URL=\"$pypi_mirror\"" >> "$shell_profile"
         fi
     else
         echo "⚠️ 配置文件 $shell_profile 不存在，将创建并添加路径..."
         echo "export PATH=\"$target_path:\$PATH\"" > "$shell_profile"
+        echo "export UV_INDEX_URL=\"$pypi_mirror\"" >> "$shell_profile"
+    fi
+
+    # 临时设置镜像（当前会话生效）
+    if [ -z "${UV_INDEX_URL:-}" ]; then
+        export UV_INDEX_URL="$pypi_mirror"
     fi
 }
 
-# 验证安装
 verify_installation() {
     if ! command -v uv >/dev/null 2>&1; then
         echo "❌ uv 安装失败！请尝试以下操作："
@@ -111,6 +132,7 @@ verify_installation() {
         exit 1
     fi
     echo "✓ 安装成功！版本信息：$(uv --version)"
+    echo "✓ 当前 PyPI 镜像配置：$UV_INDEX_URL"
 }
 
 main() {
@@ -119,27 +141,34 @@ main() {
     configure_path
     verify_installation
     echo "✅ 所有操作已完成！"
-    echo "初始化项目：uv init my_project"
-    echo "指定python版本初始化项目：uv init my_project --python 3.11"
-    echo "添加生产依赖：uv add requests"
-    echo "添加开发依赖：uv add pytest --dev"
-    echo "移除依赖：uv remove requests"
-    # 全局系统级安装：uv pip install --system pandas
-    # 安装全局工具：uv tool install ruff  # 安装代码格式化工具
-    # 运行工具:uv tool run ruff check .
-    echo "同步依赖(根据 pyproject.toml 和 uv.lock 安装依赖)：uv sync"
-    echo "升级依赖：uv sync --upgrade"
-    echo　"升级特定包:uv sync --upgrade-package requests"
-    echo "已安装包:uv pip list"
-    echo "依赖树:uv tree"
-    echo "导出/安装依赖：uv pip freeze > requirements.txt
-    uv pip install -r requirements.txt"
-    echo "创建虚拟环境：uv venv .venv"
-    echo "激活虚拟环境：source .venv/bin/activate"
-    # 清理缓存
-    # uv cache clean
-	#uv pip cache purge
-    
+
+    # === 使用说明 ===
+    echo
+    echo "🔧 快速使用指南："
+    echo "  初始化项目：uv init my_project"
+    echo "  指定 Python 版本：uv init my_project --python 3.11"
+    echo "  添加生产依赖：uv add requests"
+    echo "  添加开发依赖：uv add pytest --dev"
+    echo "  移除依赖：uv remove requests"
+    echo
+    echo "📦 依赖管理："
+    echo "  安装全局工具：uv tool install ruff"
+    echo "  同步依赖：uv sync"
+    echo "  升级依赖：uv sync --upgrade"
+    echo "  升级特定包：uv sync --upgrade-package requests"
+    echo "  查看已安装包：uv pip list"
+    echo "  生成 requirements.txt：uv pip freeze > requirements.txt"
+    echo "  安装 requirements.txt：uv pip install -r requirements.txt"
+    echo
+    echo "🌐 国内镜像说明："
+    echo "  默认使用清华源（$DEFAULT_PYPI_MIRROR），如需切换镜像："
+    echo "  1. 手动修改环境变量 UV_INDEX_URL"
+    echo "  2. 或运行脚本时指定：UV_INDEX_URL=$ALIYUN_PYPI_MIRROR ./install_uv.sh"
+    echo
+    echo "🗑️ 清理缓存："
+    echo "  清理 uv 缓存：uv cache clean"
+    echo "  清理 pip 缓存：uv pip cache purge"
 }
 
+# === 执行主逻辑 ===
 main

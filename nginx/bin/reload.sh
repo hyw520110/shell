@@ -4,10 +4,115 @@
 BASE_DIR=`cd $(dirname $0)/..; pwd`
 conf_file=$BASE_DIR/conf/nginx.conf
 
+# 全局变量用于缓存权限检测结果
+IS_ROOT_DETERMINED=false
+IS_ROOT=false
+NEEDS_SUDO_DETERMINED=false
+NEEDS_SUDO=false
+
+# 检查是否以root权限运行
+check_root() {
+    if [ "$IS_ROOT_DETERMINED" = true ]; then
+        if [ "$IS_ROOT" = true ]; then
+            return 0
+        else
+            return 1
+        fi
+    fi
+    
+    if [[ $EUID -eq 0 ]]; then
+        IS_ROOT=true
+        IS_ROOT_DETERMINED=true
+        return 0
+    else
+        IS_ROOT=false
+        IS_ROOT_DETERMINED=true
+        return 1
+    fi
+}
+
+# 确定是否需要sudo权限
+determine_needs_sudo() {
+    if [ "$NEEDS_SUDO_DETERMINED" = true ]; then
+        if [ "$NEEDS_SUDO" = true ]; then
+            return 0
+        else
+            return 1
+        fi
+    fi
+    
+    # 检查Nginx进程所有者
+    local nginx_owner=""
+    if check_root; then
+        nginx_owner=$(ps -ef | grep nginx | grep master | awk '{print $1}' | head -1)
+    else
+        nginx_owner=$(sudo ps -ef 2>/dev/null | grep nginx | grep master | awk '{print $1}' | head -1)
+    fi
+    
+    if [ "$nginx_owner" = "root" ] && ! check_root; then
+        NEEDS_SUDO=true
+        NEEDS_SUDO_DETERMINED=true
+        return 0
+    else
+        NEEDS_SUDO=false
+        NEEDS_SUDO_DETERMINED=true
+        return 1
+    fi
+}
+
+# 通用执行函数
+exec_cmd() {
+    local purpose="$1"
+    shift
+    local cmd=("$@")
+    
+    # 确定是否需要sudo
+    if ! determine_needs_sudo; then
+        # 不需要sudo
+        echo "$purpose: ${cmd[*]}"
+        "${cmd[@]}"
+    else
+        # 需要sudo
+        if command -v sudo > /dev/null 2>&1; then
+            echo "$purpose: sudo ${cmd[*]}"
+            sudo "${cmd[@]}"
+        else
+            echo "错误: 需要root权限但未找到sudo命令" >&2
+            return 1
+        fi
+    fi
+}
+
+# Docker执行函数
+exec_docker_cmd() {
+    local purpose="$1"
+    shift
+    local cmd=("$@")
+    
+    if check_root; then
+        echo "$purpose: ${cmd[*]}"
+        "${cmd[@]}"
+    else
+        if command -v sudo > /dev/null 2>&1; then
+            echo "$purpose: sudo ${cmd[*]}"
+            sudo "${cmd[@]}"
+        else
+            echo "错误: 需要root权限但未找到sudo命令" >&2
+            return 1
+        fi
+    fi
+}
+
 reload_nginx() {
     if [ -n "`docker ps -a 2>/dev/null|grep nginx|grep Up`" ];then
-        isOk=`docker exec -it nginx nginx -t |grep ok `
-        [ -n "$isOk" ] && echo $isOk && docker exec -it nginx nginx -s reload
+        echo "检测到Docker中的Nginx容器正在运行"
+        local isOk=""
+        isOk=$(exec_docker_cmd "配置测试" docker exec nginx nginx -t 2>/dev/null | grep ok)
+        if [ -n "$isOk" ]; then
+            echo "$isOk"
+            echo "重新加载Docker中的Nginx配置..."
+            exec_docker_cmd "重新加载" docker exec nginx nginx -s reload
+        fi
     else
         # 检查nginx命令是否存在
         if command -v nginx >/dev/null 2>&1; then
@@ -21,22 +126,31 @@ reload_nginx() {
                 fi
             done
         fi
-        
         # 如果找到了nginx命令
         if [ -n "$NGINX_CMD" ]; then
             # 先测试配置
-            if $NGINX_CMD -c $conf_file -t 2>/dev/null; then
-                echo "Nginx配置测试通过"
-                # 尝试重新加载，如果权限不足则使用sudo
-                if $NGINX_CMD -c $conf_file -s reload 2>/dev/null; then
+            local test_result=""
+            test_result=$(exec_cmd "检查配置" $NGINX_CMD -c $conf_file -t 2>&1)
+            
+            echo "$test_result"
+            
+            if echo "$test_result" | grep -q "syntax is ok"; then
+                echo "Nginx配置ok"
+                # 尝试重新加载
+                local reload_result=""
+                reload_result=$(exec_cmd "重新加载" $NGINX_CMD -c $conf_file -s reload 2>&1)
+                
+                echo "$reload_result"
+                
+                if [ $? -eq 0 ] || echo "$reload_result" | grep -q "signal"; then
                     echo "Nginx重新加载成功"
                 else
-                    echo "尝试使用sudo重新加载..."
-                    sudo $NGINX_CMD -c $conf_file -s reload
+                    echo "Nginx重新加载失败"
+                    return 1
                 fi
             else
                 echo "Nginx配置测试失败"
-                $NGINX_CMD -c $conf_file -t
+                return 1
             fi
         else
             echo "错误: 找不到nginx命令"
