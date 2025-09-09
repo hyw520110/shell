@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # 设置默认OpenCV版本
-OPENCV_VERSION="${OPENCV_VERSION:-4.11.0}"
+export OPENCV_VERSION="${OPENCV_VERSION:-4.11.0}"
 # 设置默认安装路径  
 INSTALL_PATH="/usr/local"
 # 是否启用扩展模块  
@@ -113,7 +113,7 @@ run_cmd() {
 verify_installation() {
     echo "🔍 验证安装结果..."
     # 检查核心库文件
-    local lib_path="${INSTALL_PATH}/lib"
+    local lib_path="${INSTALL_PATH}"
     if [ ! -d "$lib_path" ]; then
         die "安装目录不存在: $lib_path"
     fi
@@ -142,6 +142,7 @@ preserve_env_vars() {
     # 需要保留的环境变量列表（添加对JAVA_HOME的特殊处理）
     local preserved_vars=(
         JAVA_HOME
+        OPENCV_VERSION
         INSTALL_PATH
         OPENCV_VERSION
         ENABLE_CONTRIB
@@ -207,8 +208,8 @@ _install_dependencies() {
 
     for dep in "${deps_to_check[@]}"; do
         case "$PKG_MGR" in
-            apt)    ! dpkg -l | grep -q "^ii  $dep" && missing_deps+=("$dep") ;; 
-            brew)   ! brew list "$dep" &>/dev/null && missing_deps+=("$dep") ;; 
+            apt)    ! (dpkg -l | grep -q "^ii  $dep" || command -v "$dep" &>/dev/null) && missing_deps+=("$dep") ;; 
+            brew)   ! (brew list "$dep" &>/dev/null || command -v "$dep" &>/dev/null) && missing_optional_deps+=("$dep") ;; 
             dnf|yum) ! rpm -q "$dep" &>/dev/null && missing_deps+=("$dep") ;; 
             pacman) ! pacman -Qi "$dep" &>/dev/null && missing_deps+=("$dep") ;; 
         esac
@@ -245,7 +246,7 @@ install_deps() {
             run_cmd sudo apt-get update
             ;; 
         brew)
-            required_deps=(cmake git jpeg libpng libtiff zlib ffmpeg openblas tbb)
+            required_deps=(cmake git jpeg libpng libtiff zlib ffmpeg tbb)
             optional_deps=(eigen ccache ant)
             run_cmd sudo -u "$ORIGINAL_USER" brew update
             ;; 
@@ -273,20 +274,19 @@ install_deps() {
     local missing_optional_deps=()
     for dep in "${optional_deps[@]}"; do
         case "$PKG_MGR" in
-            apt)    ! dpkg -l | grep -q "^ii  $dep" && missing_optional_deps+=("$dep") ;; 
-            brew)   ! brew list "$dep" &>/dev/null && missing_optional_deps+=("$dep") ;; 
+            apt)    ! (dpkg -l | grep -q "^ii  $dep" || command -v "$dep" &>/dev/null) && missing_optional_deps+=("$dep") ;; 
+            brew)   ! (brew list "$dep" &>/dev/null || command -v "$dep" &>/dev/null) && missing_optional_deps+=("$dep") ;; 
             dnf|yum) ! rpm -q "$dep" &>/dev/null && missing_optional_deps+=("$dep") ;; 
             pacman) ! pacman -Qi "$dep" &>/dev/null && missing_optional_deps+=("$dep") ;; 
         esac
     done
 
     if [ ${#missing_optional_deps[@]} -gt 0 ]; then
-        echo -e "\n--- 可选依赖安装 ---"
         echo "⬇️ 发现未安装的可选依赖: ${missing_optional_deps[*]}"
         echo "   - ccache: 加速重复编译"
         echo "   - eigen: 优化部分数学运算"
         echo "   - ant: 构建Java绑定"
-        read -t 5 -p "❓ 是否安装可选依赖? (y/N) [5秒后自动跳过]: " choice
+        read -t 5 -p "❓ 是否安装可选依赖? (y/N) [5秒后自动跳过]: " choice || true
         echo ""
         if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
             _install_dependencies "${missing_optional_deps[@]}"
@@ -296,21 +296,13 @@ install_deps() {
     fi
 
     # 记录最终安装了哪些可选依赖
+    INSTALLED_OPTIONAL_DEPS_STRING=":"
     for dep in "${optional_deps[@]}"; do
         local dep_name=${dep%%-*}
         if command -v "$dep_name" &>/dev/null || brew list "$dep_name" &>/dev/null 2>&1; then
-            INSTALLED_OPTIONAL_DEPS["$dep_name"]=true
+            INSTALLED_OPTIONAL_DEPS_STRING=":${INSTALLED_OPTIONAL_DEPS_STRING}${dep_name}:"
         fi
     done
-    
-    # 特殊处理 brew link
-    if [[ "$PKG_MGR" == "brew" ]]; then
-        if [ "$(id -u)" -eq 0 ]; then
-            run_cmd sudo -u "$ORIGINAL_USER" brew link --overwrite openblas
-        else
-            run_cmd brew link --overwrite openblas
-        fi
-    fi
 }
 
 # 📥 源码下载
@@ -318,7 +310,7 @@ download_opencv() {
     local repo_url="https://github.com/opencv/opencv.git"
     local contrib_repo="https://github.com/opencv/opencv_contrib.git"
     if [ ! -d "opencv" ]; then
-        echo "📥 克隆OpenCV仓库（版本: $OPENCV_VERSION）..."
+        echo "📥 克隆OpenCV仓库版本: $OPENCV_VERSION ..."
         run_cmd git clone --depth 1 --branch "$OPENCV_VERSION"  "${repo_url}" opencv
     fi
     cd opencv 
@@ -342,6 +334,9 @@ generate_cmake_config() {
         -D OPENCV_GENERATE_PKGCONFIG=ON
         -D WITH_OPENMP=OFF
         -D WITH_FFMPEG=ON
+        -D WITH_OPENBLAS=OFF
+        -D WITH_LAPACK=OFF
+        -D WITH_ACCELERATE=ON
         -D WITH_OPENCL=ON
         -D ENABLE_FAST_MATH=ON
         -D BUILD_opencv_world=OFF 
@@ -349,10 +344,10 @@ generate_cmake_config() {
     )
 
     # 根据已安装的可选依赖动态添加配置
-    if [[ "${INSTALLED_OPTIONAL_DEPS[ccache]:-false}" == true && "$CCACHE_ENABLE" == true ]]; then
-        cmake_args+=(-D CMAKE_CXX_COMPILER_LAUNCHER=ccache)
+    if [[ ":$INSTALLED_OPTIONAL_DEPS_STRING:" == *":ccache:"* && "$CCACHE_ENABLE" == true ]]; then
+        cmake_args+=("-D CMAKE_CXX_COMPILER_LAUNCHER=ccache")
     fi
-    if [[ "${INSTALLED_OPTIONAL_DEPS[eigen]:-false}" == true ]]; then
+    if [[ ":$INSTALLED_OPTIONAL_DEPS_STRING:" == *":eigen:"* ]]; then
         cmake_args+=(-D WITH_EIGEN=ON)
     else
         cmake_args+=(-D WITH_EIGEN=OFF)
@@ -372,7 +367,7 @@ generate_cmake_config() {
     )
   	if [[ "$ENABLE_JAVA" == true ]]; then
         check_java_home
-        if [[ "${INSTALLED_OPTIONAL_DEPS[ant]:-false}" != true ]]; then
+        if [[ ":$INSTALLED_OPTIONAL_DEPS_STRING:" != *":ant:"* ]]; then
             warn "⚠️ 未安装ant，无法构建Java绑定，将跳过。"
         else
             case "$OS_TYPE" in
@@ -397,6 +392,9 @@ generate_cmake_config() {
     command -v brew &>/dev/null && cmake_args+=(
         -D WITH_QUICKTIME=OFF
         -D WITH_AVFOUNDATION=ON
+        -D WITH_OPENBLAS=OFF
+        -D WITH_LAPACK=OFF
+        -D WITH_ACCELERATE=ON
     )
     echo "⚙️ CMake配置参数: ${cmake_args[*]}"
     run_cmd cmake "${cmake_args[@]}" ../
@@ -412,7 +410,7 @@ get_cpu_cores() {
     case "$(uname -s)" in
         Linux) nproc ;; 
         Darwin) sysctl -n hw.ncpu ;; 
-        *) echo 4 ;;  # 默认 4 核
+        *) echo 4 ;; 
     esac
 }
 main() {
@@ -442,7 +440,7 @@ main() {
         cd "$build_dir"
     else
         mkdir -p "$build_dir" && cd "$build_dir"
-        generate_cmake_config  # 仅在首次生成配置
+        generate_cmake_config  
     fi
     MEM_GB=$(get_memory_gb)
     SAFE_CORES=$(( MEM_GB / 2 ))
@@ -451,7 +449,7 @@ main() {
     PARALLEL_JOBS=$(( PARALLEL_JOBS > 0 ? PARALLEL_JOBS : 2 ))
     # 如果内存小于2GB，则使用1个线程
     if [ $MEM_GB -lt 2 ]; then
-        PARALLEL_JOBS=1
+        PARALLEL_JOBS=2
     fi
     echo "💻 内存: ${MEM_GB}GB, 逻辑CPU核心: ${CPU_CORES}, 使用并行编译线程数: ${PARALLEL_JOBS}"
 
