@@ -49,7 +49,7 @@ ensure_write_permission() {
         if [ "$OS_TYPE" = "macos" ]; then
             sudo chown $(whoami):staff "$path"
         else
-            sudo chown $(usr):$(group) "$path"
+            sudo chown ${usr}:${group} "$path"
         fi
         echo "✓ 已修复 $path_type 权限: $path"
     fi
@@ -160,7 +160,6 @@ check () {
 download_nginx () {
   # 使用通用函数批量创建目录
   create_dir_with_permission "$nginx_home" "$tmp_dir"
-  [ ! -d ${gz_file%/*} ] && mkdir ${gz_file%/*}
   if [ ! -f $gz_file ];then
     echo "wget $url -O $gz_file"
     wget $url -O $gz_file
@@ -188,14 +187,14 @@ install_nginx () {
   # 设置系统目录权限
   echo "正在设置系统目录权限..."
   if [ "$OS_TYPE" != "macos" ]; then
-    sudo chown -R ${usr}:${group} ${log_dir} /var/run 2>/dev/null || true
+    sudo chown -R ${usr}:${group} "${log_dir}" "${pid_dir}" 2>/dev/null || true
   else
     # macOS下使用当前用户权限
-    sudo chown -R $(whoami):admin ${log_dir} /var/run 2>/dev/null || true
+    sudo chown -R $(whoami):admin "${log_dir}" "${pid_dir}" 2>/dev/null || true
   fi
   
   # 确保nginx有权限写入
-  sudo chmod 755 /var/log/nginx /var/run 2>/dev/null || true
+  sudo chmod 755 "${log_dir}" "${pid_dir}" 2>/dev/null || true
   # 根据操作系统调整configure参数
   if [ "$OS_TYPE" = "macos" ]; then
     # macOS不支持file-aio和GeoIP，移除相关参数
@@ -259,12 +258,20 @@ start_nginx () {
   
   # 使用权限检查函数复制文件
   ensure_write_permission "$nginx_home/conf" "nginx配置目录权限"
-  cp -r $BASE_DIR/conf $nginx_home/
+  if ! cp -r $BASE_DIR/conf $nginx_home/; then
+    echo "✗ 复制配置文件失败"
+    return 1
+  fi
+  echo "✓ 配置文件复制成功"
   
   ensure_write_permission "$nginx_home/bin" "nginx脚本目录权限"
   # 强制拷贝脚本文件
-  cp -rf $BASE_DIR/bin/*.sh $nginx_home/bin/
+  if ! cp -rf $BASE_DIR/bin/*.sh $nginx_home/bin/; then
+    echo "✗ 复制脚本文件失败"
+    return 1
+  fi
   chmod +x $nginx_home/bin/*.sh
+  echo "✓ 脚本文件复制成功"
   
   # 使用rsync同步配置文件，保留模板文件
   if command -v rsync >/dev/null 2>&1; then
@@ -276,33 +283,46 @@ start_nginx () {
     cp -r "$BASE_DIR/conf"/* "$nginx_home/conf/"
   fi
 
-  # 智能IP检测和替换（简化版）
-  smart_ip_replacement() {
+  # 模板文件处理
+  process_template_files() {
     local conf_dir="$1"
     local current_ip=$(get_script_ip)
     
-    echo "检测配置文件中的IP地址..."
+    echo "处理模板文件..."
     
-    # 查找所有配置文件
-    find "$conf_dir" -name "*.conf" -type f | while read -r conf_file; do
-      # 处理模板文件
-      local template_file="${conf_file%.*}.template"
-      if [ -f "$template_file" ]; then
-        echo "处理模板文件: $template_file"
-        sed "s/{{SERVER_IP}}/$current_ip/g" "$template_file" > "$conf_file"
-        echo "✓ 模板文件已应用"
-        continue
-      fi
-      
-      # 简单的IP替换（避免复杂嵌套）
+    # 查找所有模板文件
+    find "$conf_dir" -name "*.template" -type f | while read -r template_file; do
+      local conf_file="${template_file%.template}"
+      echo "处理模板文件: $template_file"
+      sed "s/{{SERVER_IP}}/$current_ip/g" "$template_file" > "$conf_file"
+      echo "✓ 模板文件已应用: $conf_file"
+    done
+  }
+  
+  # 配置文件IP替换
+  replace_ip_in_configs() {
+    local conf_dir="$1"
+    local current_ip=$(get_script_ip)
+    
+    echo "替换配置文件中的IP地址..."
+    
+    # 查找所有配置文件（排除模板文件）
+    find "$conf_dir" -name "*.conf" -type f ! -name "*.template" | while read -r conf_file; do
+      # 只替换包含占位符的配置文件
       if grep -q "{{SERVER_IP}}" "$conf_file" 2>/dev/null; then
         sed -i.bak "s/{{SERVER_IP}}/$current_ip/g" "$conf_file"
         echo "已替换配置文件中的占位符: $conf_file"
+        # 清理备份文件
+        [ -f "${conf_file}.bak" ] && rm "${conf_file}.bak"
       fi
-      
-      # 清理备份文件
-      [ -f "${conf_file}.bak" ] && rm "${conf_file}.bak"
     done
+  }
+  
+  # 智能IP检测和替换
+  smart_ip_replacement() {
+    local conf_dir="$1"
+    process_template_files "$conf_dir"
+    replace_ip_in_configs "$conf_dir"
   }
   
   # 执行智能IP替换
@@ -362,6 +382,38 @@ for web_root in $web_roots; do
     chmod -R 755 "$web_root" || true
   fi
 done
+
+# 检测并创建上传目录
+setup_upload_directories() {
+  local conf_dir="$1"
+  local usr="$2"
+  local group="$3"
+  local os_type="$4"
+  
+  echo "检测配置文件中的上传目录配置..."
+  
+  # 在所有配置文件中搜索上传目录配置
+  if find "$conf_dir" -name "*.conf" -type f -exec grep -l "location /uploads/" {} \; >/dev/null 2>&1; then
+    echo "检测到上传目录配置"
+    
+    # 动态获取当前用户的主目录
+    local user_home=$(eval echo ~$usr)
+    local upload_dir="$user_home/uploads"
+    
+    echo "创建上传目录: $upload_dir"
+    mkdir -p "$upload_dir"
+    if [ "$os_type" != "macos" ]; then
+      chown -R $usr:$group "$upload_dir"
+    fi
+    chmod -R 755 "$upload_dir"
+    echo "上传目录创建完成: $upload_dir"
+  else
+    echo "未检测到上传目录配置，跳过上传目录创建"
+  fi
+}
+
+# 检测并创建上传目录
+setup_upload_directories "$nginx_home/conf/conf.d" "$usr" "$group" "$OS_TYPE"
 
 # 开放服务器防火墙80端口给外界
 open_firewalld_port () {

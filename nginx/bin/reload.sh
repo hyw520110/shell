@@ -103,15 +103,34 @@ exec_docker_cmd() {
     fi
 }
 
+# 获取Docker容器名称
+get_docker_container_name() {
+    local compose_file="$BASE_DIR/docker-compose.yml"
+    if [ -f "$compose_file" ]; then
+        # 从docker-compose.yml中提取容器名称
+        local container_name=$(grep "container_name:" "$compose_file" 2>/dev/null | awk '{print $2}' | head -1)
+        if [ -n "$container_name" ]; then
+            echo "$container_name"
+            return 0
+        fi
+    fi
+    # 默认容器名称
+    echo "nginx"
+}
+
 reload_nginx() {
-    if [ -n "`docker ps -a 2>/dev/null|grep nginx|grep Up`" ];then
-        echo "检测到Docker中的Nginx容器正在运行"
+    # 获取容器名称
+    local container_name=$(get_docker_container_name)
+    
+    # 检查指定容器是否正在运行
+    if [ -n "`docker ps -a 2>/dev/null | grep $container_name | grep Up`" ]; then
+        echo "检测到Docker中的Nginx容器($container_name)正在运行"
         local isOk=""
-        isOk=$(exec_docker_cmd "配置测试" docker exec nginx nginx -t 2>/dev/null | grep ok)
+        isOk=$(exec_docker_cmd "配置测试" docker exec $container_name nginx -t 2>/dev/null | grep ok)
         if [ -n "$isOk" ]; then
             echo "$isOk"
             echo "重新加载Docker中的Nginx配置..."
-            exec_docker_cmd "重新加载" docker exec nginx nginx -s reload
+            exec_docker_cmd "重新加载" docker exec $container_name nginx -s reload
         fi
     else
         # 检查nginx命令是否存在
@@ -119,7 +138,17 @@ reload_nginx() {
             NGINX_CMD="nginx"
         else
             # 尝试在常见位置查找nginx
-            for path in "/usr/sbin/nginx" "/usr/local/nginx/sbin/nginx" "/opt/nginx/sbin/nginx"; do
+            local nginx_paths=(
+                "/usr/sbin/nginx"
+                "/usr/bin/nginx"
+                "/usr/local/bin/nginx"
+                "/usr/local/nginx/sbin/nginx"
+                "/opt/nginx/sbin/nginx"
+                "/usr/local/openresty/nginx/sbin/nginx"
+                "$HOME/nginx/sbin/nginx"
+            )
+            
+            for path in "${nginx_paths[@]}"; do
                 if [ -x "$path" ]; then
                     NGINX_CMD="$path"
                     break

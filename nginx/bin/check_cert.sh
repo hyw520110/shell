@@ -1,25 +1,143 @@
 #!/bin/bash
 
 # API域名和端口
-
 API_DOMAIN="api.pg-bo.me"
 API_PORT=443
 
-# Nginx配置文件路径
-NGINX_CONF_DIR="/etc/nginx"
-NGINX_CONF_FILE=$(find $NGINX_CONF_DIR -type f -name "*.conf" -exec grep -l "proxy_pass https://$API_DOMAIN" {} \;)
+# 解析命令行参数
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --domain)
+            API_DOMAIN="$2"
+            shift 2
+            ;;
+        --port)
+            API_PORT="$2"
+            shift 2
+            ;;
+        --nginx-conf-dir)
+            NGINX_CONF_DIR="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "用法: $0 [选项]"
+            echo "选项:"
+            echo "  --domain DOMAIN    API域名，默认为api.pg-bo.me"
+            echo "  --port PORT        API端口，默认为443"
+            echo "  --nginx-conf-dir DIR  Nginx配置目录，默认自动检测"
+            echo "  --help, -h         显示此帮助信息"
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
 
+# 自动检测Nginx配置目录
+detect_nginx_conf_dir() {
+    local possible_paths=(
+        "/etc/nginx"
+        "/usr/local/nginx/conf"
+        "/usr/local/etc/nginx"
+        "/opt/nginx/conf"
+        "$HOME/nginx/conf"
+    )
+    
+    for path in "${possible_paths[@]}"; do
+        if [ -d "$path" ] && [ -f "$path/nginx.conf" ]; then
+            echo "$path"
+            return 0
+        fi
+    done
+    
+    # 如果都没找到，返回默认路径
+    echo "/etc/nginx"
+}
+
+# Nginx配置文件路径
+if [ -z "$NGINX_CONF_DIR" ]; then
+    NGINX_CONF_DIR=$(detect_nginx_conf_dir)
+fi
+
+echo "使用Nginx配置目录: $NGINX_CONF_DIR"
+
+# 查找包含指定proxy_pass的配置文件
+NGINX_CONF_FILE=$(find "$NGINX_CONF_DIR" -type f -name "*.conf" -exec grep -l "proxy_pass https://$API_DOMAIN" {} \; 2>/dev/null | head -1)
+
+
+# 递归查找include文件中的配置
+find_included_configs() {
+    local conf_file="$1"
+    local conf_dir=$(dirname "$conf_file")
+    
+    # 查找include指令
+    grep -E "^\s*include\s+" "$conf_file" 2>/dev/null | while read -r line; do
+        # 提取文件路径
+        local included_path=$(echo "$line" | awk '{print $2}' | sed 's/;//')
+        
+        # 处理相对路径和通配符
+        if [[ "$included_path" == /* ]]; then
+            # 绝对路径
+            echo "$included_path"
+        elif [[ "$included_path" == .* ]]; then
+            # 相对于配置文件目录的路径
+            echo "$conf_dir/$included_path"
+        else
+            # 相对于nginx配置目录的路径
+            echo "$NGINX_CONF_DIR/$included_path"
+        fi
+    done
+}
+
+# 递归提取证书路径
+extract_certificate_paths() {
+    local conf_file="$1"
+    local visited_files="$2"
+    
+    # 避免循环引用
+    if echo "$visited_files" | grep -q "$conf_file"; then
+        return
+    fi
+    
+    # 更新已访问文件列表
+    visited_files="$visited_files:$conf_file"
+    
+    # 直接从当前配置文件提取
+    local cert_path=$(grep 'ssl_certificate ' "$conf_file" 2>/dev/null | awk '{print $2}' | sed 's/;//' | head -1)
+    local key_path=$(grep 'ssl_certificate_key ' "$conf_file" 2>/dev/null | awk '{print $2}' | sed 's/;//' | head -1)
+    
+    if [ -n "$cert_path" ] && [ -n "$key_path" ]; then
+        echo "cert:$cert_path"
+        echo "key:$key_path"
+        return
+    fi
+    
+    # 从include文件中查找
+    find_included_configs "$conf_file" | while read -r included_file; do
+        # 处理通配符
+        if [[ "$included_file" == *"*"* ]]; then
+            # 展开通配符
+            for f in $included_file; do
+                if [ -f "$f" ]; then
+                    extract_certificate_paths "$f" "$visited_files"
+                fi
+            done
+        elif [ -f "$included_file" ]; then
+            extract_certificate_paths "$included_file" "$visited_files"
+        fi
+    done
+}
 
 # 提取Nginx域名和证书路径
 extract_nginx_info() {
-    NGINX_DOMAIN=$(grep -A 5 "443" $NGINX_CONF_FILE |grep "server_name " | awk '{gsub(/ /, "", $2); gsub(/;/, "", $2); print $2}')
-    CERTIFICATE_PATH=$(grep 'ssl_certificate ' $NGINX_CONF_FILE | awk '{gsub(/ /, "", $2); gsub(/;/, "", $2); print $2}')
-    PRIVATE_KEY_PATH=$(grep 'ssl_certificate_key ' $NGINX_CONF_FILE | awk '{gsub(/ /, "", $2); gsub(/;/, "", $2); print $2}')
-    if [ ! -n "$CERTIFICATE_PATH" ] || [ ! -n "$PRIVATE_KEY_PATH" ]; then
-         conf_file=$(grep "include" $NGINX_CONF_FILE|awk '{gsub(/ /, "", $2); gsub(/;/, "", $2); print $2}')
-         CERTIFICATE_PATH=$(grep 'ssl_certificate ' ${NGINX_CONF_DIR}/$conf_file | awk '{gsub(/ /, "", $2); gsub(/;/, "", $2); print $2}')
-         PRIVATE_KEY_PATH=$(grep 'ssl_certificate_key ' ${NGINX_CONF_DIR}/$conf_file | awk '{gsub(/ /, "", $2); gsub(/;/, "", $2); print $2}')
-    fi
+    NGINX_DOMAIN=$(grep -A 5 "443" $NGINX_CONF_FILE | grep "server_name " | awk '{gsub(/ /, "", $2); gsub(/;/, "", $2); print $2}')
+    
+    # 递归查找证书路径
+    local cert_info=$(extract_certificate_paths "$NGINX_CONF_FILE" "")
+    CERTIFICATE_PATH=$(echo "$cert_info" | grep "^cert:" | cut -d: -f2 | head -1)
+    PRIVATE_KEY_PATH=$(echo "$cert_info" | grep "^key:" | cut -d: -f2 | head -1)
+    
     echo "Nginx Domain: $NGINX_DOMAIN"
     echo "Certificate Path: $CERTIFICATE_PATH"
     echo "Private Key Path: $PRIVATE_KEY_PATH"
@@ -111,13 +229,46 @@ renew_certificate() {
     sudo systemctl restart nginx
 }
 
+# 检查所需工具
+check_required_tools() {
+    local missing_tools=()
+    
+    if ! command -v openssl > /dev/null 2>&1; then
+        missing_tools+=("openssl")
+    fi
+    
+    if ! command -v certbot > /dev/null 2>&1; then
+        missing_tools+=("certbot")
+    fi
+    
+    if ! command -v systemctl > /dev/null 2>&1; then
+        missing_tools+=("systemctl")
+    fi
+    
+    if [ ${#missing_tools[@]} -gt 0 ]; then
+        echo "错误: 缺少以下工具: ${missing_tools[*]}"
+        echo "请安装这些工具后再运行此脚本"
+        exit 1
+    fi
+}
+
 # 主逻辑
+check_required_tools
+
 if [ -z "$NGINX_CONF_FILE" ]; then
     echo "未找到与API域名: $API_DOMAIN 对应的Nginx配置文件"
     exit 1
 fi
 
 extract_nginx_info $NGINX_CONF_FILE
+
+# 检查证书文件是否存在
+if [ ! -f "$CERTIFICATE_PATH" ] || [ ! -f "$PRIVATE_KEY_PATH" ]; then
+    echo "错误: 证书文件或私钥文件不存在"
+    echo "证书文件: $CERTIFICATE_PATH"
+    echo "私钥文件: $PRIVATE_KEY_PATH"
+    exit 1
+fi
 
 # 获取对方API证书的TLS版本和加密算法
 get_api_certificate_info $API_DOMAIN $API_PORT

@@ -1,7 +1,7 @@
 #!/bin/bash
 # nginx智能启动脚本 - 支持Docker模式和主机模式
 
-#CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# 获取脚本所在目录
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 BASE_DIR=${CURRENT_DIR%/*}
 cd $BASE_DIR
@@ -50,13 +50,16 @@ check_docker_available() {
 # 查找nginx执行文件
 find_nginx_executable() {
     local nginx_paths=(
+        "/usr/sbin/nginx"
         "/usr/bin/nginx"
         "/usr/local/bin/nginx"
         "/usr/local/nginx/sbin/nginx"
         "/opt/nginx/sbin/nginx"
+        "/usr/local/openresty/nginx/sbin/nginx"
         "$HOME/nginx/sbin/nginx"
         "/opt/local/nginx/sbin/nginx"
         "/usr/local/opt/nginx/bin/nginx"  # macOS Homebrew
+        "/snap/bin/nginx"  # Snap package
     )
     
     for path in "${nginx_paths[@]}"; do
@@ -163,8 +166,25 @@ start_docker_nginx() {
     
     # 检查Docker Compose
     if ! command -v docker-compose > /dev/null 2>&1; then
-        echo -e "${YELLOW}Docker Compose未安装，尝试使用主机模式...${NC}"
-        return 1
+        # 检查是否使用Docker插件模式 (Docker Compose V2)
+        if ! docker compose version > /dev/null 2>&1; then
+            echo -e "${YELLOW}Docker Compose未安装，尝试使用主机模式...${NC}"
+            return 1
+        else
+            # 使用Docker Compose V2
+            echo -e "${GREEN}检测到Docker Compose V2${NC}"
+            local docker_compose_cmd="docker compose"
+        fi
+    else
+        # 使用传统Docker Compose
+        local docker_compose_cmd="docker-compose"
+        # 检查版本兼容性
+        local compose_version=$($docker_compose_cmd version --short 2>/dev/null)
+        if [[ $compose_version =~ ^1\. ]]; then
+            if [[ ${compose_version#1.} -lt 20 ]]; then
+                echo -e "${YELLOW}Docker Compose版本过低 (${compose_version})，建议升级到1.20以上${NC}"
+            fi
+        fi
     fi
     
     # 处理Docker Compose配置
@@ -174,23 +194,23 @@ start_docker_nginx() {
     local container_name=$(grep "container_name:" "$compose_file" 2>/dev/null | awk '{print $2}' || echo "nginx")
     
     # 检查容器状态
-    if docker-compose ps | grep -v NAME | grep "$container_name" | grep -Ev "exited|restarting" > /dev/null 2>&1; then
+    if $docker_compose_cmd ps | grep -v NAME | grep "$container_name" | grep -Ev "exited|restarting" > /dev/null 2>&1; then
         echo -e "${GREEN}Docker容器已在运行${NC}"
-        docker-compose ps
+        $docker_compose_cmd ps
         return 0
     fi
     
     echo "启动Docker容器..."
-    docker-compose up -d
+    $docker_compose_cmd up -d
     sleep 5
     
-    if docker-compose ps | grep -v NAME | grep "$container_name" | grep -Ev "exited|restarting" > /dev/null 2>&1; then
+    if $docker_compose_cmd ps | grep -v NAME | grep "$container_name" | grep -Ev "exited|restarting" > /dev/null 2>&1; then
         echo -e "${GREEN}Docker模式启动成功！${NC}"
-        docker-compose ps
+        $docker_compose_cmd ps
         return 0
     else
         echo -e "${RED}Docker模式启动失败！${NC}"
-        docker-compose logs --tail=50
+        $docker_compose_cmd logs --tail=50
         return 1
     fi
 }
@@ -226,23 +246,30 @@ handle_ip_replace() {
     
     if [ -d "$BASE_DIR/conf/conf.d" ]; then
         if [ -n "$ip" ]; then
-            local exists=$(find "$BASE_DIR/conf/conf.d/" -type f -exec grep -l "$ip" {} \; 2>/dev/null || echo "")
-            if [ -z "$exists" ]; then
-                echo -e "${GREEN}当前服务器IP: $ip${NC}"
-                read -p "是否替换配置文件中的IP?(y/n，默认n)：" replace
+            # 检查是否已经存在当前IP
+            local exists=$(find "$BASE_DIR/conf/conf.d/" -type f -name "*.conf" -exec grep -l "{{SERVER_IP}}" {} \; 2>/dev/null || echo "")
+            if [ -n "$exists" ]; then
+                echo -e "${GREEN}检测到配置文件中有IP占位符，当前服务器IP: $ip${NC}"
+                read -p "是否替换配置文件中的IP占位符?(y/n，默认n)：" replace
                 if [ "y" = "$replace" ]; then
-                    echo "开始替换配置文件中的IP..."
-                    find "$BASE_DIR/conf/conf.d/" -type f \! -name "*.bak" \! -name "*.txt" \! -name "ip-black.conf" | while IFS= read -r f; do
+                    echo "开始替换配置文件中的IP占位符..."
+                    find "$BASE_DIR/conf/conf.d/" -type f -name "*.conf" \! -name "*.bak" \! -name "ip-black.conf" | while IFS= read -r f; do
                         if [ -f "$f" ]; then
-                            if [[ "$OSTYPE" == "darwin"* ]]; then
-                                sed -i '' "s/[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}/$ip/g" "$f"
-                            else
-                                sed -i "s/[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}/$ip/g" "$f"
+                            # 只替换包含占位符的文件
+                            if grep -q "{{SERVER_IP}}" "$f" 2>/dev/null; then
+                                if [[ "$OSTYPE" == "darwin"* ]]; then
+                                    sed -i '' "s/{{SERVER_IP}}/$ip/g" "$f"
+                                else
+                                    sed -i "s/{{SERVER_IP}}/$ip/g" "$f"
+                                fi
+                                echo "已替换: $f"
                             fi
                         fi
                     done
-                    echo -e "${GREEN}IP替换完成${NC}"
+                    echo -e "${GREEN}IP占位符替换完成${NC}"
                 fi
+            else
+                echo -e "${YELLOW}未找到包含IP占位符的配置文件${NC}"
             fi
         fi
     else

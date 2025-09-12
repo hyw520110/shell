@@ -1,12 +1,63 @@
 #!/bin/bash
-# 检测nginx日志，自动屏蔽ip黑名单，默认不启用(推荐Nginx+Lua+Redis的动态黑名单方案或结合 fail2ban 实现强大的防御)：
+# 检测nginx日志，自动屏蔽ip黑名单
+# 推荐使用Nginx+Lua+Redis的动态黑名单方案或结合 fail2ban 实现强大的防御
+# 功能：
 # 1. 屏蔽php请求ip（出现40x/50x状态码）
 # 2. 单位时间内过于频繁的请求ip
 
+# ================= 使用方法 =================
+# 默认情况下功能是禁用的，可以通过以下方式启用：
+# 1. 设置环境变量：export ENABLE_BLACKLIST=1
+# 2. 命令行参数：./ngx-black-ip.sh --enable
+# 3. 在crontab中启用定时任务
+
 # ================= 参数默认值 =================
-interval="${1:-5}"      # 定时检测间隔（分钟），默认5
-last_minutes="${2:-5}"  # 检测的时间窗口（分钟），默认5
-count="${3:-600}"       # 单位时间内最大允许请求次数，默认600
+# 从命令行参数获取或使用默认值
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --enable)
+            ENABLE_BLACKLIST=1
+            shift
+            ;;
+        --disable)
+            ENABLE_BLACKLIST=0
+            shift
+            ;;
+        --interval)
+            interval="$2"
+            shift 2
+            ;;
+        --window)
+            last_minutes="$2"
+            shift 2
+            ;;
+        --count)
+            count="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "用法: $0 [选项]"
+            echo "选项:"
+            echo "  --enable          启用黑名单检测功能"
+            echo "  --disable         禁用黑名单检测功能"
+            echo "  --interval MINUTES 定时检测间隔（分钟），默认5"
+            echo "  --window MINUTES  检测的时间窗口（分钟），默认5"
+            echo "  --count NUMBER    单位时间内最大允许请求次数，默认600"
+            echo "  --help, -h        显示此帮助信息"
+            echo ""
+            echo "默认情况下功能是禁用的，可以通过设置环境变量ENABLE_BLACKLIST=1启用"
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# 设置默认值
+interval="${interval:-5}"      # 定时检测间隔（分钟），默认5
+last_minutes="${last_minutes:-5}"  # 检测的时间窗口（分钟），默认5
+count="${count:-600}"       # 单位时间内最大允许请求次数，默认600
 
 # 获取脚本所在目录
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,12 +77,17 @@ ENABLE_BLACKLIST=${ENABLE_BLACKLIST:-0}
 remove_cron_job() {
   echo "正在清理可能存在的定时任务..."
   # 使用更精确的匹配删除当前脚本的定时任务
-  (crontab -l 2>/dev/null | grep -v "$(basename "$f")") | crontab - 2>/dev/null || true
-  sudo sh -c '(crontab -l 2>/dev/null | grep -v "$(basename "$f")") | crontab -' 2>/dev/null || true
+  local script_name=$(basename "$f")
+  (crontab -l 2>/dev/null | grep -v "$script_name") | crontab - 2>/dev/null || true
+  sudo sh -c '(crontab -l 2>/dev/null | grep -v "$script_name") | crontab -' 2>/dev/null || true
 }
 
-if [[ "$ENABLE_BLACKLIST" != "1" || "$1" == "off" || "$1" == "--disable" ]]; then
+# 检查是否启用功能
+if [[ "$ENABLE_BLACKLIST" != "1" ]]; then
   echo "黑名单检测功能已禁用。"
+  echo "可以通过以下方式启用："
+  echo "1. 设置环境变量：export ENABLE_BLACKLIST=1"
+  echo "2. 命令行参数：$0 --enable"
   remove_cron_job
   exit 0
 fi
@@ -61,51 +117,72 @@ fi
 
 deny_count=0
 f=$CURRENT_DIR/${0##*/}
-cron_job="*/$interval * * * * bash $f --interval $interval --window $last_minutes --count $count"
+# 使用唯一标识符来避免重复添加定时任务
+cron_job_id="#nginx-blacklist-$(basename "$f")"
+cron_job="*/$interval * * * * bash $f --enable --interval $interval --window $last_minutes --count $count $cron_job_id"
 
-user_crontab=$(crontab -l 2>/dev/null | grep -v "$f" || true)
-root_crontab=$(sudo crontab -l 2>/dev/null | grep -v "$f" || true)
+# 检查是否已存在定时任务
+user_crontab=$(crontab -l 2>/dev/null | grep -v "$cron_job_id" || true)
+root_crontab=$(sudo crontab -l 2>/dev/null | grep -v "$cron_job_id" || true)
 
 # 添加定时任务
 if [ "$(id -u)" -eq 0 ] || [ "$USER" == "root" ]; then
-  if [[ -z "$root_crontab" || ! "$root_crontab" == *"$f"* ]]; then
-    echo "$cron_job" | sudo tee >(crontab -) > /dev/null
-    echo "定时任务已添加到root用户的crontab。"
-  else
+  if crontab -l 2>/dev/null | grep -q "$cron_job_id"; then
     echo "定时任务已存在于root用户的crontab中。"
+  else
+    # 添加新的定时任务
+    (echo "$user_crontab"; echo "$cron_job") | sudo crontab -
+    echo "定时任务已添加到root用户的crontab。"
   fi
 else
-  if [[ -z "$user_crontab" || ! "$user_crontab" == *"$f"* ]]; then
+  if crontab -l 2>/dev/null | grep -q "$cron_job_id"; then
+    echo "定时任务已存在于当前用户的crontab中。"
+  else
+    # 添加新的定时任务
     (echo "$user_crontab"; echo "$cron_job") | crontab -
     echo "定时任务已添加到当前用户的crontab。"
-  else
-    echo "定时任务已存在于当前用户的crontab中。"
   fi
 fi
 
 [ ! -f "$ngx_log" ] && exit 0
 [ ! -f "$black_file" ] && touch "$black_file"
 
+# 读取自定义配置文件（如果存在）
+config_file="$CONF_DIR/blacklist.conf"
+if [ -f "$config_file" ]; then
+  echo "加载自定义配置文件: $config_file"
+  source "$config_file"
+fi
+
+# 设置默认检测规则（如果配置文件中未定义）
+block_php_requests=${block_php_requests:-1}
+detect_frequent_requests=${detect_frequent_requests:-1}
+blocked_status_codes=${blocked_status_codes:-"40[0-9]|50[1-9]"}
+
 # 1. 屏蔽所有php请求ip（出现40x/50x状态码，且不是本机IP）
-for h in $(grep php "$ngx_log" | grep -v "$ip" | grep -E "40[0-9]|50[1-9]" | awk '{print $1}' | sort -u); do
-  defineIp "$h"
-done
+if [ "$block_php_requests" = "1" ]; then
+  for h in $(grep php "$ngx_log" | grep -v "$ip" | grep -E "$blocked_status_codes" | awk '{print $1}' | sort -u); do
+    defineIp "$h"
+  done
+fi
 
 # 2. 统计单位时间内请求次数过多的IP并屏蔽
-start_time=$(date -d "${last_minutes} minutes ago" +"%d/%b/%Y:%H:%M:%S")
-end_time=$(date +"%d/%b/%Y:%H:%M:%S")
+if [ "$detect_frequent_requests" = "1" ]; then
+  start_time=$(date -d "${last_minutes} minutes ago" +"%d/%b/%Y:%H:%M:%S")
+  end_time=$(date +"%d/%b/%Y:%H:%M:%S")
 
-ips=$(awk -v st="$start_time" -v et="$end_time" -v ip="$ip" '
-    substr($4,2) >= st && substr($4,2) <= et {
-        if ($1 != ip) count[$1]++
-    }
-    END {
-        for (i in count) if (count[i] > ENVIRON["count"]) print i
-    }' "$ngx_log")
+  ips=$(awk -v st="$start_time" -v et="$end_time" -v ip="$ip" '
+      substr($4,2) >= st && substr($4,2) <= et {
+          if ($1 != ip) count[$1]++
+      }
+      END {
+          for (i in count) if (count[i] > ENVIRON["count"]) print i
+      }' "$ngx_log")
 
-for ip_to_block in $ips; do
-  [ -z "$(grep "$ip_to_block" "$black_file")" ] && defineIp "$ip_to_block"
-done
+  for ip_to_block in $ips; do
+    [ -z "$(grep "$ip_to_block" "$black_file")" ] && defineIp "$ip_to_block"
+  done
+fi
 
 # 重载 Nginx
 [ $deny_count -gt 0 ] && echo "`date "+%Y-%m-%d %H:%M:%S"` deny count: $deny_count" >> "$log_file" && nginx -c "$CONF_FILE" -s reload
