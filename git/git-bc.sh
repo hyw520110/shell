@@ -1,12 +1,18 @@
 #!/bin/bash
 
-# =============================================================================
-# Git 分支差异对比工具
+# Git 分支差异对比及分支合并工具
 # 用于比较两个 Git 分支之间的文件差异，并提供交互式文件对比功能
-# =============================================================================
+
+# 初始化变量
+current_branch=""
+compare_branch=""
+local_branch=""
+git_dir=""
+analyze_workload=false
+# 存储用户自定义的排除模式
+custom_exclude_patterns=()
 
 # 获取需要对比的文件列表（排除构建目录、依赖目录和其他不需要对比的文件）
-# 使用数组来存储排除模式，提高可维护性
 # 默认排除项目相关的目录和文件
 exclude_patterns=(
     # 构建输出目录
@@ -49,7 +55,7 @@ show_help() {
     echo "  -c, --current BRANCH          指定当前分支（默认为当前检出的分支）"
     echo "  -d, --dir DIRECTORY           指定 Git 目录（默认为当前目录）"
     echo "  -l, --local-branch BRANCH     指定要对比的本地分支（替代远程分支）"
-    echo "  -e, --exclude PATTERN         添加额外的排除模式（可多次使用）"
+    echo "  -e, --exclude PATTERN         添加额外的排除模式（可多次使用,支持正则表达式，如 '^config/'）"
     echo "  -m, --merge-workload          对比评估分支合并的工作量"
     echo ""
     echo "示例:"
@@ -61,6 +67,9 @@ show_help() {
     echo "  $0 -e \"^config/\" -e \"\.md$\"          # 添加自定义排除模式"
 }
 
+safe_escape() {
+    printf "%q" "$1"
+}
 # 处理合并冲突的函数
 handle_merge_conflict() {
     local target_branch=$1
@@ -101,42 +110,71 @@ handle_merge_conflict() {
 execute_merge() {
     local target_branch=$1
     local source_branch=$2
-    local original_branch=$(git rev-parse --abbrev-ref HEAD)
-
+    local original_branch
+    original_branch=$(git rev-parse --abbrev-ref HEAD)
+	if [ "$target_branch" = "$source_branch" ]; then
+	  echo "❌ 错误: 目标分支和源分支相同 ($target_branch)"
+	  return 1
+	fi
+	if [[ "$target_branch" == origin/* ]]; then
+	    local local_name="${target_branch#origin/}"
+	    if ! git branch -q | grep -q "^$local_name$"; then
+	        git checkout -b "$local_name" --track "$target_branch"
+	    fi
+	    target_branch="$local_name"
+	fi
+	
+    # 如果目标分支不是当前分支，则需要最终切换回来
+    local needs_checkout_back=false
     if [ "$original_branch" != "$target_branch" ]; then
+        needs_checkout_back=true
+    fi
+
+    # 切换到目标分支
+    if [ "$needs_checkout_back" = true ]; then
         echo "正在切换到分支 '$target_branch'..."
+        echo "即将执行: git checkout "$target_branch""
         if ! git checkout "$target_branch"; then
             echo "❌ 切换到分支 '$target_branch' 失败。"
-            if git status --porcelain | grep -q "^U"; then
-                echo "检测到您当前所在的分支 ($original_branch) 存在未解决的合并冲突。"
-                handle_merge_conflict "$original_branch" "unknown"
-            fi
-            return
+            # 切换失败，我们仍在 original_branch，所以无需做任何事
+            return 1
         fi
     fi
 
+    # 执行合并
     echo "正在将分支 '$source_branch' 合并到 '$target_branch'..."
+    echo "即将执行: git merge "$source_branch""
     if ! git merge "$source_branch"; then
+        # 合并失败
         handle_merge_conflict "$target_branch" "$source_branch"
+        echo "合并出现冲突。正在中止合并操作..."
+        echo "即将执行: git merge --abort"
+        if ! git merge --abort; then
+            echo "❌ 警告: 'git merge --abort' 失败。"
+            echo "仓库可能处于不稳定状态。请手动解决。"
+            # 发生严重错误，不要尝试自动切换分支
+            needs_checkout_back=false
+        else
+            echo "已自动中止合并。"
+        fi
     else
+        # 合并成功
         echo "✅ 自动合并成功！"
+    fi
+
+    # 如果需要，切换回原始分支
+    if [ "$needs_checkout_back" = true ]; then
+        echo "操作完成，正在切换回原始分支 '$original_branch'..."
+        echo "即将执行: git checkout "$original_branch""
+        if ! git checkout "$original_branch"; then
+            echo "❌ 紧急警告: 无法自动切换回原始分支 '$original_branch'。" >&2
+            echo "仓库可能处于中间状态。请手动执行 'git checkout $original_branch' 来恢复。" >&2
+        fi
     fi
 }
 
-# =============================================================================
-# 初始化变量
-# =============================================================================
-current_branch=""
-compare_branch=""
-local_branch=""
-git_dir=""
-analyze_workload=false
-# 存储用户自定义的排除模式
-custom_exclude_patterns=()
 
-# =============================================================================
 # 解析命令行参数
-# =============================================================================
 while [[ $# -gt 0 ]]; do
     case $1 in
         -h|--help)
@@ -211,7 +249,13 @@ validate_git_dir() {
     fi
     
     # 规范化路径
-    if ! normalized_dir=$(realpath "$dir" 2>/dev/null) || [ -z "$normalized_dir" ]; then
+    if command -v realpath >/dev/null 2>&1; then
+        normalized_dir=$(realpath "$dir")
+    else
+        # macOS 兼容方案
+        normalized_dir=$(cd "$dir" && pwd -P)
+    fi
+    if [ -z "$normalized_dir" ]; then
         echo "❌ 错误: 无法解析目录路径 '$dir'"
         return 1
     fi
@@ -380,7 +424,25 @@ if [[ "$compare_branch" == origin/* ]]; then
         exit 1
     fi
 fi
+# 新增函数：安全格式化时间戳（兼容Linux/macOS）
+format_timestamp() {
+    local ts=$1
+    if [ "$ts" = "0" ]; then
+        echo "未知"
+        return
+    fi
 
+    local formatted_date
+    # 尝试Linux格式化
+    formatted_date=$(date -d "@$ts" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
+    
+    if [ -n "$formatted_date" ]; then
+        echo "$formatted_date"
+    else
+        # macOS fallback
+        date -j -f "%s" "$ts" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "未知"
+    fi
+}
 # 分析合并工作量的函数
 analyze_merge_workload() {
     local branch1="$1"
@@ -388,7 +450,6 @@ analyze_merge_workload() {
     
     echo ""
     echo "📊 分析合并工作量..."
-    echo "======================================="
     
     # 获取分支信息
     echo "分支信息:"
@@ -400,12 +461,12 @@ analyze_merge_workload() {
     local branch2_time=$(git log -1 --format="%ct" "$branch2" 2>/dev/null || echo "0")
     
     if [ "$branch1_time" != "0" ]; then
-        local branch1_date=$(date -d "@$branch1_time" "+%Y-%m-%d %H:%M:%S")
+        local branch1_date=$(format_timestamp "$branch1_time")
         echo "  $branch1 最新提交: $branch1_date"
     fi
     
     if [ "$branch2_time" != "0" ]; then
-        local branch2_date=$(date -d "@$branch2_time" "+%Y-%m-%d %H:%M:%S")
+        local branch2_date=$(format_timestamp "$branch2_time")
         echo "  $branch2 最新提交: $branch2_date"
     fi
     
@@ -476,20 +537,34 @@ analyze_merge_workload() {
     local modified_same_files=()
     
     if [ ${#filtered_files[@]} -gt 0 ]; then
-        for file in "${filtered_files[@]}"; do
-            # 检查文件是否在两个分支中都被修改过
-            local file_in_1=$(git log --oneline "$merge_base".."$branch1" -- "$file" 2>/dev/null | wc -l)
-            local file_in_2=$(git log --oneline "$merge_base".."$branch2" -- "$file" 2>/dev/null | wc -l)
-            
-            if [ "$file_in_1" -gt 0 ] && [ "$file_in_2" -gt 0 ]; then
-                modified_same_files+=("$file")
-                conflict_files=$((conflict_files + 1))
-            fi
-        done
+        #for file in "${filtered_files[@]}"; do
+        #    local file_in_1=$(git log --oneline "$merge_base".."$branch1" -- "$file" 2>/dev/null | wc -l)
+        #    local file_in_2=$(git log --oneline "$merge_base".."$branch2" -- "$file" 2>/dev/null | wc -l)
+        #if [ "$file_in_1" -gt 0 ] && [ "$file_in_2" -gt 0 ]; then
+        #        modified_same_files+=("$file")
+        #        conflict_files=$((conflict_files + 1))
+        #    fi
+        #done
+        # 一次性获取所有文件的修改状态
+		local diff_status=$(git diff --name-status "$merge_base" "$branch1" "$branch2" 2>/dev/null)
+		while IFS= read -r line; do
+		  local status=$(echo "$line" | awk '{print $1}')
+		  local file=$(echo "$line" | awk '{print $2}')
+		  if [ "$status" = "M" ] || [ "$status" = "A" ] || [ "$status" = "D" ]; then
+		    # 检查是否在两个分支中都有修改
+		    if [[ "$diff_status" =~ "[$branch1]" && "$diff_status" =~ "[$branch2]" ]]; then
+		      modified_same_files+=("$file")
+		       conflict_files=$((conflict_files + 1))
+		     fi
+		   fi
+		 done <<< "$diff_status"    
     fi
-    
-    echo "  可能冲突的文件: $conflict_files 个"
-    
+	# 该命令较新(Git 2.39+)，兼容性需考虑    
+    if git merge-tree --write-tree "$branch1" "$branch2" >/dev/null 2>&1; then
+    	echo "无冲突"
+	else
+	    echo "  可能冲突的文件: $conflict_files 个"
+	fi
     # 计算合并工作量评分
     echo ""
     echo "合并工作量评估:"
@@ -500,10 +575,13 @@ analyze_merge_workload() {
     # - 潜在冲突：conflict_files * 5
     # - 时间差异：如果分支分离时间过长，增加复杂度
     
-    local base_score=${#filtered_files[@]}
-    local commit_diff_score=$(( (branch1_commits > branch2_commits ? branch1_commits - branch2_commits : branch2_commits - branch1_commits) * 2 ))
-    local conflict_score=$((conflict_files * 5))
-    
+    #local base_score=${#filtered_files[@]}
+    # local commit_diff_score=$(( (branch1_commits > branch2_commits ? branch1_commits - branch2_commits : branch2_commits - branch1_commits) * 2 ))
+    # local conflict_score=$((conflict_files * 5))
+	local base_score=$(( ${#filtered_files[@]} * 1 ))
+	local commit_diff_score=$(( (branch1_commits > branch2_commits ? branch1_commits - branch2_commits : branch2_commits - branch1_commits) * 2 ))
+	local conflict_score=$(( conflict_files * 2 ))  # 降低冲突权重
+
     # 时间差异评分
     local time_diff_score=0
     if [ "$branch1_time" != "0" ] && [ "$branch2_time" != "0" ] && [ -n "$merge_base" ]; then
@@ -543,21 +621,20 @@ analyze_merge_workload() {
     # 双向合并工作量对比
     echo ""
     echo "双向合并工作量对比:"
-    echo "======================================="
     
-    # 方案1：branch1 合并 branch2 (如 dev 合并 develop)
+    # 方案1：将 branch2 合并到 branch1 
     local scenario1_conflicts=$conflict_files
     local scenario1_new_commits=$branch2_commits
-    echo "方案1: $branch1 合并 $branch2"
+    echo "方案1: 将 $branch2 合并到 $branch1"
     echo "  需要处理的新提交: $scenario1_new_commits 个"
     echo "  可能的冲突文件: $scenario1_conflicts 个"
     echo "  工作量评估: $((scenario1_new_commits + scenario1_conflicts * 3)) 分"
     
-    # 方案2：branch2 合并 branch1 (如 develop 合并 dev)  
+    # 方案2：将 branch1 合并到 branch2   
     local scenario2_conflicts=$conflict_files
     local scenario2_new_commits=$branch1_commits
     echo ""
-    echo "方案2: $branch2 合并 $branch1"
+    echo "方案2: 将 $branch1 合并到 $branch2"
     echo "  需要处理的新提交: $scenario2_new_commits 个"
     echo "  可能的冲突文件: $scenario2_conflicts 个"
     echo "  工作量评估: $((scenario2_new_commits + scenario2_conflicts * 3)) 分"
@@ -717,98 +794,49 @@ process_file() {
     local index=$2
     local total=$3
     
-    # 检查文件是否存在
-    if [ -f "$file" ] || git ls-files --error-unmatch "$file" &>/dev/null;
-    then
+    # 检查文件是否存在于 Git 中
+    if git ls-files --error-unmatch "$file" &>/dev/null; then
         echo "[$index/$total] 正在对比: $file"
         echo "  左边: $current_branch 分支"
         echo "  右边: $compare_branch 分支"
-        
-        # 获取两个分支中文件的修改时间
-        left_file_time=$(git log -1 --format="%ct" "$current_branch" -- "$file" 2>/dev/null || echo "0")
-        right_file_time=$(git log -1 --format="%ct" "$compare_branch" -- "$file" 2>/dev/null || echo "0")
-        
-        # 显示文件修改时间
-        if [ "$left_file_time" != "0" ]; then
-            left_time_str=$(date -d "@$left_file_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || date -r "$left_file_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "Unknown")
-            echo "  左边文件修改时间: $left_time_str"
-        else
-            echo "  左边文件修改时间: 未知"
-        fi
-        
-        if [ "$right_file_time" != "0" ]; then
-            right_time_str=$(date -d "@$right_file_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || date -r "$right_file_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "Unknown")
-            echo "  右边文件修改时间: $right_time_str"
-        else
-            echo "  右边文件修改时间: 未知"
-        fi
-        
-        # 调用 git difftool 查看差异
-        git difftool "$current_branch" "$compare_branch" -- "$file"
-        
-        # 根据文件修改时间自动判断是否需要同步
-        if [ "$left_file_time" != "0" ] && [ "$right_file_time" != "0" ]; then
-            # 检查是否有时间差异
-            if [ "$left_file_time" -gt "$right_file_time" ]; then
-                echo ""
-                echo "检测到左边($current_branch)的文件更新"
-                read -p "是否同步更新? [Y/n]: " sync_choice
-                sync_choice=${sync_choice:-Y}
-                
-                if [[ "$sync_choice" =~ ^[Yy]$ ]]; then
-                    sync_and_commit "$current_branch" "$compare_branch" "$file" "同步 $file 文件从 $current_branch 分支"
-                else
-                    echo "跳过同步"
-                fi
-            elif [ "$right_file_time" -gt "$left_file_time" ]; then
-                echo ""
-                echo "检测到右边($compare_branch)的文件更新"
-                read -p "是否同步更新? [Y/n]: " sync_choice
-                sync_choice=${sync_choice:-Y}
-                
-                if [[ "$sync_choice" =~ ^[Yy]$ ]]; then
-                    sync_and_commit "$compare_branch" "$current_branch" "$file" "同步 $file 文件从 $compare_branch 分支"
-                else
-                    echo "跳过同步"
-                fi
+        # 在 difftool 之前记录文件的 Git hash
+		original_hash=$(git hash-object "$file" 2>/dev/null || echo "")
+		
+		# 执行 difftool
+		# git difftool --no-prompt "$current_branch" "$compare_branch" -- "$file"
+		# 文件路径未转义，可能导致命令注入 全局使用safe_escape处理文件路径
+		git difftool --no-prompt "$current_branch" "$compare_branch" -- "$(safe_escape "$file")"
+		
+		# 对比当前工作区文件 hash
+		new_hash=$(git hash-object "$file" 2>/dev/null || echo "")
+		
+        # 检查文件是否在对比工具中被修改过
+        if [ "$original_hash" != "$new_hash" ]; then
+            echo ""
+            echo "✅ 检测到文件内容已修改"
+            
+            # 默认将当前分支的修改同步到对比分支
+            # 这是因为 difftool 修改的总是工作目录中的文件，即当前分支的文件
+            echo "正在将 '$current_branch' 分支的更新自动同步到 '$compare_branch' 分支..."
+
+            # 步骤 A: 将工作目录中的更改提交到当前分支
+            echo "  - 步骤 1/2: 提交更改到当前分支 ($current_branch)..."
+            local commit_msg_current="[自动同步] 更新文件 $file"
+            
+            if git add "$file" && git commit -m "$commit_msg_current"; then
+                echo "    ✅ 已提交更改到 '$current_branch'"
             else
-                # 文件时间相同，检查是否有实际的内容差异
-                if ! git diff --quiet "$current_branch" "$compare_branch" -- "$file" 2>/dev/null;
-                then
-                    echo ""
-                    echo "检测到文件内容有差异"
-                    read -p "是否同步更新? [Y/n]: " sync_choice
-                    sync_choice=${sync_choice:-Y}
-                    
-                    if [[ "$sync_choice" =~ ^[Yy]$ ]]; then
-                        # 询问用户希望同步到哪个分支
-                        echo "文件内容有差异但修改时间相同，请选择同步方向:"
-                        echo "  1) 将左边($current_branch)的更改同步到右边($compare_branch)"
-                        echo "  2) 将右边($compare_branch)的更改同步到左边($current_branch)"
-                        read -p "请选择 [1-2]: " direction_choice
-                        
-                        case $direction_choice in
-                            1)
-                                sync_and_commit "$current_branch" "$compare_branch" "$file" "同步 $file 文件从 $current_branch 分支"
-                                ;; 
-                            2)
-                                sync_and_commit "$compare_branch" "$current_branch" "$file" "同步 $file 文件从 $compare_branch 分支"
-                                ;; 
-                            *)
-                                echo "跳过同步"
-                                ;; 
-                        esac
-                    else
-                        echo "跳过同步"
-                    fi
-                else
-                    echo ""
-                    echo "两边文件内容相同，无需同步"
-                fi
+                echo "    ⚠️  警告: 无法自动提交更改到 '$current_branch'。同步中止。"
+                # 如果提交失败（例如，因为 pre-commit hook），则停止后续操作
+                return
             fi
+
+            # 步骤 B: 将当前分支的这个文件同步到对比分支
+            echo "  - 步骤 2/2: 将文件从 '$current_branch' 同步到 '$compare_branch'..."
+            sync_and_commit "$current_branch" "$compare_branch" "$file" "同步 $file 文件从 $current_branch 分支"
         else
             echo ""
-            echo "无法确定文件修改时间，跳过自动同步检查"
+            echo "ℹ️  文件在对比工具中未检测到修改，无需同步。"
         fi
     else
         echo "[$index/$total] 文件已删除或不存在: $file"
@@ -876,7 +904,9 @@ else
     found=false
     for i in "${!filtered_files[@]}"; do
         file_index=$((i+1))
-        if [[ "$choice" == "${filtered_files[i]}" || "$choice" == "$file_index" ]]; then
+        # if [[ "$choice" == "${filtered_files[i]}" || "$choice" == "$file_index" ]]; then
+        # 支持模糊匹配（前缀匹配）
+        if [ "$choice" == "$file_index" ] || [[ "${filtered_files[i]}" == "$choice"* ]]; then
             process_file "${filtered_files[i]}" "$file_index" "$total_files"
             found=true
             break
