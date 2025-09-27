@@ -1,0 +1,225 @@
+#!/bin/bash
+
+# 检查 Bash 版本（关联数组需要 Bash 4+
+if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+  echo "错误: 此脚本需要 Bash 4.0 或更高版本。"
+  echo "macOS 默认 Bash 是 3.2。请使用 Homebrew 安装新版: brew install bash"
+  echo "然后用新 Bash 运行: /usr/local/bin/bash $0"
+  exit 1
+fi
+
+set -euo pipefail # 启用严格模式
+
+# --- 全局变量和常量 ---
+SSH_CONFIG_FILE="$HOME/.ssh/config"
+KNOWN_HOSTS_FILE="$HOME/.ssh/known_hosts"
+
+# 颜色定义
+C_RESET='\033[0m'
+C_RED='\033[0;31m'
+C_GREEN='\033[0;32m'
+C_YELLOW='\033[0;33m'
+C_BLUE='\033[0;34m'
+C_CYAN='\033[0;36m'
+
+# --- 基础函数 ---
+
+msg() { echo -e "${C_BLUE}==>${C_RESET} $1"; }
+success() { echo -e "${C_GREEN} ✓ ${C_RESET} $1"; }
+warn() { echo -e "${C_YELLOW} ! ${C_RESET} $1"; }
+error() { echo -e "${C_RED} ✗ ${C_RESET} $1" >&2; }
+
+# 确保核心配置文件存在
+ensure_files_exist() {
+    [ ! -f "$SSH_CONFIG_FILE" ] && touch "$SSH_CONFIG_FILE"
+    [ ! -f "$KNOWN_HOSTS_FILE" ] && touch "$KNOWN_HOSTS_FILE"
+}
+
+usage() {
+  echo "一个安全、智能的 SSH 连接管理器（基于 ~/.ssh/config）"
+  echo
+  echo -e "${C_YELLOW}用法:${C_RESET} $0 [选项] [服务器别名]"
+  echo
+  echo -e "${C_YELLOW}选项:${C_RESET}"
+  echo "  -a, --add             交互式添加一个新服务器到 ~/.ssh/config"
+  echo "  -l, --list            显示所有可用的服务器列表"
+  echo "  -h, --help            显示此帮助信息"
+  exit 0
+}
+
+# --- 服务器管理功能 ---
+
+# [DEBUG] 添加了详细的调试输出
+get_configured_hosts() {
+    echo -e "${C_YELLOW}--- DEBUG: get_configured_hosts START ---
+${C_RESET}"
+    
+    echo "DEBUG: Checking file: $SSH_CONFIG_FILE"
+    echo "--- File Content Start ---"
+    cat "$SSH_CONFIG_FILE" || echo "DEBUG: Could not cat file."
+    echo "--- File Content End ---"
+
+    echo "DEBUG: Running Stage 1 (grep)"
+    local grep_output
+    grep_output=$(grep -i "^[[:space:]]*Host[[:space:]]" "$SSH_CONFIG_FILE" || true)
+    echo "--- grep_output start ---"
+    echo "$grep_output"
+    echo "--- grep_output end ---"
+
+    echo "DEBUG: Running Stage 2 (awk)"
+    local awk_output
+    awk_output=$(echo "$grep_output" | awk '{print $2}')
+    echo "--- awk_output start ---"
+    echo "$awk_output"
+    echo "--- awk_output end ---"
+
+    echo "DEBUG: Running Stage 3 (grep -v)"
+    local final_output
+    final_output=$(echo "$awk_output" | grep -v "*" || true)
+    echo "--- final_output start ---"
+    echo "$final_output"
+    echo "--- final_output end ---"
+    
+    echo -e "${C_YELLOW}--- DEBUG: get_configured_hosts END ---
+${C_RESET}"
+    echo "$final_output"
+}
+
+# 从 ~/.ssh/known_hosts 中获取已发现但未配置的服务器
+get_discovered_hosts() {
+    local configured_hosts
+    configured_hosts=$(get_configured_hosts)
+    # 从 known_hosts 中提取主机名/IP，排除掉已经配置过的主机
+    awk '{print $1}' "$KNOWN_HOSTS_FILE" | cut -d ',' -f1 | sort -u | grep -vE "^@|*" | grep -Fvf <(echo "$configured_hosts") || true
+}
+
+# 显示服务器列表
+show_servers() {
+    local configured_hosts discovered_hosts
+    configured_hosts=$(get_configured_hosts)
+    discovered_hosts=$(get_discovered_hosts)
+
+    if [ -z "$configured_hosts" ] && [ -z "$discovered_hosts" ]; then
+        warn "没有找到任何已配置或已发现的服务器。"
+        msg "您可以手动运行一次 ssh user@your-server.com 来让脚本发现它，"
+        msg "或使用 '-a' 选项来手动添加一个。"
+        return 1
+    fi
+
+    msg "已配置的服务器 (来源: ~/.ssh/config)"
+    if [ -n "$configured_hosts" ]; then
+        local i=1
+        for host in $configured_hosts; do
+            echo -e "  ${C_CYAN}$i)${C_RESET} ${C_GREEN}$host${C_RESET}"
+            ((i++))
+        done
+    else
+        warn "无。"
+    fi
+
+    msg "已发现的服务器 (来源: ~/.ssh/known_hosts)"
+    if [ -n "$discovered_hosts" ]; then
+        for host in $discovered_hosts;
+        do
+            echo -e "  ${C_YELLOW}- $host${C_RESET}"
+        done
+    else
+        warn "无。"
+    fi
+    return 0
+}
+
+# 添加新服务器到 ~/.ssh/config
+add_server() {
+    local alias
+    # 如果提供了参数，则将其用作主机名
+    if [ -n "${1:-}" ]; then
+        msg "正在将已发现的主机 '$1' 添加到您的配置中..."
+        alias="$1"
+    else
+        msg "正在添加一个新的服务器..."
+    fi
+
+    local configured_hosts
+    configured_hosts=$(get_configured_hosts)
+
+    # 获取别名
+    if [ -z "$alias" ]; then
+        while true;
+        do
+            read -p "为新服务器指定一个别名 (例如: my-server): " alias
+            if [ -z "$alias" ]; then error "别名不能为空。"
+            elif echo "$configured_hosts" | grep -q -w "$alias"; then error "别名 '$alias' 已存在于 ~/.ssh/config。"
+            else break; fi
+        done
+    fi
+
+    read -p "请输入主机名或IP地址 (例如: 1.2.3.4): " hostname
+    read -p "请输入用户名 (例如: root): " username
+    read -p "请输入端口号 (默认 22): " port
+
+    # 写入 ~/.ssh/config
+    {
+        echo -e "\n# Added by sshes script on $(date)"
+        echo "Host $alias"
+        echo "    HostName $hostname"
+        echo "    User $username"
+        [ -n "$port" ] && echo "    Port $port"
+    } >> "$SSH_CONFIG_FILE"
+
+    read -p "是否使用密钥文件进行连接？(y/n，默认 n): " use_key
+    if [[ "${use_key:-n}" =~ ^[yY]$ ]]; then
+        read -p "请输入私钥文件路径 (例如: ~/.ssh/id_rsa): " key_file
+        if [ -n "$key_file" ]; then
+            echo "    IdentityFile $key_file" >> "$SSH_CONFIG_FILE"
+            success "已将使用密钥方式的配置追加到 ~/.ssh/config"
+        fi
+    else
+        success "已将使用密码方式的配置追加到 ~/.ssh/config"
+        msg "下次连接时，SSH 将会提示您输入密码。"
+    fi
+    
+    return 0
+}
+
+# --- 主程序 ---
+
+main() {
+    ensure_files_exist
+
+    # 无参数或-l/--list，则显示列表并退出
+    if [ $# -eq 0 ] || [[ "$1" == "-l" || "$1" == "--list" ]]; then
+        show_servers || true # show_servers 失败也继续
+        echo
+        read -p "请输入一个服务器名称进行连接 (或按'a'添加，回车退出): " choice
+        case "$choice" in
+            a|A) add_server ;; 
+            q|Q|"") msg "再见!"; exit 0 ;; 
+            *) 
+                # 检查所选的是否是未配置的主机
+                if get_discovered_hosts | grep -q -w "$choice"; then
+                    add_server "$choice"
+                fi
+                msg "正在尝试连接 $choice..."
+                ssh "$choice"
+                ;; 
+        esac
+        exit 0
+    fi
+
+    # 处理其他选项
+    case "$1" in
+        -a|--add) add_server ;; 
+        -h|--help) usage ;; 
+        -*) # 任何其他-开头的选项都视为无效
+            error "无效选项: $1"
+            usage
+            ;; 
+        *) # 默认行为：连接服务器
+            msg "正在尝试连接 $1..."
+            ssh "$1"
+            ;; 
+    esac
+}
+
+main "$@"

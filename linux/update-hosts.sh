@@ -1,62 +1,104 @@
 #!/bin/bash
 # 下载并更新 /etc/hosts 文件内容，并设置定时任务
 set -euo pipefail
-# 获取脚本所在目录的绝对路径
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-# 定义脚本名称
-SCRIPT_NAME=$(basename "$0")
-CURRENT_SCRIPT="$DIR/$SCRIPT_NAME"
 
-# 定义 hosts 文件 URL
-HOSTS_URL="https://gitee.com/if-the-wind/github-hosts/raw/main/hosts"
+# 全局变量
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+readonly SCRIPT_PATH="${SCRIPT_DIR}/${SCRIPT_NAME}"
+readonly HOSTS_URL="https://gitee.com/if-the-wind/github-hosts/raw/main/hosts"
+readonly MARKER_START="# START GITHUB HOSTS"
+readonly MARKER_END="# END GITHUB HOSTS"
+readonly TEMP_FILE=$(mktemp)
+readonly BACKUP_FILE="/etc/hosts.bak"
+readonly CRON_SCHEDULE="0 * * * *"
 
-# 获取 hosts 文件内容
-function fetch_hosts {
-    curl -s "$HOSTS_URL" | grep -v '^#' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+# 日志函数
+log() {
+    local level="$1"
+    shift
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $@"
 }
 
-# 处理现有 /etc/hosts 文件
-function update_hosts {
-    # 获取新的 hosts 文件内容： ip 域名
-    new_hosts_domain=$(fetch_hosts)
-    # 获取新的域名(所有)
-    #domains=$(echo "$new_hosts_domain" | cut -d ' ' -f2-)
-    domains=$(echo "$new_hosts_domain" | awk '{print $2}')
-    [ ! -f /etc/hosts.bak ] && cp /etc/hosts /etc/hosts.bak
-    for domain in $domains; do
-        sudo sed -i.bak "/[[:space:]]$domain$/d" /etc/hosts
-    done
-    echo "$new_hosts_domain" >> /etc/hosts
-    echo "/etc/hosts 文件已更新:"
-    cat /etc/hosts
-}
-
-# 添加定时任务
-function add_cron_job {
-    # 检查 crontab 中是否已存在定时任务
-    cron_job=$(crontab -l 2>/dev/null | grep -F "$CURRENT_SCRIPT")
-    if [ -z "$cron_job" ]; then
-        # 添加定时任务，每1个小时执行一次脚本
-        echo "0 * * * * $CURRENT_SCRIPT" | crontab -
-        if [ $? -eq 0 ]; then
-            echo "定时任务添加成功,crontab -l:"
-            crontab -l
-            echo "如果需要删除定时任务，请执行以下命令："
-            echo "sudo crontab -l | grep -v '$CURRENT_SCRIPT' | sudo crontab -"
-        else
-            echo "定时任务添加失败，请手动添加或检查权限。"
-        fi
-    else
-        echo "已存在的定时任务: $cron_job"
+# 检查sudo权限
+check_sudo() {
+    if ! sudo -n true 2>/dev/null; then
+        log ERROR "需要sudo权限来修改 /etc/hosts 文件"
+        exit 1
     fi
 }
 
-# 检查是否具有sudo权限
-if ! sudo -n true 2>/dev/null; then
-    echo "警告：当前用户没有sudo权限，无法修改 /etc/hosts 文件，脚本退出。"
-    exit 1
-fi
+# 获取hosts文件内容
+fetch_hosts() {
+    curl -s --fail --connect-timeout 10 "$HOSTS_URL" | awk '/^#/ {next} {print $0}' || {
+        log ERROR "无法获取 hosts 文件内容，请检查网络或 URL: $HOSTS_URL"
+        exit 1
+    }
+}
 
-update_hosts
-# 检查并添加定时任务
-add_cron_job
+# 更新hosts文件
+update_hosts() {
+    log INFO "开始更新 /etc/hosts 文件..."
+    
+    local new_hosts_content
+    new_hosts_content=$(fetch_hosts) || exit 1
+
+    # 确保临时文件可写
+    touch "$TEMP_FILE" && chmod 644 "$TEMP_FILE" || {
+        log ERROR "无法创建临时文件"
+        exit 1
+    }
+
+    # 处理现有hosts文件
+    sudo sed -E "/${MARKER_START//\//\\/}/,/${MARKER_END//\//\\/}/d" /etc/hosts > "$TEMP_FILE" || {
+        log ERROR "处理 /etc/hosts 文件失败"
+        exit 1
+    }
+
+    # 添加新的hosts内容
+    {
+        echo "$MARKER_START"
+        echo "$new_hosts_content"
+        echo "$MARKER_END"
+    } >> "$TEMP_FILE"
+
+    # 备份并更新hosts文件
+    sudo cp /etc/hosts "$BACKUP_FILE" && sudo mv "$TEMP_FILE" /etc/hosts || {
+        log ERROR "更新 /etc/hosts 文件失败"
+        exit 1
+    }
+
+    log INFO "/etc/hosts 文件更新成功"
+}
+
+# 添加定时任务
+add_cron_job() {
+    if crontab -l 2>/dev/null | grep -Fq "$SCRIPT_PATH"; then
+        log INFO "定时任务已存在，无需重复添加"
+        return 0
+    fi
+
+    # 添加新定时任务
+    (crontab -l 2>/dev/null || true; echo "${CRON_SCHEDULE} ${SCRIPT_PATH}") | crontab - || {
+        log ERROR "添加定时任务失败，请检查权限"
+        return 1
+    }
+
+    log INFO "定时任务添加成功，每小时更新 hosts 文件"
+    log INFO "删除命令: crontab -l | grep -v '${SCRIPT_PATH}' | crontab -"
+}
+
+# 清理临时文件
+cleanup() {
+    [[ -f "$TEMP_FILE" ]] && rm -f "$TEMP_FILE"
+}
+
+# 主函数
+main() {
+    trap cleanup EXIT
+    check_sudo
+    update_hosts
+    add_cron_job
+}
+
+main "$@"
