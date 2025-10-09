@@ -116,36 +116,55 @@ check_file_integrity() {
 }
 
 
+check_installation() {
+  # 检查是否已安装 - 检查关键文件
+  if [ -f "$install_dir/bin/mysqld" ] && [ -f "$install_dir/bin/mysql" ]; then
+    return 0  # 已安装
+  else
+    return 1  # 未安装
+  fi
+}
+
+check_initialization() {
+  # 检查是否已初始化 - 检查数据目录和系统表
+  if [ -d "$data_dir" ] && [ "$(ls -A "$data_dir" 2>/dev/null)" ] && \
+     [ -d "$data_dir/mysql" ]; then
+    return 0  # 已初始化
+  else
+    return 1  # 未初始化
+  fi
+}
+
 pre_check() {
-  # 端口占用检测
-  if [ "$OS" == "Linux" ]; then
-    if [ "$(netstat -anp | grep $port | grep LISTEN | grep -v grep | wc -l)" -gt 0 ]; then
-      echo "$port 端口已占用"
-      netstat -anp | grep $port | grep LISTEN
-      exit 0
-    fi
-  elif [ "$OS" == "Darwin" ]; then
-    if lsof -i :$port > /dev/null; then
-      echo "$port 端口已占用"
-      lsof -i :$port
-      exit 0
-    fi
+  print "开始安装检查..."
+  
+  # 权限检查
+  if [ $(id -u) != "0" ]; then
+    print "使用root权限运行此脚本安装mysql!"
+    print "Usage: sudo $0 [install_dir] <version>"
+    print "支持版本: 5或8(默认)"
+    exit 1
   fi
-  # 查找install_dir下mysqld文件，存在则提取安装目录
-  mysqld_path=$(find "$install_dir" -type f -name mysqld 2>/dev/null | head -n 1)
-  if [ -n "$mysqld_path" ]; then
-  	# 数据目录存在且非空则启动
-    if [ -d "$data_dir" ] && [ "$(ls -A "$data_dir")" ]; then
-      [ ! -f $install_dir/bin/startup.sh ] && cp -r $SOURCE_DIR/{bin,conf} $install_dir/
-      echo "mysql已安装未启动，开始启动..." &&  $install_dir/bin/startup.sh && exit 0
+
+  # 检查安装状态
+  if check_installation; then
+    print "检测到MySQL已安装在: $install_dir"
+    
+    if check_initialization; then
+      print "MySQL已完成安装和初始化"
+      print "正在启动MySQL服务..."
+      # 确保启动脚本存在并调用
+      [ ! -f "$install_dir/bin/startup.sh" ] && cp -r "$SOURCE_DIR"/{bin,conf} "$install_dir/"
+      exec "$install_dir/bin/startup.sh"
+    else
+      print "MySQL已安装但未初始化，继续初始化..."
+      # 只需要初始化，跳过下载和解压步骤
+      SKIP_DOWNLOAD=true
     fi
+  else
+    print "MySQL未安装，开始完整安装..."
+    SKIP_DOWNLOAD=false
   fi
-	if [ $(id -u) != "0" ]; then
-	    echo "使用root运行此脚本安装mysql!"
-	      echo "Usage: sudo $0 [install_dir] <version>"
-	      echo "支持版本: 5或8(默认)"
-	    exit 1
-	fi
 }
 
 # 检查MySQL版本并调整my.cnf兼容性
@@ -414,18 +433,29 @@ EOF
 
 main() {
   pre_check
-  download_and_extract
+  
+  # 根据检查结果决定是否跳过下载和解压
+  if [ "$SKIP_DOWNLOAD" != "true" ]; then
+    download_and_extract
+  fi
+  
   copy_files
   install_dependencies
   setup_user_and_system
   prepare_dirs
   create_default_cnf
   initialize
-  startup
-  setup_service
-  sleep 3
-  set_root_password_and_remote
+  
   print "MySQL安装完成"
+  print "正在启动MySQL服务..."
+  
+  # 自动调用启动脚本
+  if [ -f "$install_dir/bin/startup.sh" ]; then
+    exec "$install_dir/bin/startup.sh"
+  else
+    print "启动脚本不存在: $install_dir/bin/startup.sh"
+    exit 1
+  fi
 }
 
 main "$@"

@@ -20,6 +20,7 @@ TOOLS=(
     "grok:Grok CLI:@vibe-kit/grok-cli:npm"
     "codebuddy:Codebuddy Code:@tencent-ai/codebuddy-code:npm"
     "copilot:GitHub Copilot:@github/copilot:npm"
+    "iflow:iFlow CLI:@iflow-ai/iflow-cli:npm"
 )
 
 # 工具状态全局变量
