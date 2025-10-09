@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # redis install script
 # 用法: ./install.sh [INSTALL_DIR] [节点数] [端口] [REDIS_VERSION]
-
+# TODO 设置/修改密码需修改配置文件防止重启后密码设置不生效；下载安装包前判断是否已安装、数据目录是否为空
 set -e
 # 当前脚本目录
 SCRIPT_DIR="$(cd "$(dirname "$0")"; pwd)"
