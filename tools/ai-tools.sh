@@ -19,6 +19,7 @@ TOOLS=(
     "codex:OpenAI Codex CLI:@openai/codex:npm"
     "grok:Grok CLI:@vibe-kit/grok-cli:npm"
     "codebuddy:Codebuddy Code:@tencent-ai/codebuddy-code:npm"
+    "iflow:iFlow CLI:@iflow-ai/iflow-cli:npm"
 )
 
 # 工具状态全局变量
