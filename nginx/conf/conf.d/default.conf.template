@@ -11,9 +11,14 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header X-Download-Options "noopen" always;
+    add_header X-Permitted-Cross-Domain-Policies "none" always;
+    
+    # 严格的传输安全 (如果使用HTTPS)
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
     
     # 禁用非必要的方法 444状态是服务器直接中断连接，不会向客户端再返回任何消息，比返回403更加暴力
-    if ( $request_method !~ ^(GET|HEAD|POST)$ ) {
+    if ( $request_method !~ ^(GET|HEAD|POST|PUT|DELETE|PATCH|OPTIONS)$ ) {
       return 444;
     }
     
@@ -32,10 +37,62 @@ server {
      return 444;
     }
     
+    # 上传目录配置 - 对应用户目录下的uploads
+    location ~/uploads/ {
+        # 使用alias映射到统一的上传目录
+        # 实际部署时，可通过后端应用根据用户身份隔离文件存储
+        alias /opt/nginx/uploads/;
+        
+        # 限制访问方法
+        limit_except GET POST {
+            deny all;
+        }
+        
+        # 设置上传文件的访问权限
+        location ~ \.(php|php5|phtml|pl|py|jsp|asp|sh|cgi)$ {
+            # 禁止执行脚本文件
+            return 403;
+        }
+        
+        # 防止访问隐藏文件
+        location ~ /\.. {
+            deny all;
+            access_log off;
+            log_not_found off;
+        }
+        
+        # 防止访问备份文件和临时文件
+        location ~ \.(bak|backup|old|tmp|temp)$ {
+            deny all;
+            access_log off;
+            log_not_found off;
+        }
+        
+        # 设置客户端最大上传文件大小
+        client_max_body_size 50M;
+        
+        # 设置上传超时时间
+        client_body_timeout 60s;
+        
+        # 启用请求频率限制
+        limit_req zone=general burst=5 nodelay;
+        
+        # 添加安全头
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        
+        # 设置缓存控制
+        expires 1y;
+        add_header Cache-Control "public, immutable" always;
+    }
+    
     # 限制请求频率
     limit_req zone=general burst=10 nodelay;
     
     proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    # proxy_set_header REMOTE-HOST $remote_addr;  # 非标准header，建议移除
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header REMOTE-HOST $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

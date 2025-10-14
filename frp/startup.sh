@@ -4,12 +4,46 @@
 # 使用方法: ./startup.sh [frpc|frps]
 
 # 检查参数
-if [ $# -ne 1 ]; then
-    echo "使用方法: $0 [frpc|frps]"
+if [ $# -eq 0 ]; then
+    # 参数缺失，自动检测配置文件
+    INSTALL_DIR=$(dirname "$(readlink -f "$0")")
+    
+    # 检查是否存在配置文件
+    frpc_conf_exists=0
+    frps_conf_exists=0
+    
+    if [ -f "${INSTALL_DIR}/frpc.toml" ]; then
+        frpc_conf_exists=1
+    fi
+    
+    if [ -f "${INSTALL_DIR}/frps.toml" ]; then
+        frps_conf_exists=1
+    fi
+    
+    # 根据配置文件存在情况决定启动哪个服务
+    if [ $frpc_conf_exists -eq 1 ] && [ $frps_conf_exists -eq 0 ]; then
+        # 只有frpc.toml存在
+        SERVICE_TYPE="frpc"
+    elif [ $frps_conf_exists -eq 1 ] && [ $frpc_conf_exists -eq 0 ]; then
+        # 只有frps.toml存在
+        SERVICE_TYPE="frps"
+    elif [ $frpc_conf_exists -eq 1 ] && [ $frps_conf_exists -eq 1 ]; then
+        # 两个配置文件都存在，默认启动frpc
+        SERVICE_TYPE="frpc"
+    else
+        # 没有找到配置文件
+        echo "错误: 在 ${INSTALL_DIR} 目录中未找到 frpc.toml 或 frps.toml 配置文件"
+        echo "使用方法: $0 [frpc|frps]"
+        exit 1
+    fi
+    
+    echo "自动检测到配置文件，启动 ${SERVICE_TYPE} 服务"
+elif [ $# -eq 1 ]; then
+    SERVICE_TYPE=$1
+else
+    echo "使用方法: $0 [frpc|frps] 或不带参数自动检测配置文件"
     exit 1
 fi
-
-SERVICE_TYPE=$1
 
 # 验证服务类型
 if [ "$SERVICE_TYPE" != "frpc" ] && [ "$SERVICE_TYPE" != "frps" ]; then
