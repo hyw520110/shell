@@ -937,8 +937,9 @@ EOF
     # 配置端口
     configure_ports
     
-    # 配置安全认证和权限管理
-    configure_security
+    # 默认不配置认证：禁用Web控制台登录（可按需开启）
+    disable_authentication
+    # 如需开启认证，请改为调用 configure_security
     
     # 配置持久化存储
     configure_persistence
@@ -966,7 +967,27 @@ generate_random_password() {
     echo "$password"
 }
 
-# 配置安全认证和权限管理
+# 默认禁用认证：设置Jetty authenticate=false
+disable_authentication() {
+    log_info "禁用Web控制台登录认证(默认)"
+    # 确保jetty.xml存在
+    if [[ ! -f "$ACTIVEMQ_HOME/conf/jetty.xml" ]]; then
+        log_warn "未找到jetty.xml，跳过认证禁用"
+        return 0
+    fi
+    cp "$ACTIVEMQ_HOME/conf/jetty.xml" "$ACTIVEMQ_HOME/conf/jetty.xml.bak" 2>/dev/null || true
+    # 将管理员与用户约束的authenticate属性设为false（若存在提示注释位置）
+    sed -i.bak 's/<property name="roles" value="admins" \/>/<property name="roles" value="admins" \/>\n        <property name="authenticate" value="false" \/>/g' "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
+    sed -i.bak 's/<property name="roles" value="users,admins" \/>/<property name="roles" value="users,admins" \/>\n        <property name="authenticate" value="false" \/>/g' "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
+    # 如果上述替换未生效，尝试在LoginService处禁用
+    if ! grep -q "authenticate\" value=\"false\"" "$ACTIVEMQ_HOME/conf/jetty.xml"; then
+        sed -i.bak 's/<bean id="adminSecurityConstraint" class="org.eclipse.jetty.util.security.Constraint">/&\n        <property name="authenticate" value="false" \/>/' "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
+        sed -i.bak 's/<bean id="securityConstraint" class="org.eclipse.jetty.util.security.Constraint">/&\n        <property name="authenticate" value="false" \/>/' "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
+    fi
+    log_info "已设置Web控制台无需登录"
+}
+
+# 配置安全认证和权限管理（可选开启）
 configure_security() {
     log_info "配置ActiveMQ安全认证..."
     
