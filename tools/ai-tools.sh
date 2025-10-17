@@ -24,6 +24,7 @@ TOOLS=(
     "gpt-cli:ChatGPT CLI:gpt-cli:npm"
     "mistral:mistral-cli:mistral-cli:npm"
     "perplexity:Perplexity CLI:perplexity-cli:npm"
+    "neovate:Neovate CLI:@neovate/code:npm"
     "mcp-servers:MCP 服务器配置::config"
 )
 
@@ -368,7 +369,7 @@ EOF
     
     # 提供选项来管理 MCP 服务器
     echo -e "MCP 服务器管理选项:"
-    echo -e "1. ${GREEN}添加新的 MCP 服务器${NC}"
+    echo -e "1. ${GREEN}添加常用 MCP 服务器支持${NC}"
     echo -e "2. ${YELLOW}查看详细的 MCP 配置${NC}"
     echo -e "3. ${RED}重置 MCP 配置${NC}"
     echo -e "4. ${BLUE}返回主菜单${NC}"
@@ -378,25 +379,7 @@ EOF
     
     case $mcp_choice in
         1)
-            echo -e "${CYAN}选择要添加 MCP 服务器的 AI 工具:${NC}"
-            local i=1
-            local tool_names=()
-            for ai_tool in "${!ai_configs[@]}"; do
-                echo -e "$i. $ai_tool"
-                tool_names[$i]="$ai_tool"
-                ((i++))
-            done
-            echo ""
-            
-            read -p "请选择 AI 工具 (1-$((i-1))): " tool_choice
-            
-            if [[ $tool_choice -ge 1 && $tool_choice -lt $i ]]; then
-                local selected_tool="${tool_names[$tool_choice]}"
-                local config_file="${ai_configs[$selected_tool]}"
-                add_mcp_server "$config_file" "$selected_tool"
-            else
-                echo -e "${RED}❌ 无效选项${NC}"
-            fi
+            add_common_mcp_servers
             ;;
         2)
             echo -e "${CYAN}🔍 详细 MCP 配置信息:${NC}"
@@ -426,7 +409,7 @@ EOF
             
             if [[ $tool_choice -ge 1 && $tool_choice -lt $i ]]; then
                 local selected_tool="${tool_names[$tool_choice]}"
-                local config_file="${ai_configs[selected_tool]}"
+                local config_file="${ai_configs[$selected_tool]}"
                 
                 echo -e "${YELLOW}⚠️ 此操作将清除 $selected_tool 的所有 MCP 服务器配置，是否继续？(y/N)${NC}"
                 read -p "确认 (y/N): " confirm
@@ -465,6 +448,229 @@ EOF
             echo -e "${RED}❌ 无效选项${NC}"
             ;;
     esac
+}
+
+# 添加常用 MCP 服务器
+add_common_mcp_servers() {
+    echo -e "${CYAN}🔧 添加常用 MCP 服务器支持:${NC}"
+    echo -e "1. ${GREEN}Chrome DevTools${NC}"
+    echo -e "2. ${BLUE}Playwright${NC}"
+    echo -e "3. ${YELLOW}MySQL${NC}"
+    echo -e "4. ${CYAN}以上全部${NC}"
+    echo -e "5. ${RED}返回上一级${NC}"
+    echo ""
+    
+    read -p "请选择要添加的 MCP 服务器支持 (1-5): " server_choice
+    
+    case $server_choice in
+        1)
+            add_chrome_devtools_mcp
+            ;;
+        2)
+            add_playwright_mcp
+            ;;
+        3)
+            add_mysql_mcp
+            ;;
+        4)
+            add_chrome_devtools_mcp
+            add_playwright_mcp
+            add_mysql_mcp
+            ;;
+        5)
+            echo -e "${GREEN}🔙 返回上级菜单${NC}"
+            return
+            ;;
+        *)
+            echo -e "${RED}❌ 无效选项${NC}"
+            ;;
+    esac
+}
+
+# 添加 Chrome DevTools MCP 配置
+add_chrome_devtools_mcp() {
+    echo -e "${CYAN}➕ 添加 Chrome DevTools MCP 服务器支持${NC}"
+    
+    # 对于每个AI工具，检查并添加配置
+    declare -A ai_configs
+    ai_configs["Qwen"]="$HOME/.qwen/settings.json"
+    ai_configs["Gemini"]="$HOME/.gemini/settings.json"
+    
+    for ai_tool in "${!ai_configs[@]}"; do
+        local config_file="${ai_configs[$ai_tool]}"
+        
+        # 检查是否已存在配置
+        if command -v jq >/dev/null 2>&1 && [[ -f "$config_file" ]]; then
+            local exists=$(jq -r '.mcpServers | has("chrome-devtools")' "$config_file" 2>/dev/null)
+            if [[ "$exists" == "true" ]]; then
+                echo -e "${YELLOW}⚠️ $ai_tool 的 Chrome DevTools 配置已存在，跳过${NC}"
+                continue
+            fi
+        fi
+        
+        # 添加配置
+        local new_config=$(cat << EOF
+{
+  "command": "npx",
+  "args": ["chrome-devtools-mcp@latest", "--executablePath=/opt/apps/cn.google.chrome-pre/files/google/chrome/chrome"],
+  "transportType": "stdio"
+}
+EOF
+)
+        
+        if command -v jq >/dev/null 2>&1; then
+            # 更新配置
+            jq --argjson server_config "$new_config" '.mcpServers["chrome-devtools"] = $server_config' "$config_file" > "${config_file}.tmp" && \
+            mv "${config_file}.tmp" "$config_file"
+            
+            if [[ $? -eq 0 ]]; then
+                echo -e "${GREEN}✅ $ai_tool 的 Chrome DevTools MCP 服务器已添加到配置${NC}"
+            else
+                echo -e "${RED}❌ 更新 $ai_tool 的 MCP 配置失败${NC}"
+            fi
+        else
+            echo -e "${RED}❌ 未安装 jq，无法更新配置。请安装 jq 后重试。${NC}"
+            return 1
+        fi
+    done
+    
+    # 检查 Chrome DevTools MCP 包是否已安装
+    if npm list -g chrome-devtools-mcp@latest >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ Chrome DevTools MCP 包已安装${NC}"
+    else
+        # 安装 Chrome DevTools MCP 包
+        echo -e "${CYAN}📦 安装 chrome-devtools-mcp@latest...${NC}"
+        npm install -g chrome-devtools-mcp@latest
+        if [[ $? -eq 0 ]]; then
+            echo -e "${GREEN}✅ Chrome DevTools MCP 包安装成功${NC}"
+        else
+            echo -e "${YELLOW}⚠️ Chrome DevTools MCP 包安装可能失败，请手动安装${NC}"
+        fi
+    fi
+}
+
+# 添加 Playwright MCP 配置
+add_playwright_mcp() {
+    echo -e "${CYAN}➕ 添加 Playwright MCP 服务器支持${NC}"
+    
+    # 对于每个AI工具，检查并添加配置
+    declare -A ai_configs
+    ai_configs["Qwen"]="$HOME/.qwen/settings.json"
+    ai_configs["Gemini"]="$HOME/.gemini/settings.json"
+    
+    for ai_tool in "${!ai_configs[@]}"; do
+        local config_file="${ai_configs[$ai_tool]}"
+        
+        # 检查是否已存在配置
+        if command -v jq >/dev/null 2>&1 && [[ -f "$config_file" ]]; then
+            local exists=$(jq -r '.mcpServers | has("playwright")' "$config_file" 2>/dev/null)
+            if [[ "$exists" == "true" ]]; then
+                echo -e "${YELLOW}⚠️ $ai_tool 的 Playwright 配置已存在，跳过${NC}"
+                continue
+            fi
+        fi
+        
+        # 添加配置
+        local new_config=$(cat << EOF
+{
+  "command": "npx",
+  "args": ["@playwright/mcp@latest"],
+  "transportType": "stdio"
+}
+EOF
+)
+        
+        if command -v jq >/dev/null 2>&1; then
+            # 更新配置
+            jq --argjson server_config "$new_config" '.mcpServers["playwright"] = $server_config' "$config_file" > "${config_file}.tmp" && \
+            mv "${config_file}.tmp" "$config_file"
+            
+            if [[ $? -eq 0 ]]; then
+                echo -e "${GREEN}✅ $ai_tool 的 Playwright MCP 服务器已添加到配置${NC}"
+            else
+                echo -e "${RED}❌ 更新 $ai_tool 的 MCP 配置失败${NC}"
+            fi
+        else
+            echo -e "${RED}❌ 未安装 jq，无法更新配置。请 install jq 后重试。${NC}"
+            return 1
+        fi
+    done
+    
+    # 检查 Playwright MCP 包是否已安装
+    if npm list -g @playwright/mcp@latest >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ Playwright MCP 包已安装${NC}"
+    else
+        # 安装 Playwright MCP 包
+        echo -e "${CYAN}📦 安装 @playwright/mcp@latest...${NC}"
+        npm install -g @playwright/mcp@latest
+        if [[ $? -eq 0 ]]; then
+            echo -e "${GREEN}✅ Playwright MCP 包安装成功${NC}"
+        else
+            echo -e "${YELLOW}⚠️ Playwright MCP 包安装可能失败，请手动安装${NC}"
+        fi
+    fi
+}
+
+# 添加 MySQL MCP 配置
+add_mysql_mcp() {
+    echo -e "${CYAN}➕ 添加 MySQL MCP 服务器支持${NC}"
+    
+    # 对于每个AI工具，检查并添加配置
+    declare -A ai_configs
+    ai_configs["Qwen"]="$HOME/.qwen/settings.json"
+    ai_configs["Gemini"]="$HOME/.gemini/settings.json"
+    
+    for ai_tool in "${!ai_configs[@]}"; do
+        local config_file="${ai_configs[$ai_tool]}"
+        
+        # 检查是否已存在配置
+        if command -v jq >/dev/null 2>&1 && [[ -f "$config_file" ]]; then
+            local exists=$(jq -r '.mcpServers | has("mysql")' "$config_file" 2>/dev/null)
+            if [[ "$exists" == "true" ]]; then
+                echo -e "${YELLOW}⚠️ $ai_tool 的 MySQL 配置已存在，跳过${NC}"
+                continue
+            fi
+        fi
+        
+        # 添加配置
+        local new_config=$(cat << EOF
+{
+  "command": "npx",
+  "args": ["-y", "@f4ww4z/mcp-mysql-server"],
+  "transportType": "stdio"
+}
+EOF
+)
+        
+        if command -v jq >/dev/null 2>&1; then
+            # 更新配置
+            jq --argjson server_config "$new_config" '.mcpServers["mysql"] = $server_config' "$config_file" > "${config_file}.tmp" && \
+            mv "${config_file}.tmp" "$config_file"
+            
+            if [[ $? -eq 0 ]]; then
+                echo -e "${GREEN}✅ $ai_tool 的 MySQL MCP 服务器已添加到配置${NC}"
+            else
+                echo -e "${RED}❌ 更新 $ai_tool 的 MCP 配置失败${NC}"
+            fi
+        else
+            echo -e "${RED}❌ 未安装 jq，无法更新配置。请安装 jq 后重试。${NC}"
+            return 1
+        fi
+    done
+    
+    # 检查 MySQL MCP 包是否已安装
+    if npm list -g @f4ww4z/mcp-mysql-server >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ MySQL MCP 包已安装${NC}"
+    else
+        # 安装 MySQL MCP 包
+        echo -e "${CYAN}📦 安装 @f4ww4z/mcp-mysql-server...${NC}"
+        npm install -g @f4ww4z/mcp-mysql-server
+        if [[ $? -eq 0 ]]; then
+            echo -e "${GREEN}✅ MySQL MCP 包安装成功${NC}"
+        else
+            echo -e "${YELLOW}⚠️ MySQL MCP 包安装可能失败，请手动安装${NC}"
+        fi
+    fi
 }
 
 # 添加新的 MCP 服务器
@@ -517,10 +723,10 @@ add_mcp_server() {
             for pair in "${ENV_PAIRS[@]}"; do
                 IFS='=' read -r key value <<< "$pair"
                 if [[ "$first" == true ]]; then
-                    env_vars="${env_vars}\"$key\":\"$value\""
+                    env_vars="${env_vars}\\\"$key\\\":\\\"$value\\\""
                     first=false
                 else
-                    env_vars="${env_vars},\"$key\":\"$value\""
+                    env_vars="${env_vars},\\\"$key\\\":\\\"$value\\\""
                 fi
             done
             env_vars="${env_vars}}"
@@ -545,10 +751,10 @@ add_mcp_server() {
             if [[ -n "$server_args" ]]; then
                 # 将空格分隔的参数转换为 JSON 数组
                 IFS=' ' read -ra ARGS_ARRAY <<< "$server_args"
-                args_array="\"${ARGS_ARRAY[0]}\""
+                args_array="\\\"${ARGS_ARRAY[0]}\\\""
                 for arg in "${ARGS_ARRAY[@]:1}"; do
                     if [[ -n "$arg" ]]; then
-                        args_array="${args_array},\"$arg\""
+                        args_array="${args_array},\\\"$arg\\\""
                     fi
                 done
             fi
@@ -559,7 +765,7 @@ add_mcp_server() {
   "args": [$args_array],
   "env": $env_vars,
   "transportType": "$transport_type",
-  "autoApprove": [$(echo "$auto_approve" | sed 's/,/","/g' | sed 's/^/"/' | sed 's/$/"/')]
+  "autoApprove": [$(echo "$auto_approve" | sed 's/,/\",\"/g' | sed 's/^/\"/' | sed 's/$/\"/')]
 }
 EOF
 )
@@ -569,10 +775,10 @@ EOF
             if [[ -n "$server_args" ]]; then
                 # 将空格分隔的参数转换为 JSON 数组
                 IFS=' ' read -ra ARGS_ARRAY <<< "$server_args"
-                args_array="\"${ARGS_ARRAY[0]}\""
+                args_array="\\\"${ARGS_ARRAY[0]}\\\""
                 for arg in "${ARGS_ARRAY[@]:1}"; do
                     if [[ -n "$arg" ]]; then
-                        args_array="${args_array},\"$arg\""
+                        args_array="${args_array},\\\"$arg\\\""
                     fi
                 done
             fi
@@ -582,7 +788,7 @@ EOF
   "command": "$server_command",
   "args": [$args_array],
   "transportType": "$transport_type",
-  "autoApprove": [$(echo "$auto_approve" | sed 's/,/","/g' | sed 's/^/"/' | sed 's/$/"/')]
+  "autoApprove": [$(echo "$auto_approve" | sed 's/,/\",\"/g' | sed 's/^/\"/' | sed 's/$/\"/')]
 }
 EOF
 )
@@ -594,10 +800,10 @@ EOF
             if [[ -n "$server_args" ]]; then
                 # 将空格分隔的参数转换为 JSON 数组
                 IFS=' ' read -ra ARGS_ARRAY <<< "$server_args"
-                args_array="\"${ARGS_ARRAY[0]}\""
+                args_array="\\\"${ARGS_ARRAY[0]}\\\""
                 for arg in "${ARGS_ARRAY[@]:1}"; do
                     if [[ -n "$arg" ]]; then
-                        args_array="${args_array},\"$arg\""
+                        args_array="${args_array},\\\"$arg\\\""
                     fi
                 done
             fi
@@ -617,10 +823,10 @@ EOF
             if [[ -n "$server_args" ]]; then
                 # 将空格分隔的参数转换为 JSON 数组
                 IFS=' ' read -ra ARGS_ARRAY <<< "$server_args"
-                args_array="\"${ARGS_ARRAY[0]}\""
+                args_array="\\\"${ARGS_ARRAY[0]}\\\""
                 for arg in "${ARGS_ARRAY[@]:1}"; do
                     if [[ -n "$arg" ]]; then
-                        args_array="${args_array},\"$arg\""
+                        args_array="${args_array},\\\"$arg\\\""
                     fi
                 done
             fi
@@ -688,7 +894,7 @@ main() {
     while true; do
         show_menu
         echo ""
-        read -p "请选择操作 (1-$(( ${#TOOLS[@]} + 2 ))), 或输入 q 退出: " choice
+        read -p "请选择操作 (1-$(( ${#TOOLS[@]} + 2 )), 或输入 q 退出: " choice
         
         # Check if user wants to quit
         if [[ "$choice" == "q" ]] || [[ "$choice" == "Q" ]]; then

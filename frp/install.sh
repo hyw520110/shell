@@ -13,7 +13,7 @@ FRPC_CONF_NAME="${FRPC_NAME}.toml"
 SERVICE_DIR="/usr/lib/systemd/system"
 FRPS_SERVICE_FILE="$SERVICE_DIR/${FRPS_NAME}.service"
 FRPC_SERVICE_FILE="$SERVICE_DIR/${FRPC_NAME}.service"
-LOG_FILE="/var/log/frp.log"
+LOG_FILE="$DEFAULT_INSTALL_DIR/$FRPC_NAME.log"
 
 # 帮助信息函数
 show_help() {

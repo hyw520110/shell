@@ -3,6 +3,10 @@
 # 通用启动脚本，用于启动 frpc 或 frps 服务
 # 使用方法: ./startup.sh [frpc|frps]
 
+# 默认安装目录
+INSTALL_DIR=$(dirname "$(readlink -f "$0")")
+SERVICE_TYPE="frpc"
+
 # 检查参数
 if [ $# -eq 0 ]; then
     # 参数缺失，自动检测配置文件
@@ -50,12 +54,10 @@ if [ "$SERVICE_TYPE" != "frpc" ] && [ "$SERVICE_TYPE" != "frps" ]; then
     echo "错误: 服务类型必须是 'frpc' 或 'frps'"
     exit 1
 fi
-
-# 默认安装目录
-INSTALL_DIR=$(dirname "$(readlink -f "$0")")
 FRP_BIN_NAME="$SERVICE_TYPE"
 FRP_CONF_NAME="${SERVICE_TYPE}.toml"
-LOG_FILE="/tmp/${SERVICE_TYPE}.log"
+LOG_FILE="$INSTALL_DIR/${SERVICE_TYPE}.log"
+
 
 # 函数：在指定目录列表中查找frp二进制文件
 find_frp_binary() {
@@ -131,6 +133,8 @@ fi
 # 函数：启动服务
 start_service() {
     echo "正在启动 ${SERVICE_TYPE} 服务..."
+    LOG_DIR=$(dirname $LOG_FILE)
+    [ ! -d $LOG_DIR ] && echo "创建日志目录$LOG_DIR" && mkdir -p $LOG_DIR
     ${INSTALL_DIR}/${FRP_BIN_NAME} -c ${INSTALL_DIR}/${FRP_CONF_NAME} > $LOG_FILE 2>&1 &
     START_PID=$!
     
@@ -142,7 +146,8 @@ start_service() {
         echo "${SERVICE_TYPE} 服务启动成功，PID: $START_PID"
         echo "日志文件: $LOG_FILE"
     else
-        echo "${SERVICE_TYPE} 服务启动失败，请检查日志: $LOG_FILE"
+        echo "${SERVICE_TYPE} 启动失败,日志$LOG_FILE :"
+        cat $LOG_FILE
         exit 1
     fi
 }
