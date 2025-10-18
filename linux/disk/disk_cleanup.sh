@@ -5,7 +5,30 @@
 # 支持Linux和macOS系统
 # 不会删除系统文件或重要数据
 
-set -euo pipefail  # Exit on error, undefined variables, and pipe failures
+# 检查是否在终端中运行，如果不在则显示使用说明
+if [ ! -t 0 ] || [ ! -t 1 ]; then  # 检查标准输入和输出是否连接到终端
+    # 设置颜色变量
+    RED='\\033[0;31m'
+    GREEN='\\033[0;32m'
+    YELLOW='\\033[1;33m'
+    BLUE='\\033[0;34m'
+    NC='\\033[0m' # No Color
+    
+    echo -e "${BLUE}==================================================${NC}"
+    echo -e "${BLUE}          磁盘清理工具 (安全版)${NC}"
+    echo -e "${BLUE}      仅清理用户可安全删除的缓存和临时文件${NC}"
+    echo -e "${BLUE}      不会删除系统关键文件${NC}"
+    echo -e "${BLUE}==================================================${NC}"
+    echo -e "\\n${YELLOW}此脚本需要在终端中交互运行${NC}"
+    echo -e "\\n使用方法:"
+    echo "  1. 在终端中运行: bash disk_cleanup.sh"
+    echo "  2. 或直接执行: ./disk_cleanup.sh"
+    echo -e "\\n脚本将显示清理选项菜单，您可以选择要执行的清理操作。"
+    echo -e "${YELLOW}注意: 请谨慎使用，清理前请确认要删除的文件。${NC}"
+    exit 0
+fi
+
+set -o pipefail  # 只对管道的返回值进行严格检查，不因单个命令失败退出
 
 # 颜色定义
 RED='\033[0;31m'
@@ -44,7 +67,7 @@ detect_distro() {
 }
 
 OS_TYPE=$(detect_os)
-DISTRO=$(detect_distro)
+DISTRO=$(detect_distro || echo "unknown")  # 确保即使函数返回非零值也不会导致脚本退出
 SCRIPT_NAME="磁盘清理工具"
 if [[ "$OS_TYPE" == "macOS" ]]; then
     SCRIPT_NAME="macOS 磁盘清理工具"
@@ -128,8 +151,14 @@ cleanup() {
         size_before=$(get_dir_size "$dir")
         
         # 安全检查：确保目录路径有效以防止意外删除
-        if [[ "$dir" == "/" || "$dir" == "" ]]; then
-            echo -e "${RED}错误: 试图删除根目录或空路径，已中止清理操作！${NC}"
+        if [[ "$dir" == "/" || "$dir" == "" || "$dir" == "$HOME" ]]; then
+            echo -e "${RED}错误: 试图删除根目录、空路径或用户主目录，已中止清理操作！${NC}"
+            return 1
+        fi
+        
+        # 更详细的安全检查，防止路径穿越
+        if [[ "$dir" =~ \.\./ || "$dir" =~ \.\.\\ ]]; then
+            echo -e "${RED}错误: 路径包含 '..' 可能导致路径穿越，已中止清理操作！${NC}"
             return 1
         fi
         
@@ -137,13 +166,24 @@ cleanup() {
         echo -e "  - 检查到 ${GREEN}$name${NC} 目录 ($dir)，大小: ${YELLOW}$size_before${NC}"
         read -r -p "  - 确认清理 $name? [y/N] " response
         if [[ "$response" =~ ^[Yy]$ ]]; then
-            # 使用 find 进行更安全的删除，只删除内容不删除目录本身
-            if find "$dir" -mindepth 1 -maxdepth 1 -not -name ".*" -exec rm -rf {} + 2>/dev/null; then
-                local size_after
-                size_after=$(get_dir_size "$dir")
-                echo -e "  ${GREEN}✓${NC} 已清理 $name: $size_before -> $size_after"
+            # 使用更安全的 find 命令，避免删除重要文件
+            local count=0
+            while IFS= read -r -d '' file; do
+                if [[ -n "$file" && "$file" != "." && "$file" != ".." ]]; then
+                    ((count++))
+                fi
+            done < <(find "$dir" -mindepth 1 -maxdepth 1 -print0)
+            
+            if [[ $count -gt 0 ]]; then
+                if find "$dir" -mindepth 1 -maxdepth 1 -not -name ".*" -exec rm -rf {} + 2>/dev/null; then
+                    local size_after
+                    size_after=$(get_dir_size "$dir")
+                    echo -e "  ${GREEN}✓${NC} 已清理 $name: $size_before -> $size_after (删除了 $count 个项目)"
+                else
+                    echo -e "  ${RED}✗${NC} 清理 $name 时出现错误"
+                fi
             else
-                echo -e "  ${RED}✗${NC} 清理 $name 时出现错误"
+                echo -e "  ${YELLOW}-${NC} $name 为空，无需清理"
             fi
         else
             echo -e "  ${YELLOW}-${NC} 已跳过 $name"
@@ -460,6 +500,49 @@ cleanup_macos_specific() {
                 echo -e "  ${YELLOW}-${NC} 已跳过 Xcode 缓存清理"
             fi
         fi
+        
+        # 清理 iOS 模拟器缓存（如果存在 Xcode）
+        if [[ -d "$HOME/Library/Developer/CoreSimulator" ]]; then
+            echo -e "\\n正在清理 iOS 模拟器缓存..."
+            local simulator_cache="$HOME/Library/Developer/CoreSimulator"
+            local simulator_size
+            simulator_size=$(get_dir_size "$simulator_cache")
+            echo -e "  - 检测到 iOS 模拟器缓存，大小: ${YELLOW}$simulator_size${NC}"
+            read -r -p "  - 确认清理 iOS 模拟器缓存? [y/N] " response
+            if [[ "$response" =~ ^[Yy]$ ]]; then
+                # 只删除缓存和临时文件，保留设备配置
+                if find "$simulator_cache" -name "data" -type d -path "*/Caches/*" -exec rm -rf {} + 2>/dev/null; then
+                    echo -e "  ${GREEN}✓${NC} 已清理 iOS 模拟器缓存"
+                else
+                    echo -e "  ${RED}✗${NC} 清理 iOS 模拟器缓存时出现错误"
+                fi
+            else
+                echo -e "  ${YELLOW}-${NC} 已跳过 iOS 模拟器缓存清理"
+            fi
+        fi
+        
+        # 清理系统范围内的垃圾邮件缓存
+        if [[ -d "/Library/Caches" ]]; then
+            echo -e "\\n正在清理系统缓存..."
+            local system_caches="/Library/Caches"
+            local cache_dirs=($(find "$system_caches" -mindepth 1 -maxdepth 1 -type d | head -10))  # 限制显示前10个目录
+            for dir in "${cache_dirs[@]}"; do
+                local dir_name=$(basename "$dir")
+                local dir_size
+                dir_size=$(get_dir_size "$dir")
+                echo -e "  - 检测到系统缓存: $dir_name, 大小: ${YELLOW}$dir_size${NC}"
+                read -r -p "  - 确认清理 $dir_name 缓存? [y/N] " response
+                if [[ "$response" =~ ^[Yy]$ ]]; then
+                    if sudo rm -rf "$dir"/* 2>/dev/null; then
+                        echo -e "  ${GREEN}✓${NC} 已清理 $dir_name 缓存"
+                    else
+                        echo -e "  ${RED}✗${NC} 清理 $dir_name 缓存时出现错误"
+                    fi
+                else
+                    echo -e "  ${YELLOW}-${NC} 已跳过 $dir_name 缓存清理"
+                fi
+            done
+        fi
     fi
 }
 
@@ -769,14 +852,18 @@ show_menu() {
         echo "10. 清理应用容器缓存"
         echo "11. 清理邮件和 QuickLook 缓存"
         echo "12. 清理所有 (以上所有 macOS 选项)"
-        echo "13. 退出"
+        echo "13. 启动磁盘分析 (ncdu - 分析主目录)"
+        echo "14. 启动系统磁盘分析 (ncdu - 需要管理员权限)"
+        echo "15. 退出"
     else
         echo "4. 清理 Linux 系统缓存 (/var/cache, $HOME/.cache)"
         echo "5. 清理包管理器缓存 (APT/YUM/DNF/Pacman/Zypper/Snap/Flatpak)"
         echo "6. 清理 Homebrew 缓存"
         echo "7. 清理其他缓存 (NPM, Docker)"
-        echo "8. 清理所有 (以上所有 Linux 选项)"
-        echo "9. 退出"
+        echo "8. 启动磁盘分析 (ncdu)"
+        echo "9. 启动系统磁盘分析 (ncdu - 需要管理员权限)"
+        echo "10. 清理所有 (以上所有 Linux 选项)"
+        echo "11. 退出"
     fi
 }
 
@@ -1050,12 +1137,101 @@ execute_cleanup() {
         
         13)
             if [[ "$OS_TYPE" == "macOS" ]]; then
+                echo -e "\\n正在启动磁盘使用情况分析工具..."
+                # 检查是否安装了 ncdu
+                if command -v ncdu &> /dev/null; then
+                    if [[ -t 1 ]]; then  # 确保输出到终端
+                        echo -e "${YELLOW}启动 ncdu 分析主目录...${NC}"
+                        echo -e "${YELLOW}提示: 按 ? 键查看帮助，q 键退出${NC}"
+                        # 使用临时文件来处理 ncdu 的执行
+                        ncdu "$HOME"
+                    else
+                        echo -e "${RED}错误: 无法在当前环境中启动 ncdu，需要终端支持${NC}"
+                    fi
+                else
+                    echo -e "${YELLOW}ncdu 未安装，正在提供安装说明...${NC}"
+                    echo "您可以使用以下方式安装 ncdu："
+                    if command -v brew &> /dev/null; then
+                        echo "  - macOS (Homebrew): brew install ncdu"
+                    elif command -v port &> /dev/null; then
+                        echo "  - macOS (MacPorts): sudo port install ncdu"
+                    else
+                        echo "  - 访问 https://dev.yorhel.nl/ncdu/man"
+                    fi
+                    echo "安装后即可使用磁盘分析功能。"
+                fi
+            else
+                echo -e "\\n正在启动磁盘使用情况分析工具..."
+                # Linux 版本
+                if command -v ncdu &> /dev/null; then
+                    if [[ -t 1 ]]; then  # 确保输出到终端
+                        echo -e "${YELLOW}启动 ncdu 分析主目录...${NC}"
+                        echo -e "${YELLOW}提示: 按 ? 键查看帮助，q 键退出${NC}"
+                        ncdu "$HOME"
+                    else
+                        echo -e "${RED}错误: 无法在当前环境中启动 ncdu，需要终端支持${NC}"
+                    fi
+                else
+                    echo -e "${YELLOW}ncdu 未安装${NC}"
+                    echo "请使用包管理器安装 ncdu，例如："
+                    echo "  - Ubuntu/Debian: sudo apt install ncdu"
+                    echo "  - CentOS/RHEL/Fedora: sudo dnf install ncdu"
+                    echo "  - Arch Linux: sudo pacman -S ncdu"
+                fi
+            fi
+            ;;
+        
+        14)
+            if [[ "$OS_TYPE" == "macOS" ]]; then
+                echo -e "\\n正在启动系统级磁盘使用情况分析..."
+                # 检查是否安装了 ncdu
+                if command -v ncdu &> /dev/null; then
+                    if [[ -t 1 ]]; then  # 确保输出到终端
+                        echo -e "${YELLOW}启动 ncdu 分析根目录 (需要管理员权限)...${NC}"
+                        echo -e "${YELLOW}提示: 按 ? 键查看帮助，q 键退出${NC}"
+                        # 请求管理员权限来分析系统目录
+                        sudo ncdu /
+                    else
+                        echo -e "${RED}错误: 无法在当前环境中启动 ncdu，需要终端支持${NC}"
+                    fi
+                else
+                    echo -e "${YELLOW}ncdu 未安装，正在提供安装说明...${NC}"
+                    echo "您可以使用以下方式安装 ncdu："
+                    if command -v brew &> /dev/null; then
+                        echo "  - macOS (Homebrew): brew install ncdu"
+                    else
+                        echo "  - 访问 https://dev.yorhel.nl/ncdu/man"
+                    fi
+                    echo "安装后即可使用磁盘分析功能。"
+                fi
+            else
+                echo -e "\\n正在启动系统级磁盘使用情况分析..."
+                # Linux 版本
+                if command -v ncdu &> /dev/null; then
+                    if [[ -t 1 ]]; then  # 确保输出到终端
+                        echo -e "${YELLOW}启动 ncdu 分析根目录 (需要管理员权限)...${NC}"
+                        echo -e "${YELLOW}提示: 按 ? 键查看帮助，q 键退出${NC}"
+                        sudo ncdu /
+                    else
+                        echo -e "${RED}错误: 无法在当前环境中启动 ncdu，需要终端支持${NC}"
+                    fi
+                else
+                    echo -e "${YELLOW}ncdu 未安装${NC}"
+                    echo "请使用包管理器安装 ncdu，例如："
+                    echo "  - Ubuntu/Debian: sudo apt install ncdu"
+                    echo "  - CentOS/RHEL/Fedora: sudo dnf install ncdu"
+                    echo "  - Arch Linux: sudo pacman -S ncdu"
+                fi
+            fi
+            ;;
+        
+        15)
+            if [[ "$OS_TYPE" == "macOS" ]]; then
                 echo -e "${GREEN}已退出清理工具${NC}"
                 return 1
             else
-                # Linux 系统没有此选项
-                echo -e "${RED}无效选择，请输入正确的数字${NC}"
-                return 0
+                echo -e "${GREEN}已退出清理工具${NC}"
+                return 1
             fi
             ;;
         
@@ -1074,14 +1250,14 @@ while true; do
     
     # 读取用户选择
     if [[ "$OS_TYPE" == "macOS" ]]; then
-        read -p "请选择 (1-13): " choice
+        read -p "请选择 (1-15): " choice
     else
-        read -p "请选择 (1-9): " choice
+        read -p "请选择 (1-11): " choice
     fi
 
     # 执行清理操作
     execute_cleanup "$choice"
-    local exit_code=$?
+    exit_code=$?
     
     # 检查返回值，如果为1则退出循环
     if [[ $exit_code -eq 1 ]]; then
@@ -1184,11 +1360,34 @@ while true; do
                 echo "- 执行 Linux 全面清理"
             fi
             ;;
+        13)
+            if [[ "$OS_TYPE" == "macOS" ]]; then
+                echo "- 启动磁盘分析 (ncdu - 分析主目录)"
+            else
+                echo "- 启动磁盘分析 (ncdu)"
+            fi
+            ;;
+        14)
+            if [[ "$OS_TYPE" == "macOS" ]]; then
+                echo "- 启动系统磁盘分析 (ncdu - 需要管理员权限)"
+            else
+                echo "- 启动系统磁盘分析 (ncdu - 需要管理员权限)"
+            fi
+            ;;
     esac
     echo ""
     df -h / | tail -n +2
     
     echo "注意：此脚本不会删除系统关键文件，仅清理可安全删除的缓存和临时文件。"
+    
+    # 提供安全清理建议
+    echo -e "\\n${YELLOW}安全清理建议:${NC}"
+    echo "• 定期清理用户缓存和临时文件可以释放磁盘空间"
+    echo "• 清理下载文件夹前请确认无重要文件"
+    echo "• 清理日志文件一般不影响系统运行"
+    echo "• 清理后某些应用可能需要重新加载资源，稍慢属于正常现象"
+    echo "• 建议在清理重要数据前备份关键文件"
 done
 
 echo -e "\\n${GREEN}感谢使用${SCRIPT_NAME}！${NC}"
+echo -e "${GREEN}安全提示: 保持至少 10% 的磁盘空间可用有助于系统性能。${NC}"
