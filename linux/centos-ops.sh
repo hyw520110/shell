@@ -1,421 +1,101 @@
-###################优化项目说明###################
-#ConfigYum #配置阿里云YUM源
-#installTool #安装常用工具
-#installCommTool #安装常用库
-#installManChinese #安装man中文版本
-#initCN_UTF8 #设置语言为中文
-#initFirewall #关闭selinux,安装iptables
-#initSsh #ssh安全设置
-#syncSystemTime #同步系统时间加入定时任务
-#openFiles #修改文件打开数
-#optimizationKernel #优化系统内核参数
-#VimSet #vim编辑器设置
-#init_safe #ctrl+alt+del 取消重启
-#init_rc_local #centos7 rc.local文件执行权限设置
-#disableIPV6 #关闭IPV6
+#!/bin/bash
 
+# Filename: centos-ops.sh
+# 功能: CentOS 7+ 系统初始化和安全加固的总控脚本。
+#       它调用一系列已独立优化和加固的子脚本来执行各项任务。
 
-#! /bin/sh
-#author: vim
-#qq:82996821
-#filename: CentOS7_auto_opt_set.sh
+set -eo pipefail
 
-# 动态获取脚本目录
-SCRIPT_DIR="$(cd "$(dirname "$0")" &>/dev/null && pwd)"
+# --- 配置 ---
+# 子脚本所在的目录，通常与此脚本在同一目录
+SCRIPT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# --- 结束配置 ---
 
-# 定义全局变量
-BACKUP_DIR="$SCRIPT_DIR/yum_backup"
-LOG_FILE="$SCRIPT_DIR/init_server.log"
-SELINUX_CONFIG="/etc/selinux/config"
-SSH_CONFIG="/etc/ssh/sshd_config"
-CRON_ROOT="/var/spool/cron/root"
-LIMITS_CONF="/etc/security/limits.conf"
-SYSCTL_CONFIG="/etc/sysctl.conf"
+# --- 辅助函数 ---
+log_message() { echo -e "\n\033[0;32m[信息] $1\033[0m"; }
+warn_message() { echo -e "\n\033[1;33m[警告] $1\033[0m"; }
+error_exit() { echo -e "\n\033[0;31m[错误] $1\033[0m" >&2; exit 1; }
 
-#set env
-export PATH=$PATH:/bin:/sbin:/usr/sbin
-export LANG="en_US.UTF-8"
-echo "welcome to server" >/etc/issue
-
-#Require root to run this scripts.
-if [[ "$(whoami)" != "root" ]]; then
-    echo "Please run this scripts as root." >&2
-    exit 1
-fi
-
-#define cmd var
-SERVICE=`which service`
-CHKCONFIG=`which chkconfig`
-
-#Source function library
-. /etc/rc.d/init.d/functions
-
-#Config Yum CentOS-Base.repo and epel-release
-ConfigYum() {
-    echo "#--Config Yum CentOS-Base.repo--"
-    mkdir -p "$BACKUP_DIR"
-    mv /etc/yum.repos.d/* "$BACKUP_DIR" 2>> "$LOG_FILE"
-    curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.aliyun.com/repo/Centos-7.repo >> "$LOG_FILE" 2>&1
-    yum -y install epel-release >> "$LOG_FILE" 2>&1
-    yum clean all >> "$LOG_FILE" 2>&1
-    yum makecache >> "$LOG_FILE" 2>&1
-}
-
-#Install Init Packages
-installTool(){
-    echo "#--Install sysstat lrzsz rsync bash-completion iptables--"
-    yum -y install sysstat lrzsz utpdate rsync wget bash-completion iptables-services vim-enhanced net-tools lsof wget lrzsz tree >/dev/null 2>&1
-    [ $? -eq 0  ]&&action $"Install Init Packages:" /bin/true||action $"Install Init Packages:" /bin/false
-    sleep 1
-}
-
-#Install common Packages
-installCommTool(){
-    echo "#--Install common Packages--"
-    yum install -y gcc cmake bzip2-devel curl-devel db4-devel libjpeg-devel libpng-devel freetype-devel libXpm-devel gmp-devel libc-client-devel openldap-devel unixODBC-devel postgresql-devel sqlite-devel aspell-devel net-snmp-devel libxslt-devel libxml2-devel pcre-devel mysql-devel pspell-devel libmemcached libmemcached-devel zlib-devel >/dev/null 2>&1
-    [ $? -eq 0  ]&&action $"Install common Packages:" /bin/true||action $"Install common Packages:" /bin/false
-    sleep 1
-}
-
-#Install man chinese Packages
-installManChinese(){
-    echo "#--Install man chinese Packages--"
-    yum install man-pages-zh-CN.noarch  -y >/dev/null 2>&1
-    [ $? -eq 0  ]&&action $"Install man chinese Packages:" /bin/true||action $"Install man chinese Packages:" /bin/false
-    sleep 1
-}
-
-#Set Charset CN_UTF8
-initCN_UTF8(){
-    echo "#--set LANG="zh_CN.UTF-8"--"
-    \cp /etc/locale.conf /etc/locale.conf.$(date +%F)
-    sed -i 's#LANG="en_US.UTF-8"#LANG="zh_CN.UTF-8"#' /etc/locale.conf
-    source /etc/locale.conf
-    [ `grep zh_CN.UTF-8 /etc/locale.conf|wc -l` -eq 1  ]&&action $"Set Charset CN_UTF8:" /bin/true||action $"Set Charset CN_UTF8:" /bin/false
-    sleep 1
-}
-
-#Close Selinux and Iptables
-initFirewall() {
-    systemctl stop firewalld
-    systemctl disable firewalld >> "$LOG_FILE" 2>&1
-    setenforce 0
-    sed -i '/^SELINUX=/ s/enforcing/disabled/' "$SELINUX_CONFIG"
-}
-
-initSsh() {
-    cp "$SSH_CONFIG" "$SSH_CONFIG.$(date +%F%T)"
-    sed -i 's%#Port 22%Port 1020%' "$SSH_CONFIG"
-    sed -i 's%#PermitRootLogin yes%PermitRootLogin no%' "$SSH_CONFIG"
-    systemctl restart sshd
-}
-
-AddSAUser(){
-    echo "#--add sys user for all member--"
-    datetmp=`date +"%Y-%m-%d_%H-%M-%S"`
-    \cp /etc/sudoers /etc/sudoers.${datetmp}
-    saUserArr=(user1 user2)
-    [ `grep "^sa:" /etc/group |wc -l` -lt 1  ] && groupadd -g 901 sa ||echo "group sa alread exist"
-    for((i=0;i<${#saUserArr[@]};i++))
-    do
-        if [ `grep "${saUserArr[$i]}" /etc/passwd |wc -l` -lt 1  ]; then
-           #add sys user
-           useradd -g sa -u 90${i} ${saUserArr[$i]}
-           #set passwd
-           echo "${saUserArr[$i]}123456!@#$%^"|passwd ${saUserArr[$i]} --stdin
-           #set sudo power
-        else
-           echo "user ${saUserArr[$i]} alread exist"
-        fi
-    done
-        [ `grep "\%sa" /etc/sudoers |wc -l` -ne 1  ] && echo "%sa ALL=(ALL)  NOPASSWD: ALL" >>/etc/sudoers
-        /usr/sbin/visudo -c
-        [ $? -ne 0  ] && /bin/cp /etc/sudoers.${datetmp} /etc/sudoers && echo $"Sudoers not config"
-        action $"#--add sys user for all member-->OK" /bin/true
-        sleep 1
-}
-
-# 同步系统时间
-syncSystemTime() {
-    echo "*/5 * * * * /sbin/ntpdate cn.pool.ntp.org >/dev/null 2>&1" >> "$CRON_ROOT"
-}
-
-openFiles() {
-    cp "$LIMITS_CONF" "$LIMITS_CONF.$(date +%F_%T)"
-    if [ $(grep -P "\*\t\t-\tnofile\t\t65535" "$LIMITS_CONF" | wc -l) -lt 1 ]; then
-        sed -i '/# End of file/i\*\t\t-\tnofile\t\t65535' "$LIMITS_CONF"
-        ulimit -HSn 65535
+# 检查子脚本是否存在且可执行
+check_script() {
+    local script_path="$SCRIPT_LIB_DIR/$1"
+    if [ ! -f "$script_path" ]; then
+        error_exit "必需的子脚本 '$1' 未找到: '$script_path'. 请确保所有子脚本都在同一目录下。"
     fi
-    echo "set maxnum openfiles successful"
-    sleep 1
+    if [ ! -x "$script_path" ]; then
+        error_exit "子脚本 '$1' 没有执行权限。请运行 'chmod +x $script_path'."
+    fi
 }
 
-# 内核参数优化
-optimizationKernel() {
-    cp "$SYSCTL_CONFIG" "$SYSCTL_CONFIG.$(date +%F_%T)"
-    cat >>"$SYSCTL_CONFIG" <<EOF
-net.ipv4.tcp_timestamps = 0
-net.ipv4.tcp_synack_retries = 2
-net.ipv4.tcp_syn_retries = 2
-net.ipv4.tcp_mem = 94500000 915000000 927000000
-net.ipv4.tcp_max_orphans = 3276800
-net.core.wmem_default = 8288608
-net.core.rmem_default = 8388608
-net.core.rmem_max = 16777216
-net.core.wmem_max = 16777216
-EOF
-    sysctl -p
-}
-
-#Vim set
-VimSet(){
-    echo "#--Vim set--"
-    \cp /root/.vimrc /root/.vimrc.$(date +%F_%T)
-cat >>/root/.vimrc<<EOF
-set history=1000
-autocmd InsertLeave * se cul
-autocmd InsertLeave * se nocul
-set nu
-set bs=2
-syntax on
-set laststatus=2
-set tabstop=4
-set go=
-set ruler
-set showcmd
-set cmdheight=1
-hi CursorLine   cterm=NONE ctermbg=blue ctermfg=white guibg=blue guifg=white
-set hls
-set cursorline
-set ignorecase
-set hlsearch
-set incsearch
-set helplang=cn
-
-
-inoremap ( ()<ESC>i   
-inoremap [ []<ESC>i
-inoremap { {}<ESC>i
-inoremap < <><ESC>i
-inoremap " ""<ESC>i
-inoremap ' ''<ESC>i
-EOF
-}
-
-init_safe(){
-    echo "#--forbid ctrl+alt+del reboot system---"
-    \rm -f /usr/lib/systemd/system/ctrl-alt-del.target
-    /sbin/init q
-    [ $? -eq 0  ]&&action $"forbid ctrl+alt+del reboot system:" /bin/true||action $"forbid ctrl+alt+del reboot system" /bin/false
-    sleep 1
-}
-
-init_rc_local(){
-    echo "#--to /etc/rc.local execute permissions---"
-    chmod +x /etc/rc.d/rc.local
-    [ $? -eq 0  ]&&action $"to /etc/rc.local execute permissions:" /bin/true||action $"to /etc/rc.local execute permissions:" /bin/false
-    sleep 1
-}
-
-disableIPV6(){
-    echo "#--forbid use IPV6--"
-    \cp  /etc/sysctl.conf /etc/sysctl.conf.$(date +%F_%T)
-    cat >>/etc/sysctl.conf<<EOF
-net.ipv6.conf.all.disable_ipv6 = 1
-net.ipv6.conf.default.disable_ipv6 = 1
-EOF
-    [ $? -eq 0  ]&&action $"forbid use IPV6:" /bin/true||action $"forbid use IPV6:" /bin/false
-    sysctl -p
-    sleep 1
-}
-
-AStr="Disable iptables selinux nouseful and forbid ctrl+alt+del reboot system"
-BStr="Set sshConfig and change port 22->1020 and forbid root login"
-CStr="Add group SA users and edit sudoers"
-DStr="Update system time for cron"
-EStr="Optization system kernel"
-FStr="Install zabbix tools"
-GStr="Disable IPV6"
-HStr="Edit sysopenfile num to 65535"
-IStr="Install Common tools"
-JStr="Install common devel"
-KStr="Vim set for root"
-LStr="One key init install"
-QStr="Quit"
-
-echo "###############################################################"
-echo "<========================@system init@========================>"
-echo "A --${AStr}"
-echo "B --${BStr}"
-echo "C --${CStr}"
-echo "D --${DStr}"
-echo "E --${EStr}"
-echo "F --${FStr}"
-echo "G --${GStr}"
-echo "H --${HStr}"
-echo "I --${IStr}"
-echo "J --${JStr}"
-echo "K --${KStr}"
-echo "L --${LStr}"
-echo "Q --${QStr}"
-echo "------------------------------------------------"
-echo "Note: after 20s will select one key init install"
-
-option="-1"
-read -n1 -t20 -p "Choose one of A-B-C-D-E-F-G-H-I-J-K-L:::" option
-
-flag1=$(echo $option|egrep "\-1"|wc -l)
-flag2=$(echo $option|egrep "[A-Za-z]"|wc -l)
-
-if [ $flag1 -eq 1  ]; then
-    option="L"
-elif [ $flag2 -ne 1  ]; then
-    echo "Pls input A--->L letter"
-    exit 1
-fi
-
-echo -e "\nyour choose is: $option\n"
-echo "after 5s start install......"
-sleep 5
-case $option in
-    A|a)
-      ConfigYum
-      #initCN_UTF8
-      initFirewall
-      init_safe
-      init_rc_local
-    ;;
-    B|b)
-      initSsh
-    ;;
-    C|c)
-      AddSAUser
-    ;;
-    D|d)
-      syncSystemTime
-    ;;
-    E|e)
-      optimizationKernel
-    ;;
-    F|f)
-      #init_zabbix_agent
-      echo "this function cannot execute yet!"
-    ;;
-    G|g)
-      disableIPV6
-    ;;
-    H|h)
-      openFiles
-    ;;
-    I|i)
-      installTool
-    ;;
-    J|j)
-      installCommTool
-    ;;
-    K|k)
-      VimSet
-    ;;   
-    L|l)
-      installTool
-      ConfigYum
-      #initCN_UTF8
-      initFirewall
-      #initService
-      initSsh
-      AddSAUser
-      syncSystemTime
-      openFiles
-      optimizationKernel
-      init_safe
-      init_rc_local
-      disableIPV6
-    ;;
-    Q|q)
-      exit
-    ;;
-    *)
-      echo "Please input A-L,thank you!"
-      exit 1
-    ;;
-esac
-
-# 调用其他脚本
-source "$SCRIPT_DIR/init_yum.sh"
-source "$SCRIPT_DIR/init_security.sh"
-source "$SCRIPT_DIR/init_kernel.sh"
-source "$SCRIPT_DIR/init_user.sh"
-source "$SCRIPT_DIR/init_time.sh"
-source "$SCRIPT_DIR/init_audit.sh"
-
-# 主菜单逻辑保持不变
+# --- 主菜单逻辑 ---
 main_menu() {
-    echo "A --Disable iptables, selinux, nouseful, and forbid ctrl+alt+del reboot system"
-    echo "B --Set sshConfig and change port 22->1020 and forbid root login"
-    echo "C --Add group SA users and edit sudoers"
-    echo "D --Update system time for cron"
-    echo "E --Optimize system kernel"
-    echo "F --Install zabbix tools"
-    echo "G --Disable IPV6"
-    echo "H --Edit sysopenfile num to 65535"
-    echo "I --Install Common tools"
-    echo "J --Install common devel"
-    echo "K --Vim set for root"
-    echo "L --One key init install"
-    echo "Q --Quit"
-    option="-1"
-    read -n1 -t20 -p "Choose one of A-B-C-D-E-F-G-H-I-J-K-L:::" option
-    flag1=$(echo $option | egrep "-1" | wc -l)
-    flag2=$(echo $option | egrep "[A-Za-z]" | wc -l)
+    # 确保所有可能用到的子脚本都存在且可执行
+    check_script "init_yum.sh"
+    check_script "init_security.sh"
+    check_script "init_user.sh"
+    check_script "init_time.sh"
+    check_script "init_kernel.sh"
+    check_script "init_audit.sh"
+    check_script "install-hosts-font.sh"
+    check_script "ssh-exec-remote.sh"
 
-    if [ $flag1 -eq 1 ]; then
-        option="L"
-    elif [ $flag2 -ne 1 ]; then
-        echo "Pls input A--->L letter"
-        exit 1
-    fi
+    while true; do
+        clear # 清屏，使菜单更清晰
+        echo "###############################################################"
+        echo "<========================@系统初始化@========================>"
+        echo "A -- 配置YUM/DNF源 (调用 init_yum.sh)"
+        echo "B -- SSH安全设置 (调用 init_security.sh - SSH部分)"
+        echo "C -- 添加系统用户和sudo权限 (调用 init_user.sh)"
+        echo "D -- 同步系统时间 (调用 init_time.sh)"
+        echo "E -- 优化系统内核参数 (调用 init_kernel.sh)"
+        echo "F -- 安装Zabbix工具 (功能待实现)"
+        echo "G -- 禁用IPV6 (功能待实现)"
+        echo "H -- 修改文件打开数 (功能待实现)"
+        echo "I -- 安装常用工具 (功能待实现)"
+        echo "J -- 安装常用开发库 (功能待实现)"
+        echo "K -- Vim编辑器设置 (功能待实现)"
+        echo "L -- 一键初始化安装 (执行所有已实现功能)"
+        echo "Q -- 退出"
+        echo "------------------------------------------------"
+        
+        read -n1 -p "请选择一个操作 (A-L, Q): " option
+        echo -e "\n您的选择是: $option\n"
 
-    echo -e "\nyour choose is: $option\n"
-    case $option in
-    A|a)
-        initFirewall && init_safe && init_rc_local
-        ;;
-    B|b)
-        initSsh
-        ;;
-    C|c)
-        AddSAUser
-        ;;
-    D|d)
-        syncSystemTime
-        ;;
-    E|e)
-        optimizationKernel
-        ;;
-    G|g)
-        disable_ipv6
-        ;;
-    H|h)
-        open_files
-        ;;
-    I|i)
-        install_tool
-        ;;
-    J|j)
-        install_comm_tool
-        ;;
-    K|k)
-        vim_set
-        ;;
-    L|l)
-        install_tool && ConfigYum && initFirewall && initSsh && AddSAUser && syncSystemTime && open_files && optimizationKernel && init_safe && init_rc_local && disable_ipv6
-        ;;
-    Q|q)
-        exit
-        ;;
-    *)
-        echo "Please input A-L, thank you!" && exit 1
-        ;;
-    esac
+        case "$option" in
+            A|a) log_message "执行: 配置YUM/DNF源"; "$SCRIPT_LIB_DIR/init_yum.sh" ;;
+            B|b) log_message "执行: SSH安全设置"; "$SCRIPT_LIB_DIR/init_security.sh" ;;
+            C|c) log_message "执行: 添加系统用户和sudo权限"; "$SCRIPT_LIB_DIR/init_user.sh" ;;
+            D|d) log_message "执行: 同步系统时间"; "$SCRIPT_LIB_DIR/init_time.sh" ;;
+            E|e) log_message "执行: 优化系统内核参数"; "$SCRIPT_LIB_DIR/init_kernel.sh" ;;
+            F|f) warn_message "功能 F (安装Zabbix工具) 尚未实现。"; sleep 2 ;;
+            G|g) warn_message "功能 G (禁用IPV6) 尚未实现。"; sleep 2 ;;
+            H|h) warn_message "功能 H (修改文件打开数) 尚未实现。"; sleep 2 ;;
+            I|i) warn_message "功能 I (安装常用工具) 尚未实现。"; sleep 2 ;;
+            J|j) warn_message "功能 J (安装常用开发库) 尚未实现。"; sleep 2 ;;
+            K|k) warn_message "功能 K (Vim编辑器设置) 尚未实现。"; sleep 2 ;;
+            L|l)
+                log_message "执行: 一键初始化安装 (所有已实现功能)"
+                "$SCRIPT_LIB_DIR/init_yum.sh"
+                "$SCRIPT_LIB_DIR/init_security.sh"
+                "$SCRIPT_LIB_DIR/init_user.sh"
+                "$SCRIPT_LIB_DIR/init_time.sh"
+                "$SCRIPT_LIB_DIR/init_kernel.sh"
+                "$SCRIPT_LIB_DIR/init_audit.sh"
+                log_message "一键初始化安装完成。"
+                ;;
+            Q|q) log_message "退出程序。"; exit 0 ;;
+            *) warn_message "无效选择，请重新输入。"; sleep 1 ;;
+        esac
+        read -p "按回车键返回主菜单..."
+    done
 }
-main_menu
+
+# --- 主程序入口 ---
+main() {
+    if [ "$(id -u)" -ne 0 ]; then
+        error_exit "此脚本必须以root权限运行。"
+    fi
+    main_menu
+}
+
+main "$@"

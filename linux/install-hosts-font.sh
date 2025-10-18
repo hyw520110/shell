@@ -1,62 +1,49 @@
 #!/bin/bash
+# 脚本功能：在CentOS/RHEL系统上，通过包管理器安全地安装中文字体。
 
-# 主机名映射列表
-hosts=("redis-server" "mq-server" "mysql-server" "oss-server" "es-server" "model-server" "sk-server" "nacos-server" "task-server" "ssj-show.aipsybot.com" "zk1" "zk2" "zk3")
+set -eo pipefail
 
-# 字体备份目录
-fonts_backup_dir="/opt/softs/fonts/chinese"
+log_message() { echo "[信息] $1"; }
+error_exit() { echo "[错误] $1" >&2; exit 1; }
 
-# 获取当前IP地址
-ip=$(/opt/shell/ip.sh)
-
-# 更新 /etc/hosts 文件
-for host in "${hosts[@]}"; do
-    if ! grep -q "$host" /etc/hosts; then
-        echo "$ip $host" >> /etc/hosts
+main() {
+    if [ "$(id -u)" -ne 0 ]; then
+        error_exit "此脚本必须以root权限运行。"
     fi
-done
 
-# 确保字体备份目录存在
-mkdir -p "$fonts_backup_dir"
-mkdir -p "/usr/share/fonts/chinese"
-
-# 检查字体是否已安装
-if ! ls -A "/usr/share/fonts/chinese/" | grep -iq "s"; then
-    echo "正在安装字体..."
-    yum -y install fontconfig sshpass
-
-    # 如果字体备份目录为空，则从测试服务器拷贝字体
-    if [ -z "$(ls -A "$fonts_backup_dir")" ]; then
-      # 用户输入备份服务器信息
-      echo "请输入备份服务器的 IP 地址（默认超时 8 秒）："
-      read -t 8 -p "IP: " backup_ip
-      echo "请输入备份服务器的用户名："
-      read -p "Username: " backup_username
-      echo "请输入备份服务器的密码："
-      read -s -p "Password: " backup_password
-      echo
-
-      # 检测输入的 IP 地址是否可达
-      ping -c 1 "$backup_ip" > /dev/null 2>&1
-      if [ $? -ne 0 ]; then
-          echo "错误：输入的 IP 地址 $backup_ip 不可达！"
-          exit 1
-      else
-          sshpass -p '$backup_password' scp -r -o StrictHostKeyChecking=no $backup_username@$backup_ip:/usr/share/fonts/chinese/* "$fonts_backup_dir/"
-      fi
+    # 1. 检查 fontconfig 是否安装，它是字体管理的基础工具
+    if ! command -v fc-list &>/dev/null; then
+        log_message "正在安装字体管理工具 'fontconfig'..."
+        yum install -y fontconfig
     fi
-else
-    echo "已安装字体"
-fi
+    
+    # 2. 使用 fc-list 检查系统是否已有中文字体
+    if fc-list :lang=zh | grep -q "."; then
+        log_message "检测到系统已安装中文字体。无需任何操作。"
+        exit 0
+    fi
 
-# 如果字体备份目录为空，则从系统字体目录备份到字体备份目录
-if [ -z "$(ls -A "$fonts_backup_dir")" ]; then
-    find /usr/share/fonts/chinese/ -iname "s*" -exec cp --parents {} "$fonts_backup_dir/" \;
-fi
+    # 3. 安装一个标准的中文字体包（文泉驿微米黑）
+    log_message "未发现中文字体，准备从YUM源安装 'wqy-microhei-fonts'..."
+    if command -v yum &>/dev/null; then
+        yum install -y wqy-microhei-fonts
+    elif command -v dnf &>/dev/null; then
+        dnf install -y wqy-microhei-fonts
+    else
+        error_exit "未找到 'yum'或'dnf' 命令，无法安装字体包。"
+    fi
 
-# 检查字体是否已配置
-if ! fc-list :lang=zh; then
-    echo "字体安装失败，请手动安装"
-else
-    echo "字体安装成功"
-fi
+    # 4. 重建字体缓存，让新字体生效
+    log_message "正在重建字体缓存..."
+    fc-cache -f -v
+
+    # 5. 最终验证
+    log_message "正在验证安装结果..."
+    if fc-list :lang=zh | grep -q "."; then
+        log_message "中文字体已成功安装并配置。"
+    else
+        error_exit "字体安装失败，请检查包管理器安装过程中的错误信息。"
+    fi
+}
+
+main "$@"

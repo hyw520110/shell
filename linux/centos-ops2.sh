@@ -1,141 +1,169 @@
 #!/bin/bash
-#当前版本仅支持CentOS7的系统
 
+# Filename: centos-ops2.sh
+# 功能: 对CentOS 7系统进行安全强化配置。
+# 本脚本旨在实现幂等性、模块化和安全性。
 
-if [ `whoami` != 'root' ]; then
-    echo -e "\e[1;31m 请使用root执行... \e[1;31m"
-    exit 1
-fi
+set -eo pipefail
 
-SYSTEM_VERSION=`lsb_release  -i|awk '{print $NF}'`
-KERNEL_VERSION=`uname -r|awk -F'.' '{print $1}'`
-RELEASE_VERSION=`lsb_release -r|awk -F"[ \t]+"+ '{print $2}'`
-#终端超时时间
-TMOUT=600
-#密码最小长度
+# --- 配置 ---
+# 密码策略
 PASS_MIN_LEN=8
-#密码最大有效期
 PASS_MAX_DAYS=90
-#修改密码的最小间隔时间
 PASS_MIN_DAYS=2
+PASS_REMEMBER_COUNT=5 # 强制用户不重用最近5个密码
 
+# SSH设置
+SSH_PORT=1020
+SSH_MAX_AUTH_TRIES=4
+SSH_CLIENT_ALIVE_INTERVAL=900
+SSH_CLIENT_ALIVE_COUNT_MAX=0
 
-centos7_system_security_strengthening(){
-    #datetime=`date +%Y%m%d%H%M`
-    cp /etc/profile{,.security_default.bak}
-    cp /etc/login.defs{,.security_default.bak}
-    cp /etc/pam.d/system-auth{,.security_default.bak}
-    cp /etc/pam.d/sshd{,.security_default.bak}
-    cp /etc/pam.d/login{,.security_default.bak}
-    cp /etc/ssh/sshd_config{,.security_default.bak}
-    cp /etc/pam.d/password-auth{,.security_default.bak}
-    cp /etc/pam.d/system-auth{,.security_default.bak}
-    
-    sed -i "/`grep 'HISTSIZE='  /etc/profile`/a TMOUT=${TMOUT}"  /etc/profile
-    sed -ri "s#^(PASS_MAX_DAYS)([\t ]+)([0-9]+)#\1\2${PASS_MAX_DAYS}#g" /etc/login.defs
-    sed -ri "s#^(PASS_MIN_LEN)([\t ]+)([0-9]+)#\1\2${PASS_MIN_LEN}#g" /etc/login.defs
-    sed -ri "s#^(PASS_MIN_DAYS)([\t ]+)([0-9]+)#\1\2${PASS_MIN_DAYS}#g" /etc/login.defs
-    
-    #启用登录失败处理功能
-    echo "password requisite pam_cracklib.so retry=3 difok=2 minlen=8 lcredit=-1 dcredit=-1" >> /etc/pam.d/system-auth
-    echo "auth required pam_tally2.so  onerr=fail  deny=3  unlock_time=60 even_deny_root root_unlock_time=60" >> /etc/pam.d/system-auth
-    echo "auth required pam_tally2.so deny=3 unlock_time=60 even_deny_root root_unlock_time=60" >> /etc/pam.d/sshd
-    echo "auth required pam_tally2.so deny=3 unlock_time=60 even_deny_root root_unlock_time=60" >> /etc/pam.d/login
-    
-    
-    #sshd
-    sed -ri  "s:^(#LogLevel)([ ]+)(.*):LogLevel\2 INFO:g"  /etc/ssh/sshd_config 
-    sed -ri  "s:^(#)(ClientAliveInterval)([ ]+)([0-9]+):\2\3900:g"  /etc/ssh/sshd_config 
-    sed -ri  "s:^(#)(ClientAliveCountMax)([ ]+)([0-9]+):\2\30:g"  /etc/ssh/sshd_config 
-    sed -ri  "s:^(#)(PermitEmptyPasswords)([ ]+)([a-z]+):\2\3\4:g"  /etc/ssh/sshd_config 
-    sed -ri  "s:^(#)(MaxAuthTries)([ ]+)([0-9]+):\2\34:g"  /etc/ssh/sshd_config
-    if [ `grep -i  Protocol /etc/ssh/sshd_config|wc -l` -eq 0 ]; then
-        sed -i "20a Protocol 2" /etc/ssh/sshd_config
-    else
-        sed  -ri "s#^(Protocol)([ ]+)([0-9])#\1\22#g" /etc/ssh/sshd_config
-    fi
-    
-    #重启sshd
-    systemctl  restart sshd
-    
-    
-    #文件权限修改
-    chown root:root /etc/passwd /etc/shadow /etc/group /etc/gshadow
-    chmod 644 /etc/group 
-    chmod 644 /etc/passwd 
-    chmod 400 /etc/shadow 
-    chmod 400 /etc/gshadow
-    
-    
-    #开启地址空间布局随机化
-    sysctl -w kernel.randomize_va_space=2
-    
-    #强制用户不重用最近5个使用的密码，降低密码猜测攻击风险
-    sed -ri "s#^(password    sufficient)(.*)#\1\2 remember=5#g" /etc/pam.d/password-auth
-    sed -ri "s#^(password    sufficient)(.*)#\1\2 remember=5#g"  /etc/pam.d/system-auth
-    
-    #检查密码长度和密码是否使用多种字符类型
-    sed -ri "s:^(# )(minlen = )([0-9]):\210:g"  /etc/security/pwquality.conf
-    sed -ri "s:^(# )(minclass = )([0-9]):\23:g"  /etc/security/pwquality.conf
-    
-    #内核优化
+# 配置文件路径
+LOGIN_DEFS="/etc/login.defs"
+SSHD_CONFIG="/etc/ssh/sshd_config"
+PAM_SYSTEM_AUTH="/etc/pam.d/system-auth"
+PAM_PASSWORD_AUTH="/etc/pam.d/password-auth"
+PWQUALITY_CONF="/etc/security/pwquality.conf"
+# --- 结束配置 ---
 
-}
+# --- 辅助函数 ---
+log_message() { echo -e "\n\033[0;32m[信息] $1\033[0m"; }
+warn_message() { echo -e "\n\033[1;33m[警告] $1\033[0m"; }
+error_exit() { echo -e "\n\033[0;31m[错误] $1\033[0m" >&2; exit 1; }
 
-centos_reset(){
-    cp -f /etc/profile.security_default.bak             /etc/profile   
-    cp -f /etc/login.defs.security_default.bak          /etc/login.defs
-    cp -f /etc/pam.d/system-auth.security_default.bak   /etc/pam.d/system-auth
-    cp -f /etc/pam.d/sshd.security_default.bak          /etc/pam.d/sshd
-    cp -f /etc/pam.d/login.security_default.bak         /etc/pam.d/login
-    cp -f /etc/ssh/sshd_config.security_default.bak     /etc/ssh/sshd_config
-    cp -f /etc/pam.d/password-auth.security_default.bak /etc/pam.d/password-auth
-    cp -f /etc/pam.d/system-auth.security_default.bak   /etc/pam.d/system-auth
-    rm -f /etc/profile.security_default.bak            
-    rm -f /etc/login.defs.security_default.bak         
-    rm -f /etc/pam.d/system-auth.security_default.bak  
-    rm -f /etc/pam.d/sshd.security_default.bak         
-    rm -f /etc/pam.d/login.security_default.bak        
-    rm -f /etc/ssh/sshd_config.security_default.bak    
-    rm -f /etc/pam.d/password-auth.security_default.bak
-    rm -f /etc/pam.d/system-auth.security_default.bak 
-    systemctl restart sshd 
-}
-
-is_system_version(){
-    case $SYSTEM_VERSION in
-        CentOS)
-        if [ `echo $RELEASE_VERSION 7 8|xargs  -n 1|sort  -V|awk NR==2` == $RELEASE_VERSION ]; then
-            centos7_system_security_strengthening
+# 通用函数：安全地设置配置文件中的 key = value
+# 检查是否存在，如果存在则更新，不存在则添加
+# $1: 文件路径, $2: key, $3: value, $4: (可选) 匹配key的正则表达式
+set_config_value() {
+    local file="$1"
+    local key="$2"
+    local value="$3"
+    local pattern="${4:-^#*\s*${key}\s*=}" # 默认匹配 key = value 或 #key = value
+    
+    if grep -qE "$pattern" "$file"; then
+        # 键已存在，检查值是否正确
+        if grep -qE "$pattern\s*${value}" "$file"; then
+            log_message "  '$key' 已在 $file 中正确设置为 '$value'。跳过。"
         else
-            echo -e "\e[1;31m 当前脚本仅支支持CentOS7系统... \e[1;31m"
-            exit 3
+            log_message "  更新 $file 中 '$key' 的值为 '$value'。"
+            sed -i -E "s|${pattern}.*|${key} = ${value}|" "$file"
         fi
-        ;;
-        *)
-        echo -e "\e[1;31m 当前系统部署CentOS系统 \e[1;31m"
-        exit 4
-        ;;
-    esac
-
+    else
+        log_message "  向 $file 中添加 '$key' = '$value'。"
+        echo "${key} = ${value}" >> "$file" # 简单追加，可能需要更精确的插入点
+    fi
 }
 
+# --- 安全强化功能函数 ---
 
-case $1 in
-    reset)
-    if [ -f /etc/profile.security_default.bak -a -f /etc/login.defs.security_default.bak -a -f /etc/pam.d/system-auth.security_default.bak -a -f  /etc/pam.d/login.security_default.bak -a -f /etc/ssh/sshd_config.security_default.bak -a -f /etc/pam.d/password-auth.security_default.bak -a -f /etc/pam.d/system-auth.security_default.bak ]; then
-        centos_reset
-    else
-        echo -e "\e[1;31m 安全优化备份文件不存在... \e[1;31m"
-        exit 2
+# 强化密码策略
+harden_password_policy() {
+    log_message "正在应用密码策略强化..."
+    cp -n "$LOGIN_DEFS" "${LOGIN_DEFS}.bak.$(date +%Y%m%d)" # 备份
+
+    # TMOUT (终端超时) - 添加到 /etc/profile
+    if ! grep -q "^TMOUT=" /etc/profile; then
+        log_message "  向 /etc/profile 添加 TMOUT。"
+        echo "TMOUT=${TMOUT}" >> /etc/profile
     fi
-    ;;
-    '')
-    is_system_version
-    ;;
-    *)
-    echo -e "\e[1;31m 仅允许传输reset与空内容 \e[1;31m"
-    exit 5
-    ;;
 
-esac
+    # login.defs
+    set_config_value "$LOGIN_DEFS" "PASS_MAX_DAYS" "$PASS_MAX_DAYS"
+    set_config_value "$LOGIN_DEFS" "PASS_MIN_LEN" "$PASS_MIN_LEN"
+    set_config_value "$LOGIN_DEFS" "PASS_MIN_DAYS" "$PASS_MIN_DAYS"
+
+    # pwquality.conf (密码质量)
+    cp -n "$PWQUALITY_CONF" "${PWQUALITY_CONF}.bak.$(date +%Y%m%d)" # 备份
+    set_config_value "$PWQUALITY_CONF" "minlen" "10" "^#*\s*minlen\s*="
+    set_config_value "$PWQUALITY_CONF" "minclass" "3" "^#*\s*minclass\s*="
+
+    # PAM 密码历史 (remember=5)
+    # 检查并添加 pam_unix.so 的 remember 选项
+    local pam_remember_rule="password    sufficient pam_unix.so sha512 shadow remember=${PASS_REMEMBER_COUNT}"
+    if ! grep -qF "$pam_remember_rule" "$PAM_PASSWORD_AUTH"; then
+        log_message "  向 $PAM_PASSWORD_AUTH 添加密码历史规则。"
+        sed -i "/^password\s*sufficient\s*pam_unix.so/ s/$/ remember=${PASS_REMEMBER_COUNT}/
+" "$PAM_PASSWORD_AUTH"
+    fi
+    if ! grep -qF "$pam_remember_rule" "$PAM_SYSTEM_AUTH"; then
+        log_message "  向 $PAM_SYSTEM_AUTH 添加密码历史规则。"
+        sed -i "/^password\s*sufficient\s*pam_unix.so/ s/$/ remember=${PASS_REMEMBER_COUNT}/
+" "$PAM_SYSTEM_AUTH"
+    fi
+    log_message "密码策略强化完成。"
+}
+
+# SSH 强化
+harden_ssh() {
+    log_message "正在应用SSH强化设置..."
+    cp -n "$SSHD_CONFIG" "${SSHD_CONFIG}.bak.$(date +%Y%m%d)" # 备份
+
+    # LogLevel
+    set_config_value "$SSHD_CONFIG" "LogLevel" "INFO"
+    # ClientAliveInterval
+    set_config_value "$SSHD_CONFIG" "ClientAliveInterval" "$SSH_CLIENT_ALIVE_INTERVAL"
+    # ClientAliveCountMax
+    set_config_value "$SSHD_CONFIG" "ClientAliveCountMax" "$SSH_CLIENT_ALIVE_COUNT_MAX"
+    # MaxAuthTries
+    set_config_value "$SSHD_CONFIG" "MaxAuthTries" "$SSH_MAX_AUTH_TRIES"
+    # PermitEmptyPasswords
+    set_config_value "$SSHD_CONFIG" "PermitEmptyPasswords" "no"
+    # Protocol 2
+    set_config_value "$SSHD_CONFIG" "Protocol" "2"
+
+    # 重启 SSHD
+    log_message "正在重启sshd服务..."
+    systemctl restart sshd
+    log_message "SSH强化设置完成。"
+}
+
+# 文件权限强化
+harden_file_permissions() {
+    log_message "正在应用文件权限强化..."
+    chmod 644 /etc/group
+    chmod 644 /etc/passwd
+    chmod 400 /etc/shadow
+    chmod 400 /etc/gshadow
+    log_message "文件权限强化完成。"
+}
+
+# 启用 ASLR (地址空间布局随机化)
+enable_aslr() {
+    log_message "正在启用地址空间布局随机化 (ASLR)..."
+    sysctl -w kernel.randomize_va_space=2
+    # 使设置持久化 (添加到 /etc/sysctl.d/，如果不存在)
+    local aslr_conf_file="/etc/sysctl.d/99-aslr.conf"
+    if ! grep -q "kernel.randomize_va_space=2" "$aslr_conf_file" 2>/dev/null; then
+        echo "kernel.randomize_va_space=2" >> "$aslr_conf_file"
+        sysctl -p "$aslr_conf_file"
+    else
+        log_message "  ASLR 已配置。跳过。"
+    fi
+    log_message "ASLR 启用完成。"
+}
+
+# --- 主程序入口 ---
+main() {
+    # 初始root权限检查
+    if [[ "$(whoami)" != "root" ]]; then
+        error_exit "请使用root权限执行此脚本。"
+    fi
+
+    # 系统版本检查 (简化版，仅检查是否为CentOS 7)
+    if ! grep -q "release 7" /etc/redhat-release; then
+        error_exit "当前脚本仅支持CentOS 7系统。"
+    fi
+
+    # 调用各项强化功能
+    harden_password_policy
+    harden_ssh
+    harden_file_permissions
+    enable_aslr
+    # 在这里可以添加其他安全强化功能
+    
+    log_message "CentOS 7 系统安全强化完成。"
+}
+
+# 执行主函数
+main "$@"

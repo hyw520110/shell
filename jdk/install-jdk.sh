@@ -7,13 +7,24 @@ INSTALL_DIR="/opt/jdk"
 DOWNLOAD_DIR="/tmp"
 
 # 支持的 Java 版本及其下载地址
+# Linux版本
 JAVA_INFO=(
   [7]="https://cdn.azul.com/zulu/bin/zulu7.56.0.19-ca-jdk7.0.312-linux_x64.tar.gz"
   [8]="https://github.com/alibaba/dragonwell8/releases/download/dragonwell-8.11.12_jdk8u332-ga/Alibaba_Dragonwell_8.11.12_x64_linux.tar.gz"
-  [11]="https://github.com/adoptium/temurin11-binaries/releases/download/jdk-11.0.20.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.20.1_1.tar.gz"
-  [17]="https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.10.1%2B1/OpenJDK17U-jdk_x64_linux_hotspot_17.0.10.1_1.tar.gz"
-  [19]="https://github.com/adoptium/temurin19-binaries/releases/download/jdk-19.0.9.1%2B1/OpenJDK19U-jdk_x64_linux_hotspot_19.0.9.1_1.tar.gz"
-  [21]="https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1.12%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.1.12_1.tar.gz"
+  [11]="https://mirrors.huaweicloud.com/openjdk/11.0.2/openjdk-11.0.2_linux-x64_bin.tar.gz"
+  [17]="https://mirrors.huaweicloud.com/openjdk/17.0.2/openjdk-17.0.2_linux-x64_bin.tar.gz"
+  [19]="https://mirrors.huaweicloud.com/openjdk/19.0.2/openjdk-19.0.2_linux-x64_bin.tar.gz"
+  [21]="https://mirrors.huaweicloud.com/openjdk/21.0.2/openjdk-21.0.2_linux-x64_bin.tar.gz"
+)
+
+# macOS版本
+MAC_JAVA_INFO=(
+  [7]="https://cdn.azul.com/zulu/bin/zulu7.56.0.19-ca-jdk7.0.312-macosx_x64.tar.gz"
+  [8]="https://github.com/alibaba/dragonwell8/releases/download/dragonwell-8.11.12_jdk8u332-ga/Alibaba_Dragonwell_8.11.12_x64_macosx.tar.gz"
+  [11]="https://github.com/adoptium/temurin11-binaries/releases/download/jdk-11.0.20.1%2B1/OpenJDK11U-jdk_x64_macosx.tar.gz"
+  [17]="https://mirrors.huaweicloud.com/openjdk/17.0.2/openjdk-17.0.2_macos-x64_bin.tar.gz"
+  [19]="https://mirrors.huaweicloud.com/openjdk/19.0.2/openjdk-19.0.2_macos-x64_bin.tar.gz"
+  [21]="https://mirrors.huaweicloud.com/openjdk/21.0.2/openjdk-21.0.2_macos-x64_bin.tar.gz"
 )
 
 # 使用说明
@@ -58,17 +69,35 @@ function check_arguments() {
 
 # 获取当前用户主目录
 function get_user_home() {
-  local user=$(logname 2>/dev/null || whoami)
-  echo "/home/$user"
+  # 获取实际用户主目录，即使在sudo下
+  local user=$(logname 2>/dev/null || echo $SUDO_USER || whoami)
+  if [[ "$(uname)" == "Darwin" ]]; then
+    echo "/Users/$user"
+  else
+    echo "/home/$user"
+  fi
 }
 
 # 安装缺失的解压工具
 function install_extractor() {
   local ext=$1
+  local pkg_mgr
+  if command -v apt-get &> /dev/null; then
+      pkg_mgr="apt-get -y"
+  elif command -v yum &> /dev/null; then
+      pkg_mgr="yum install -y"
+  elif command -v dnf &> /dev/null; then
+      pkg_mgr="dnf install -y"
+  elif command -v brew &> /dev/null; then
+      pkg_mgr="brew install "
+  else
+      echo "无法识别包管理工具，请手动安装所需工具。"
+      exit 1
+  fi
   case "$ext" in
-    tar.gz|tgz) which gzip > /dev/null || apt-get update >/dev/null && apt-get install -y gzip >/dev/null ;;
-    tar.xz|txz) which xz > /dev/null || apt-get update >/dev/null && apt-get install -y xz-utils >/dev/null ;;
-    zip)        which unzip > /dev/null || apt-get update >/dev/null && apt-get install -y unzip >/dev/null ;;
+    tar.gz|tgz) which gzip > /dev/null || $pkg_mgr gzip ;;
+    tar.xz|txz) which xz > /dev/null || $pkg_mgr xz-utils  ;;
+    zip)        which unzip > /dev/null || $pkg_mgr unzip  ;;
     *)
       echo "不支持的压缩格式: $ext"
       exit 1
@@ -143,9 +172,15 @@ function switch_java() {
     exit 1
   fi
 
+  # macOS 兼容性：检查 JDK 结构
+  local java_home_path="$home_dir"
+  if [[ "$(uname)" == "Darwin" ]] && [ -d "$home_dir/Contents/Home" ]; then
+    java_home_path="$home_dir/Contents/Home"
+  fi
+
   # 确保 bin/java 存在
-  if [ ! -x "$home_dir/bin/java" ]; then
-    echo "错误：Java 可执行文件不存在或不可执行: $home_dir/bin/java"
+  if [ ! -x "$java_home_path/bin/java" ]; then
+    echo "错误：Java 可执行文件不存在或不可执行: $java_home_path/bin/java"
     echo "请确认 JDK 包结构是否完整。"
     exit 1
   fi
@@ -155,24 +190,40 @@ function switch_java() {
 
   # 使用 update-alternatives 设置默认 java
   if command -v update-alternatives &>/dev/null; then
-    sudo update-alternatives --install /usr/bin/java java "$home_dir/bin/java" 1
-    sudo update-alternatives --set java "$home_dir/bin/java"
-    echo "已切换到 Java $version (路径: $home_dir)"
+    update-alternatives --install /usr/bin/java java "$java_home_path/bin/java" 1
+    update-alternatives --set java "$java_home_path/bin/java"
+    echo "已切换到 Java $version (路径: $java_home_path)"
   else
-    export JAVA_HOME="$home_dir"
+    export JAVA_HOME="$java_home_path"
     export PATH="$JAVA_HOME/bin:$PATH"
     echo "已切换到 Java $version (路径: $JAVA_HOME)"
   fi
 }
 
-# 设置环境变量
+# 设置环境���量
 function set_environment_variables() {
   local home_dir=$1
-  local user_home=$(get_user_home)
-  local profile_file="$user_home/.bash_profile"
+  # macOS 兼容性：检查 JDK 结构
+  local java_home_path="$home_dir"
+  if [[ "$(uname)" == "Darwin" ]] && [ -d "$home_dir/Contents/Home" ]; then
+    java_home_path="$home_dir/Contents/Home"
+  fi
 
-  if [[ "$SHELL" == *"zsh"* ]]; then
+  local user_home=$(get_user_home)
+  local user=$(logname 2>/dev/null || echo $SUDO_USER || whoami)
+  local user_shell
+
+  if [[ "$(uname)" == "Darwin" ]]; then
+    user_shell=$(dscl . -read "/Users/$user" UserShell | awk '{print $2}')
+  else
+    user_shell=$(getent passwd "$user" | cut -d: -f7)
+  fi
+
+  local profile_file
+  if [[ "$user_shell" == *"zsh"* ]]; then
     profile_file="$user_home/.zshrc"
+  else
+    profile_file="$user_home/.bash_profile"
   fi
 
   # 如果文件不存在则创建
@@ -182,16 +233,22 @@ function set_environment_variables() {
   fi
 
   # 删除旧的 JAVA_HOME 设置
-  sed -i '/^export JAVA_HOME/d' "$profile_file"
-  sed -i '/^export PATH=.*\$JAVA_HOME/d' "$profile_file"
+  # macOS和Linux兼容的sed语法
+  if [[ "$(uname)" == "Darwin" ]]; then
+    sed -i '' '/^export JAVA_HOME/d' "$profile_file"
+    sed -i '' '/^export PATH=.*\$JAVA_HOME/d' "$profile_file"
+  else
+    sed -i '/^export JAVA_HOME/d' "$profile_file"
+    sed -i '/^export PATH=.*\$JAVA_HOME/d' "$profile_file"
+  fi
 
   # 添加新的设置
   cat >> "$profile_file" <<EOF
-export JAVA_HOME=$home_dir
+export JAVA_HOME=$java_home_path
 export PATH=\$JAVA_HOME/bin:\$PATH
 EOF
 
-  source "$profile_file"
+  echo "环境变量已更新，请重新启动终端或执行 'source $profile_file' 使设置生效。"
 }
 
 # 下载并解压 Java
@@ -210,7 +267,24 @@ function download_and_extract() {
     echo "文件已存在，跳过下载: $gz_file"
   else
     echo "下载 $url 到 $gz_file..."
-    curl -L "$url" -o "$gz_file"
+    if ! curl -L -f "$url" -o "$gz_file"; then
+      echo "错误：下载失败，请检查网络连接或URL是否有效"
+      rm -f "$gz_file"
+      exit 1
+    fi
+
+    # 验证文件大小不为0
+    if [ ! -s "$gz_file" ]; then
+      echo "错误：下载的文件为空，请检查URL是否正确"
+      rm -f "$gz_file"
+      exit 1
+    fi
+
+    if [ $? -ne 0 ]; then
+      echo "下载失败，请检查网络连接并重试。"
+      rm -f "$gz_file"
+      exit 1
+    fi
   fi
 
   echo "解压中..."
@@ -220,13 +294,27 @@ function download_and_extract() {
 
   # 创建符号链接
   local base_dir="$INSTALL_DIR/jdk-$version"
+  if [ -L "$base_dir" ]; then
+      echo "符号链接 $base_dir 已存在，将被覆盖。"
+  fi
   ln -sf "$extracted_dir" "$base_dir"
 }
 
 # 安装 Java
 function install_java() {
   local version=$1
-  local url=${JAVA_INFO[$version]}
+  # 根据操作系统选择合适的JDK版本
+  local url
+  # 根据操作系统选择合适的JDK版本
+  if [[ "$(uname)" == "Darwin" ]]; then
+    # 尝试使用macOS专用版本
+    url=${MAC_JAVA_INFO[$version]}
+  fi
+  
+  # 如果没有找到macOS版本或不在macOS上，则使用默认Linux版本
+  if [ -z "$url" ]; then
+    url=${JAVA_INFO[$version]}
+  fi
 
   if [ -z "$url" ]; then
     echo "不支持的 Java 版本: $version"
@@ -235,9 +323,14 @@ function install_java() {
   fi
 
   local base_dir="$INSTALL_DIR/jdk-$version"
+  local java_home_path="$base_dir"
+
+  if [[ "$(uname)" == "Darwin" ]] && [ -d "$base_dir/Contents/Home" ]; then
+    java_home_path="$base_dir/Contents/Home"
+  fi
 
   # 如果已经存在，则跳过
-  if [ -d "$base_dir" ]; then
+  if [ -d "$base_dir" ] && [ -x "$base_dir/bin/java" ]; then
     echo "Java $version 已经安装。"
     set_environment_variables "$base_dir"
     return

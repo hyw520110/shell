@@ -1,48 +1,102 @@
 #!/bin/bash
-# top -n 参数指定运行次数，1代表运行一次即停止，不再等待top数据更新，使用awk指定分割符，提取数据
-#cpu_us=`top -n 1 | grep 'Cpu(s)' | awk -F'[" "%]+' '{print $2}'`
-#cpu_sy=`top -n 1 | grep 'Cpu(s)' | awk -F'[" "%]+' '{print $4}'`
-#cpu_idle=`top -n 1 | grep 'Cpu(s)' | awk -F'[" "%]+' '{print $8}'`
- 
-# 默认bash shell不能直接运算小数点，所以需要借助bc
-# bc命令是一种支持任意精度的交互执行的计算器语言。
-# 常见用法 echo "1.23*5" | bc 
- 
-#cpu_sum=$(echo "$cpu_us+$cpu_sy"|bc)
-#echo "CPU_SUM: $cpu_sum%"
-#echo "CPU_Idle: ${cpu_idle}%"
- 
-#超过阀值即发送邮件
-#if [ $cpu_sum -ge 90 ];then
-#        echo "CPU utilization $cpu_sum" | mail -s "cpu status warning." heyw@biyouxinli.com
-#fi
 
+# 脚本功能：监控系统核心资源（CPU、内存、磁盘），并在超限时发送邮件报警。
 
-#获取cpu使用率
-cpuUsage=`top -n 1 | awk -F ‘[ %]+‘ ‘NR==3 {print $2}‘`
-#获取磁盘使用率
-data_name="/dev/vda1"
-diskUsage=`df -h | grep $data_name | awk -F ‘[ %]+‘ ‘{print $5}‘`
-logFile=/tmp/cpu.log
-#获取内存情况
-mem_total=`free -m | awk -F ‘[ :]+‘ ‘NR==2{print $2}‘`
-mem_used=`free -m | awk -F ‘[ :]+‘ ‘NR==3{print $3}‘`
-#统计内存使用率
-mem_used_persent=`awk ‘BEGIN{printf "%.0f\n",(‘$mem_used‘/‘$mem_total‘)*100}‘`
-#获取报警时间
-now_time=`date ‘+%F %T‘`
-function send_mail(){
-        mail -s "监控报警" 1135960569@qq.com < /tmp/jiankong.log
+# --- 配置 ---
+CPU_THRESHOLD=80
+MEM_THRESHOLD=80
+DISK_THRESHOLD=80
+# 要检查的磁盘挂载点，例如 "/" 或 "/data"
+DISK_MOUNT_POINT="/"
+# 报警接收邮箱
+ALERT_EMAIL="1135960569@qq.com"
+# 用于发送邮件的日志文件
+ALERT_LOG_FILE="/tmp/system_monitor_alert.log"
+# --- 结束配置 ---
+
+# --- 函数定义 ---
+
+# 函数：获取CPU使用率
+# 通过对比/proc/stat在一秒前后的快照来精确计算
+get_cpu_usage() {
+    read -r cpu user nice system idle iowait irq softirq steal < /proc/stat
+    local prev_idle=$idle
+    local prev_total=$((user + nice + system + idle + iowait + irq + softirq + steal))
+    sleep 1
+    read -r cpu user nice system idle iowait irq softirq steal < /proc/stat
+    local current_idle=$idle
+    local current_total=$((user + nice + system + idle + iowait + irq + softirq + steal))
+
+    local total_diff=$((current_total - prev_total))
+    local idle_diff=$((current_idle - prev_idle))
+    
+    # 避免除以0
+    if [ $total_diff -eq 0 ]; then
+        echo 0
+    else
+        echo $((100 * (total_diff - idle_diff) / total_diff))
+    fi
 }
-function check(){
-        if [[ "$cpuUsage" > 80 ]] || [[ "$diskUsage" > 80 ]] || [[ "$mem_used_persent" > 80 ]];then
-                echo "报警时间：${now_time}" > $logFile
-                echo "CPU使用率：${cpuUsage}% --> 磁盘使用率：${diskUsage}% --> 内存使用率：${mem_used_persent}%" >> $logFile
-                send_mail
-        fi
+
+# 函数：获取内存使用率
+# 通过/proc/meminfo计算，MemAvailable是内核认为真正可用的内存
+get_mem_usage() {
+    awk '
+        /MemTotal/ {total=$2}
+        /MemAvailable/ {avail=$2}
+        END {
+            used = total - avail
+            printf "%.0f\n", (used/total)*100
+        }
+    ' /proc/meminfo
 }
-function main(){
-        check
+
+# 函数：获取指定挂载点的磁盘使用率
+get_disk_usage() {
+    local mount_point="$1"
+    # 使用df的--output选项，直接、可靠地获取纯数字百分比
+    df --output=pcent "$mount_point" | tail -n 1 | tr -d ' %'
 }
+
+# --- 主逻辑 ---
+main() {
+    # 获取各项资源的使用率
+    cpu_usage=$(get_cpu_usage)
+    mem_usage=$(get_mem_usage)
+    disk_usage=$(get_disk_usage "$DISK_MOUNT_POINT")
+    now_time=$(date '+%F %T')
+    
+    alert_needed=false
+    alert_message=""
+
+    # 使用正确的数字比较操作符 -gt
+    if [ "$cpu_usage" -gt "$CPU_THRESHOLD" ]; then
+        alert_needed=true
+        alert_message+="CPU 报警: 使用率 ${cpu_usage}% (阈值: ${CPU_THRESHOLD}%)\n"
+    fi
+
+    if [ "$mem_usage" -gt "$MEM_THRESHOLD" ]; then
+        alert_needed=true
+        alert_message+="内存 报警: 使用率 ${mem_usage}% (阈值: ${MEM_THRESHOLD}%)\n"
+    fi
+
+    if [ "$disk_usage" -gt "$DISK_THRESHOLD" ]; then
+        alert_needed=true
+        alert_message+="磁盘 [${DISK_MOUNT_POINT}] 报警: 使用率 ${disk_usage}% (阈值: ${DISK_THRESHOLD}%)\n"
+    fi
+
+    # 如果需要报警，则准备日志并发送邮件
+    if [ "$alert_needed" = true ]; then
+        echo "--- 系统监控报警 [${now_time}] ---" > "$ALERT_LOG_FILE"
+        echo -e "$alert_message" >> "$ALERT_LOG_FILE"
+        
+        echo "检测到资源超限，发送报警邮件至 ${ALERT_EMAIL}..."
+        mail -s "【系统监控报警】" "$ALERT_EMAIL" < "$ALERT_LOG_FILE"
+        echo "报警邮件已发送。"
+    else
+        echo "状态正常: CPU=${cpu_usage}%, 内存=${mem_usage}%, 磁盘(${DISK_MOUNT_POINT})=${disk_usage}%"
+    fi
+}
+
+# 执行主函数
 main
-

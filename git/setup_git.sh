@@ -121,11 +121,12 @@ fi
 ssh_config_file=~/.ssh/config
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
-chmod 600 ~/.ssh/config 2>/dev/null || touch ~/.ssh/config
+touch "$ssh_config_file" # 优化点：先touch确保文件存在
+chmod 600 "$ssh_config_file" # 优化点：再设置权限
 
 hostname=github.com
 host_alias=github.com
-host_config_exists=$(awk '/^Host[ \t]+github.com$/ {print NR}' "$ssh_config_file")
+host_config_exists=$(awk '/^Host[ 	]+github.com$/ {print NR}' "$ssh_config_file")
 
 # 需要的配置内容
 required_config="Host github.com\n    HostName github.com\n    User git\n    IdentityFile $key_file\n"
@@ -137,7 +138,7 @@ if [ -z "$host_config_exists" ]; then
     echo "SSH 配置信息已添加"
 else
     # Host github.com 存在，检查并修正配置
-    start_line=$(awk '/^Host[ \t]+github.com$/ {print NR}' "$ssh_config_file")
+    start_line=$(awk '/^Host[ 	]+github.com$/ {print NR}' "$ssh_config_file")
     end_line=$(awk "NR>$start_line && /^Host / {print NR; exit}" "$ssh_config_file")
     if [ -z "$end_line" ]; then
         end_line=$(wc -l < "$ssh_config_file")
@@ -152,8 +153,9 @@ else
     echo "$config_block" | grep -q "IdentityFile $key_file" || need_update=1
     if [ $need_update -eq 1 ]; then
         echo "检测到 Host github.com 配置不正确，正在自动修正..."
-        # 删除原有 Host github.com 配置块
-        sed -i.bak "/^Host[ \t]*github.com$/,/^Host /{ /^Host[ \t]*github.com$/b; /^Host /b; d }" "$ssh_config_file"
+        # sed -i 的兼容性在macOS和GNU/Linux上不同，这里的-i.bak适用于macOS/BSD
+        # 建议在跨平台使用时增加判断
+        sed -i.bak "/^Host[ 	]*github.com$/,/^Host /{ /^Host[ 	]*github.com$/b; /^Host /b; d }" "$ssh_config_file"
         # 在文件末尾追加正确配置
         printf "%b\n" "$required_config" >> "$ssh_config_file"
         echo "Host github.com 配置已修正"
@@ -182,6 +184,8 @@ else
   git config --global init.defaultBranch main
   echo "已设置新仓库默认分支名为 main (git config --global init.defaultBranch main)"
 fi
+# 编辑器
+git config --global core.editor "vim"
 
 # 2. 颜色高亮
 if git config --global color.ui | grep -q auto; then :; else
@@ -190,7 +194,7 @@ echo "已开启 git 颜色高亮 (git config --global color.ui auto)"
 fi
 
 # 3. 常用别名
-aliases=(
+alias=(
   "st=status"
   "ci=commit"
   "co=checkout"
@@ -199,7 +203,8 @@ aliases=(
   "lg=log --oneline --graph --all --decorate"
 )
 for a in "${aliases[@]}"; do
-  k="${a%%=*}"; v="${a#*=}"
+  k="${a%%=*} "
+  v="${a#*=}"
   git config --global alias.$k "$v"
 done
 echo "已设置常用 git 命令别名 (st, ci, co, br, last, lg)"
@@ -235,7 +240,7 @@ if git config --global core.quotepath | grep -q false; then :; else
 git config --global core.quotepath false
 echo "已设置 core.quotepath=false (显示中文路径)"
 fi
-
+# TODO 判断是否安装beyond compare，如安装没做软链接就做软链接，再更新git配置
 # 8. 合并工具（优先 beyond compare，其次 code，否则 vimdiff）
 if command -v bcompare >/dev/null 2>&1; then
   git config --global merge.tool bc
@@ -243,7 +248,8 @@ if command -v bcompare >/dev/null 2>&1; then
   git config --global mergetool.bc.trustExitCode true
   echo "已设置合并工具为 Beyond Compare (bcompare)"
 elif command -v bcomp >/dev/null 2>&1; then
-  git config --global merge.tool bc
+  # sudo ln -s /Applications/Beyond\ Compare.app/Contents/MacOS/bcomp /usr/local/bin/bcomp	
+git config --global merge.tool bc
   git config --global mergetool.bc.cmd 'bcomp "$LOCAL" "$REMOTE" "$BASE" "$MERGED"'
   git config --global mergetool.bc.trustExitCode true
   echo "已设置合并工具为 Beyond Compare (bcomp)"
@@ -258,7 +264,7 @@ fi
 echo ""
 echo "✅ 常用 Git 全局配置已完成！"
 echo ""
- 
+
 # === 自动测试 SSH 连接 github.com ===
 echo "正在自动测试 SSH 连接 github.com..."
 ssh -T git@github.com 2>&1 | tee /tmp/git_ssh_test.log | grep -q 'successfully authenticated'
@@ -285,3 +291,5 @@ if [ -z "$SSH_AUTH_SOCK" ]; then
     eval "$(ssh-agent -s)"
     ssh-add "$key_file"
 fi
+
+echo "SSH agent 已启动并添加了密钥。"

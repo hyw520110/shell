@@ -1,20 +1,32 @@
-#!/bin/sh
+#!/bin/bash
 
-# Licensed to the Apache Software Foundation (ASF) under one or more
-# contributor license agreements.  See the NOTICE file distributed with
-# this work for additional information regarding copyright ownership.
-# The ASF licenses this file to You under the Apache License, Version 2.0
-# (the "License"); you may not use this file except in compliance with
-# the License.  You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 脚本功能：安全地清理Linux系统的页面、目录和inode缓存。
+# 使用场景：主要用于性能测试或特殊情况下的内存释放。不建议在生产环境常规使用。
 
-export PATH=$PATH:/sbin
+set -e # 如果任何命令失败，立即退出脚本
 
-sysctl -w vm.drop_caches=3
+# 1. 检查是否为root用户
+if [ "$(id -u)" -ne 0 ]; then
+   echo "错误：此脚本必须以root权限运行。请使用 'sudo ./cleancache.sh'。" >&2
+   exit 1
+fi
+
+echo "--- 清理前内存状态 ---"
+free -h
+echo
+
+# 2. 同步文件系统，确保所有待写数据落盘
+sync
+
+echo "正在清理缓存 (page cache, dentries, and inodes)..."
+# 使用 'echo' 的方式兼容性更广，且无需安装额外工具
+if echo 3 > /proc/sys/vm/drop_caches; then
+    echo "缓存清理成功。"
+else
+    echo "错误：清理缓存失败。" >&2
+    exit 1
+fi
+echo
+
+echo "--- 清理后内存状态 ---"
+free -h

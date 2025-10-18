@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # setup_swap.sh - 自动配置 swap 文件的智能脚本
-# 支持自动建议大小、路径选择、超时确认等高级交互功能
+# 支持自动建议大小、路径选择等高级交互功能
 
 # 获取当前内存大小（单位 GB）
 get_ram_size() {
@@ -9,36 +9,45 @@ get_ram_size() {
     echo "$((ram_kb / 1024 / 1024))" # 转换为 GB
 }
 
-# 根据内存大小推荐 Swap 大小
+# 根据用途和内存推荐 Swap 大小
 suggest_swap_size() {
     local ram_gb=$1
-    local enable_hibernate=false
-
-    # 自动检测是否启用休眠
-    if systemctl is-enabled hibernate &>/dev/null; then
-        echo "$ram_gb"
-    else
-        if [ "$ram_gb" -le 2 ]; then
+    local purpose=$2
+    case $purpose in
+        1) # 普通服务器/桌面
+            if [ "$ram_gb" -le 2 ]; then echo 2; elif [ "$ram_gb" -le 4 ]; then echo 4; elif [ "$ram_gb" -le 8 ]; then echo 2; elif [ "$ram_gb" -le 16 ]; then echo 2; elif [ "$ram_gb" -le 32 ]; then echo 1; else echo 0; fi
+            ;;
+        2) # 休眠
+            echo "$ram_gb" # swap >= RAM
+            ;;
+        3) # 数据库/大数据
+            if [ "$ram_gb" -le 4 ]; then echo 4; elif [ "$ram_gb" -le 8 ]; then echo 8; elif [ "$ram_gb" -le 16 ]; then echo 8; elif [ "$ram_gb" -le 32 ]; then echo 8; else echo 16; fi
+            ;;
+        *)
             echo 2
-        elif [ "$ram_gb" -le 4 ]; then
-            echo 4
-        elif [ "$ram_gb" -le 8 ]; then
-            echo 2
-        elif [ "$ram_gb" -le 16 ]; then
-            echo 2
-        elif [ "$ram_gb" -le 32 ]; then
-            echo 1
-        else
-            echo 0
-        fi
-    fi
+            ;;
+    esac
 }
 
-# 检查是否已有激活的 swap
+# 获取所有已激活swap的总大小（MB），兼容老版本swapon
+get_total_swap_mb() {
+    swapon -s | awk 'NR>1 {sum+=$3} END{print int(sum/1024)}'
+}
+
+# 检查是否已有激活的 swap（分区或文件），并返回swapfile路径（如有）
 check_swap() {
-    if swapon --show | grep -q 'swap'; then
-        echo "警告: 系统中已存在激活的swap分区或文件。"
-        exit 1
+    local swap_info=$(swapon -s)
+    local swapfile_path=""
+    local total_swap_mb=0
+    if [ "$(echo "$swap_info" | wc -l)" -gt 1 ]; then
+        if echo "$swap_info" | awk 'NR>1 {print $1,$2}' | grep -q 'file'; then
+            swapfile_path=$(echo "$swap_info" | awk 'NR>1 && $2=="file" {print $1; exit}')
+            echo "$swapfile_path"
+        else
+            echo "partition"
+        fi
+    else
+        echo ""
     fi
 }
 
@@ -64,43 +73,140 @@ create_swap_file() {
     echo "✅ 交换文件配置完成并启用。"
 }
 
-main() {
-    check_swap
+# 平台判断，仅支持 Linux
+if [[ "$(uname)" != "Linux" ]]; then
+    echo "本脚本仅支持 Linux 系统，当前平台: $(uname)。无需手动管理 swap，已退出。"
+    exit 0
+fi
 
-    # 默认 swap 文件路径
+main() {
+    echo "正在检测系统已有swap信息..."
+    swap_status=$(check_swap)
+    total_swap_mb=$(get_total_swap_mb)
     DEFAULT_SWAPFILE="/swapfile"
-    echo -n "请输入swap文件路径 [$DEFAULT_SWAPFILE]: "
-    read -t 6 SWAP_FILE_PATH
-    if [ -z "$SWAP_FILE_PATH" ]; then
-        SWAP_FILE_PATH="$DEFAULT_SWAPFILE"
-        echo "使用默认路径: $SWAP_FILE_PATH"
+    SWAP_FILE_PATH=""
+
+    if [ -n "$swap_status" ]; then
+        # 有 swapfile 或分区
+        if [ "$swap_status" = "partition" ]; then
+            echo "检测到swap分区，建议保留。脚本结束。" >&2
+            exit 0
+        else
+            # 有 swapfile
+            swap_gb=$(( (total_swap_mb + 512) / 1024 ))
+            echo "检测到系统已存在${swap_gb}GB swap（${total_swap_mb}MB）："
+            swapon -s
+            echo -n "检测到swapfile，选择操作：[1]更新swapfile（覆盖） [2]新增swapfile（输入新路径） [3]结束退出 [默认3]: " >&2
+            read update_choice
+            update_choice=${update_choice:-3}
+            if [[ "$update_choice" == "1" ]]; then
+                echo "将禁用并删除现有swapfile，准备更新..." >&2
+                sudo swapoff "$swap_status" 2>/dev/null || echo "警告: swapoff 失败，可能是文件已经关闭"
+                sudo rm -f "$swap_status"
+                if [ -n "$swap_status" ]; then
+                    # 使用不同的分隔符避免路径中包含/导致的问题
+                    sudo sed -i "\#$swap_status#d" /etc/fstab 2>/dev/null || echo "警告: 从fstab中删除条目失败"
+                fi
+                SWAP_FILE_PATH="$swap_status"
+                total_swap_mb=0  # 关键：重置 swap 总量，保证建议正确
+            elif [[ "$update_choice" == "2" ]]; then
+                echo -n "请输入新的swap文件路径 [$DEFAULT_SWAPFILE]: "
+                read SWAP_FILE_PATH
+                [ -z "$SWAP_FILE_PATH" ] && SWAP_FILE_PATH="$DEFAULT_SWAPFILE"
+            else
+                echo "已取消操作，脚本结束。" >&2
+                exit 0
+            fi
+        fi
     else
-        echo "使用自定义路径: $SWAP_FILE_PATH"
+        # 没有 swap，直接输入路径
+        echo "系统当前无已激活 swap。"
+        echo -n "请输入 swap 文件路径 [$DEFAULT_SWAPFILE]: "
+        read SWAP_FILE_PATH
+        if [ -z "$SWAP_FILE_PATH" ]; then
+            SWAP_FILE_PATH="$DEFAULT_SWAPFILE"
+            echo "使用默认路径: $SWAP_FILE_PATH"
+        else
+            echo "使用自定义路径: $SWAP_FILE_PATH"
+        fi
     fi
 
     # 检查该路径是否存在
-    if [ -f "$SWAP_FILE_PATH" ]; then
+    while [ -f "$SWAP_FILE_PATH" ]; do
         echo "❌ 错误: swap文件 $SWAP_FILE_PATH 已存在。"
-        exit 1
-    fi
-	RAM_GB=$(get_ram_size)
-    # 推荐 swap 大小
-    SUGGESTED_SWAP=$(suggest_swap_size "$RAM_GB")
-    if [ $SUGGESTED_SWAP -eq 0 ];then
-    	echo "不建议创建" && exit 0
-    fi
-    echo -n "建议swap大小: ${SUGGESTED_SWAP}GB（当前内存: ${RAM_GB}GB）。确认使用此值吗？[Y/n] (5秒后自动确认): "
-    read -t 5 CONFIRM
-    if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
-        echo -n "请输入swap大小（单位GB）: "
-        read SIZE_GB
-        if ! [[ "$SIZE_GB" =~ ^[0-9]+$ ]]; then
-            echo "❌ 输入无效，必须为正整数。"
+        echo -n "请选择操作：[1]更新swapfile（覆盖） [2]新增swapfile（输入新路径） [3]结束退出 [默认3]: "
+        read file_choice
+        file_choice=${file_choice:-3}
+        if [[ "$file_choice" == "1" ]]; then
+            echo "将禁用并删除现有swapfile，准备更新..."
+            sudo swapoff "$SWAP_FILE_PATH" 2>/dev/null || echo "警告: swapoff 失败，可能是文件已经关闭"
+            sudo rm -f "$SWAP_FILE_PATH"
+            # 使用不同的分隔符避免路径中包含/导致的问题
+            sudo sed -i "\#$SWAP_FILE_PATH#d" /etc/fstab 2>/dev/null || echo "警告: 从fstab中删除条目失败"
+            break
+        elif [[ "$file_choice" == "2" ]]; then
+            echo -n "请输入新的swap文件路径: "
+            read SWAP_FILE_PATH
+            [ -z "$SWAP_FILE_PATH" ] && SWAP_FILE_PATH="$DEFAULT_SWAPFILE"
+        else
+            echo "已取消操作，脚本结束。"
+            exit 0
+        fi
+    done
+    RAM_GB=$(get_ram_size)
+
+    # 用途选择
+    SUGGESTED1=$(suggest_swap_size "$RAM_GB" 1)
+    SUGGESTED2=$(suggest_swap_size "$RAM_GB" 2)
+    SUGGESTED3=$(suggest_swap_size "$RAM_GB" 3)
+    REMAIN1=$(( SUGGESTED1*1024-total_swap_mb )); [ $REMAIN1 -lt 0 ] && REMAIN1=0
+    REMAIN2=$(( SUGGESTED2*1024-total_swap_mb )); [ $REMAIN2 -lt 0 ] && REMAIN2=0
+    REMAIN3=$(( SUGGESTED3*1024-total_swap_mb )); [ $REMAIN3 -lt 0 ] && REMAIN3=0
+    SUGGEST_TXT1=$(( (REMAIN1+1023)/1024 ))
+    SUGGEST_TXT2=$(( (REMAIN2+1023)/1024 ))
+    SUGGEST_TXT3=$(( (REMAIN3+1023)/1024 ))
+    echo "请选择用途:"
+    echo "  1) 普通服务器/桌面 (建议 ${SUGGEST_TXT1}GB)"
+    echo "  2) 需要休眠 (建议 ${SUGGEST_TXT2}GB)"
+    echo "  3) 数据库/大数据/特殊场景 (建议 ${SUGGEST_TXT3}GB)"
+    echo "  4) 自定义大小"
+    echo -n "请输入用途编号 [1]: "
+    read PURPOSE
+    PURPOSE=${PURPOSE:-1}
+
+    if [[ "$PURPOSE" == "4" ]]; then
+        echo -n "请输入swap大小（支持如2G、2048M，单位GB/M）: "
+        read SIZE_INPUT
+        if [[ "$SIZE_INPUT" =~ ^[0-9]+[Gg]$ ]]; then
+            SIZE_GB=${SIZE_INPUT%[Gg]}
+        elif [[ "$SIZE_INPUT" =~ ^[0-9]+[Mm]$ ]]; then
+            SIZE_MB=${SIZE_INPUT%[Mm]}
+            SIZE_GB=$((SIZE_MB / 1024))
+            [ $((SIZE_MB % 1024)) -ne 0 ] && SIZE_GB=$((SIZE_GB + 1))
+        elif [[ "$SIZE_INPUT" =~ ^[0-9]+$ ]]; then
+            SIZE_GB=$SIZE_INPUT
+        else
+            echo "❌ 输入无效，必须为正整数或带单位的数字（如2G、2048M）。"
             exit 1
         fi
     else
-        SIZE_GB=$SUGGESTED_SWAP
-        echo "使用推荐大小: ${SIZE_GB}GB"
+        # 推荐 swap 大小
+        SUGGESTED_SWAP=$(suggest_swap_size "$RAM_GB" "$PURPOSE")
+        SUGGESTED_SWAP_MB=$((SUGGESTED_SWAP * 1024))
+        REMAIN_SWAP_MB=$((SUGGESTED_SWAP_MB - total_swap_mb))
+        if [ $REMAIN_SWAP_MB -le 0 ]; then
+            echo "当前系统已有swap总量(${total_swap_mb}MB)已满足建议，无需新增。"
+            exit 0
+        fi
+        SIZE_GB=$(( (REMAIN_SWAP_MB + 1023) / 1024 ))
+        echo "使用建议新增大小: ${SIZE_GB}GB"
+    fi
+
+    echo -n "确认新增swap大小: ${SIZE_GB}GB吗？[Y/n]: "
+    read CONFIRM
+    if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
+        echo "已取消操作，脚本结束。"
+        exit 0
     fi
 
     create_swap_file "$SWAP_FILE_PATH" "$SIZE_GB"

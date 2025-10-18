@@ -24,7 +24,7 @@ function update_hosts {
     domains=$(echo "$new_hosts_domain" | awk '{print $2}')
     [ ! -f /etc/hosts.bak ] && cp /etc/hosts /etc/hosts.bak
     for domain in $domains; do
-        sudo sed -i '' "/[[:space:]]$domain$/d" /etc/hosts
+        sudo sed -i.bak "/[[:space:]]$domain$/d" /etc/hosts
     done
     echo "$new_hosts_domain" >> /etc/hosts
     echo "/etc/hosts 文件已更新:"

@@ -3,14 +3,27 @@
 # 定义公共变量
 FRP_VERSION="0.63.0"
 FRP_DOWNLOAD_URL="https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_amd64.tar.gz"
-INSTALL_DIR=$(dirname "$(readlink -f "$0")")
-FRP_SERVICE_NAME="frps"
-FRP_CONF_NAME="${FRP_SERVICE_NAME}.toml"
-FRP_CLIENT_NAME="frpc"
-FRP_CLIENT_CONF_NAME="${FRP_CLIENT_NAME}.toml"
-FRP_SERVICE_FILE="/usr/lib/systemd/system/${FRP_SERVICE_NAME}.service"
-FRP_CLIENT_FILE="/usr/lib/systemd/system/${FRP_CLIENT_NAME}.service"
+# 若安装目录不是当前目录，则拷贝当前目录下所有文件到安装目录
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+DEFAULT_INSTALL_DIR="/opt/frp"
+INSTALL_DIR=${1:-$DEFAULT_INSTALL_DIR}
+FRPS_NAME="frps"
+FRPS_CONF_NAME="${FRPS_NAME}.toml"
+FRPC_NAME="frpc"
+FRPC_CONF_NAME="${FRPC_NAME}.toml"
+SERVICE_DIR="/usr/lib/systemd/system"
+FRPS_SERVICE_FILE="$SERVICE_DIR/${FRPS_NAME}.service"
+FRPC_SERVICE_FILE="$SERVICE_DIR/${FRPC_NAME}.service"
 LOG_FILE="/var/log/frp.log"
+
+
+if [ "$INSTALL_DIR" != "$SCRIPT_DIR" ]; then
+    echo "安装目录为: $INSTALL_DIR"
+    [ ! -d $INSTALL_DIR ] && mkdir -p "$INSTALL_DIR"
+    cp -r "$SCRIPT_DIR"/* "$INSTALL_DIR"/
+    SCRIPT_DIR="$INSTALL_DIR"
+    cd $INSTALL_DIR
+fi
 
 # 检查并安装必要工具
 check_dependencies() {
@@ -23,7 +36,7 @@ check_dependencies() {
 # 下载并解压 frp
 download_and_extract_frps() {
     echo "正在下载 frps..."
-    wget -O - "${FRP_DOWNLOAD_URL}" | tar -zx --strip-components=1 -C "${INSTALL_DIR}" "frp_${FRP_VERSION}_linux_amd64/${FRP_BIN_NAME}" "frp_${FRP_VERSION}_linux_amd64/${FRP_CONF_NAME}"
+    wget -O - "${FRP_DOWNLOAD_URL}" | tar -zx --strip-components=1 -C "${INSTALL_DIR}" "frp_${FRP_VERSION}_linux_amd64/${FRP_BIN_NAME}" "frp_${FRP_VERSION}_linux_amd64/${FRPS_CONF_NAME}"
     if [ $? -ne 0 ]; then
         echo "下载并解压 frps 失败。"
         exit 1
@@ -32,7 +45,7 @@ download_and_extract_frps() {
 
 download_and_extract_frpc() {
     echo "正在下载 frpc..."
-    wget -O - "${FRP_DOWNLOAD_URL}" | tar -zx --strip-components=1 -C "${INSTALL_DIR}" "frp_${FRP_VERSION}_linux_amd64/${FRP_CLIENT_NAME}" "frp_${FRP_VERSION}_linux_amd64/${FRP_CLIENT_CONF_NAME}"
+    wget -O - "${FRP_DOWNLOAD_URL}" | tar -zx --strip-components=1 -C "${INSTALL_DIR}" "frp_${FRP_VERSION}_linux_amd64/${FRPC_NAME}" "frp_${FRP_VERSION}_linux_amd64/${FRPC_CONF_NAME}"
     if [ $? -ne 0 ]; then
         echo "下载并解压 frpc 失败。"
         exit 1
@@ -52,7 +65,7 @@ generate_default_config() {
     read -p "是否需要启用 dashboard？(Y/n) " DASHBOARD_CHOICE
     DASHBOARD_CHOICE=${DASHBOARD_CHOICE:-y}
     #bandwidth_limit=1MB
-    cat > "${INSTALL_DIR}/${FRP_CONF_NAME}" << EOF
+    cat > "${INSTALL_DIR}/${FRPS_CONF_NAME}" << EOF
 bindAddr = "0.0.0.0"
 bindPort=7000
 auth.method = "token"
@@ -68,14 +81,14 @@ EOF
   if [[ $DASHBOARD_CHOICE =~ ^[Yy]$ ]]; then
     WEB_SERVER_PASSWORD=$(generate_random_string)
     echo "生成的 webServer.password: ${WEB_SERVER_PASSWORD}"
-    cat >> "${INSTALL_DIR}/${FRP_CONF_NAME}" << EOF
+    cat >> "${INSTALL_DIR}/${FRPS_CONF_NAME}" << EOF
 webServer.user="webuser"
 webServer.password="${WEB_SERVER_PASSWORD}"
 EOF
   fi
 
   if [ $? -ne 0 ]; then
-      echo "生成${FRP_CONF_NAME}配置文件失败。"
+      echo "生成${FRPS_CONF_NAME}配置文件失败。"
       exit 1
   fi
 }
@@ -122,7 +135,7 @@ generate_default_client_config() {
     local_ip=$(get_current_ip)
     #transport.useEncryption=true
     #transport.useCompression=true
-    cat > "${INSTALL_DIR}/${FRP_CLIENT_CONF_NAME}" << EOF
+    cat > "${INSTALL_DIR}/${FRPC_CONF_NAME}" << EOF
 serverAddr="${SERVER_IP}"
 serverPort=${SERVER_PORT}
 auth.method = "token"
@@ -138,18 +151,18 @@ localPort=${sshd_port}
 remotePort=6000
 EOF
     if [ $? -ne 0 ]; then
-        echo "生成${FRP_CLIENT_CONF_NAME}配置文件失败。"
+        echo "生成${FRPC_CONF_NAME}配置文件失败。"
         exit 1
     fi
 }
 
 # 创建 Systemd 服务文件
 create_systemd_service() {
-    if systemctl list-unit-files | grep -q "${FRP_SERVICE_NAME}.service"; then
-        systemctl disable "${FRP_SERVICE_NAME}.service"
-        rm "${FRP_SERVICE_FILE}"
+    if systemctl list-unit-files | grep -q "${FRPS_NAME}.service"; then
+        systemctl disable "${FRPS_NAME}.service"
+        rm "${FRPS_SERVICE_FILE}"
     fi
-    cat > "${FRP_SERVICE_FILE}" << EOF
+    cat > "${FRPS_SERVICE_FILE}" << EOF
 [Unit]
 Description=frps daemon
 After = network.target syslog.target
@@ -173,11 +186,11 @@ EOF
 }
 
 create_systemd_client_service() {
-    if systemctl list-unit-files | grep -q "${FRP_CLIENT_NAME}.service"; then
-        systemctl disable "${FRP_CLIENT_NAME}.service"
-        rm "${FRP_CLIENT_FILE}"
+    if systemctl list-unit-files | grep -q "${FRPC_NAME}.service"; then
+        systemctl disable "${FRPC_NAME}.service"
+        rm "${FRPC_SERVICE_FILE}"
     fi
-    cat > "${FRP_CLIENT_FILE}" << EOF
+    cat > "${FRPC_SERVICE_FILE}" << EOF
 [Unit]
 Description=frpc client
 After = network.target syslog.target
@@ -199,14 +212,59 @@ EOF
     fi
     systemctl daemon-reload
 }
+# 检测防火墙类型并自动开放端口（仅在防火墙服务处于 active 时操作）
+# 使用方法：setup_firewall_ports "7000/tcp" "7800/tcp" "22/tcp"
+setup_firewall_ports() {
+    echo "正在检测系统防火墙状态..."
 
+    # 检查是否传入了端口
+    if [ $# -eq 0 ]; then
+        echo "未指定要开放的端口。"
+        return 1
+    fi
+
+    local ports=("$@")
+
+    # 检测 firewalld
+    if command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld; then
+        echo "检测到 firewalld 防火墙正在运行，正在检查并开放端口..."
+        for port in "${ports[@]}"; do
+            if ! sudo firewall-cmd --permanent --query-port="$port"; then
+                echo "正在添加端口 $port..."
+                sudo firewall-cmd --permanent --add-port="$port"
+            else
+                echo "端口 $port 已开放。"
+            fi
+        done
+        sudo firewall-cmd --reload
+        echo "firewalld 防火墙端口设置完成。"
+
+    # 检测 ufw
+    elif command -v ufw &> /dev/null && systemctl is-active --quiet ufw; then
+        echo "检测到 ufw 防火墙正在运行，正在检查并开放端口..."
+        for port in "${ports[@]}"; do
+            port_num=$(echo "$port" | cut -d'/' -f1)
+            proto=$(echo "$port" | cut -d'/' -f2)
+            if ! sudo ufw status verbose | grep -q "$port_num/$proto"; then
+                echo "正在添加端口 $port..."
+                sudo ufw allow "$port"
+            else
+                echo "端口 $port 已开放。"
+            fi
+        done
+        echo "ufw 防火墙端口设置完成。"
+
+    else
+        echo "防火墙服务未运行，跳过自动配置。"
+    fi
+}
 # 主逻辑
 # 检查并安装必要工具
 check_dependencies
 
 # 确保日志文件和目录存在
-if [ ! -d "/var/log" ]; then
-    sudo mkdir -p /var/log
+if [ ! -d "$(dirname $LOG_FILE)" ]; then
+    sudo mkdir -p "$(dirname $LOG_FILE)"
 fi
 if [ ! -f "${LOG_FILE}" ]; then
     sudo touch "${LOG_FILE}"
@@ -225,36 +283,37 @@ case $CHOICE in
         FRP_BIN_NAME="frps"
 
         if [ ! -f "${INSTALL_DIR}/${FRP_BIN_NAME}" ]; then
-            echo "正在下载并安装 frps..."
+            echo "正在下载并安装$FRP_BIN_NAME ..."
             download_and_extract_frps
-            echo "frps 已安装到 ${INSTALL_DIR}"
+            echo "$FRP_BIN_NAME 已安装到 ${INSTALL_DIR}"
         fi
 
-        if [ -f "${INSTALL_DIR}/${FRP_CONF_NAME}" ]; then
-            echo "生成${FRP_CONF_NAME}配置文件..."
-            rm -rf "${INSTALL_DIR}/${FRP_CONF_NAME}"
+        if [ -f "${INSTALL_DIR}/${FRPS_CONF_NAME}" ]; then
+            echo "生成${FRPS_CONF_NAME}配置文件..."
+            rm -rf "${INSTALL_DIR}/${FRPS_CONF_NAME}"
         fi
         generate_default_config
 
-        echo "正在创建或更新 frps Systemd 服务..."
+        echo "正在创建或更新 $FRP_BIN_NAME Systemd 服务..."
         create_systemd_service
 
         # 启动服务
-        echo "正在启动 frps 服务..."
+        echo "正在启动 $FRP_BIN_NAME 服务..."
         ./startup-frps.sh
 
         echo "安装并启动 frps 完成。"
+        setup_firewall_ports "6000/tcp" "7000/tcp" "7800/tcp" "7443/tcp" "7500/tcp"
         ;;
     c)
-        if [ ! -f "${INSTALL_DIR}/${FRP_CLIENT_NAME}" ]; then
+        if [ ! -f "${INSTALL_DIR}/${FRPC_NAME}" ]; then
             echo "正在下载并安装 frpc..."
             download_and_extract_frpc
             echo "frpc 已安装到 ${INSTALL_DIR}"
         fi
 
-        if [ -f "${INSTALL_DIR}/${FRP_CLIENT_CONF_NAME}" ]; then
-            echo "生成${FRP_CLIENT_CONF_NAME}配置文件..."
-            rm -rf "${INSTALL_DIR}/${FRP_CLIENT_CONF_NAME}"
+        if [ -f "${INSTALL_DIR}/${FRPC_CONF_NAME}" ]; then
+            echo "生成${FRPC_CONF_NAME}配置文件..."
+            rm -rf "${INSTALL_DIR}/${FRPC_CONF_NAME}"
         fi
         generate_default_client_config
 
@@ -264,8 +323,10 @@ case $CHOICE in
         # 启动服务
         echo "正在启动 frpc 服务..."
         ./startup-frpc.sh
-
         echo "安装并启动 frpc 完成。"
+        sshd_port=$(grep -oP 'Port \K\d+' /etc/ssh/sshd_config | head -n 1)
+        [ -z "$sshd_port" ] && sshd_port=22
+        setup_firewall_ports "${sshd_port}/tcp"
         ;;
     *)
         echo "无效的选择，退出安装。"
