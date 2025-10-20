@@ -6,10 +6,9 @@
 
 
 # 公共变量
-DEFAULT_INSTALL_DIR_LINUX="$HOME/activemq"
-DEFAULT_INSTALL_DIR_MACOS="$HOME/activemq"
+DEFAULT_INSTALL_DIR="$HOME/activemq"
 DEFAULT_DOWNLOAD_DIR="$HOME/Downloads"
-DEFAULT_ACTIVEMQ_VERSION="6.1.7"
+DEFAULT_VERSION="6.1.7"
 DEFAULT_LOG_LEVEL="INFO"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -43,9 +42,9 @@ NC='\033[0m' # No Color
 print_usage() {
     echo "用法: $0 [选项]"
     echo "选项:"
-    echo "  -d, --dir PATH     指定安装目录（默认Linux: $DEFAULT_INSTALL_DIR_LINUX, MacOS: $DEFAULT_INSTALL_DIR_MACOS）"
+    echo "  -d, --dir PATH     指定安装目录（默认Linux: $DEFAULT_INSTALL_DIR, MacOS: $DEFAULT_INSTALL_DIR）"
     echo "  -D, --download-dir PATH  指定下载目录（默认: $HOME/Downloads）"
-    echo "  -v, --version VER  指定ActiveMQ版本（默认: $DEFAULT_ACTIVEMQ_VERSION）"
+    echo "  -v, --version VER  指定ActiveMQ版本（默认: $DEFAULT_VERSION）"
     echo "  -f, --force        强制重新安装（不会删除持久化数据）"
     echo "  -u, --uninstall    卸载ActiveMQ"
     echo "  --remove-data      与-u一起使用时，删除数据目录"
@@ -55,15 +54,15 @@ print_usage() {
     echo "  -h, --help         显示此帮助信息"
     echo ""
     echo "示例:"
-    echo "  $0                                    # 使用默认目录安装"
-    echo "  $0 -d /opt/activemq                 # 指定安装目录"
+    echo "  $0                                  # 使用默认目录安装"
+    echo "  $0 -d $DEFAULT_INSTALL_DIR          # 指定安装目录"
     echo "  $0 -D /tmp                          # 指定下载目录"
-    echo "  $0 -v 6.1.7                         # 指定版本"
+    echo "  $0 -v $DEFAULT_VERSION                         # 指定版本"
     echo "  $0 -f                               # 强制重新安装"
     echo "  $0 -u                               # 卸载ActiveMQ（保留数据）"
     echo "  $0 -u --remove-data                 # 卸载ActiveMQ并删除数据"
-    echo "  $0 -d /usr/local/activemq -f        # 指定目录并强制安装"
-    echo "  $0 -d /opt/activemq -D /tmp -v 6.1.7 # 同时指定安装、下载目录和版本"
+    echo "  $0 -d $DEFAULT_INSTALL_DIR -f       # 指定目录并强制安装"
+    echo "  $0 -d $DEFAULT_INSTALL_DIR -D /tmp -v $DEFAULT_VERSION # 同时指定安装、下载目录和版本"
     echo "  $0 --disable-external-access        # 禁止Web控制台外部访问"
     echo "  $0 --generate-random-password       # 生成并修改随机密码"
     echo "  $0 --log-level DEBUG                # 设置日志级别为DEBUG"
@@ -204,7 +203,7 @@ parse_arguments() {
     
     # 如果未指定版本，则使用默认版本
     if [[ -z "$ACTIVEMQ_VERSION" ]]; then
-        ACTIVEMQ_VERSION="$DEFAULT_ACTIVEMQ_VERSION"
+        ACTIVEMQ_VERSION="$DEFAULT_VERSION"
         log_debug "使用默认版本: $ACTIVEMQ_VERSION"
     fi
     
@@ -324,13 +323,13 @@ detect_os() {
         Linux*)
             OS=Linux
             if [[ -z "$INSTALL_DIR" ]]; then
-                INSTALL_DIR="$DEFAULT_INSTALL_DIR_LINUX"
+                INSTALL_DIR="$DEFAULT_INSTALL_DIR"
             fi
             ;;
         Darwin*)
             OS=MacOS
             if [[ -z "$INSTALL_DIR" ]]; then
-                INSTALL_DIR="$DEFAULT_INSTALL_DIR_MACOS"
+                INSTALL_DIR="$DEFAULT_INSTALL_DIR"
             fi
             ;;
         *)
@@ -484,12 +483,12 @@ download_activemq() {
     # 如果下载失败，检查是否是版本不存在的问题
     if [[ "$download_success" == false ]]; then
         log_warn "从所有镜像下载失败，可能是版本 $ACTIVEMQ_VERSION 不存在"
-        if [[ "$ACTIVEMQ_VERSION" != "$DEFAULT_ACTIVEMQ_VERSION" ]]; then
-            read -p "是否下载默认版本 $DEFAULT_ACTIVEMQ_VERSION? [y/N] " -n 1 -r
+        if [[ "$ACTIVEMQ_VERSION" != "$DEFAULT_VERSION" ]]; then
+            read -p "是否下载默认版本 $DEFAULT_VERSION? [y/N] " -n 1 -r
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
-                log_info "切换到默认版本 $DEFAULT_ACTIVEMQ_VERSION"
-                ACTIVEMQ_VERSION="$DEFAULT_ACTIVEMQ_VERSION"
+                log_info "切换到默认版本 $DEFAULT_VERSION"
+                ACTIVEMQ_VERSION="$DEFAULT_VERSION"
                 set_version_variables
                 
                 # 再次尝试从多个镜像下载默认版本
@@ -1951,9 +1950,9 @@ main() {
         detect_os  # 确定默认安装目录
         if [[ -z "$INSTALL_DIR" ]]; then
             if [[ "$OS" == "Linux" ]]; then
-                INSTALL_DIR="$DEFAULT_INSTALL_DIR_LINUX"
+                INSTALL_DIR="$DEFAULT_INSTALL_DIR"
             else
-                INSTALL_DIR="$DEFAULT_INSTALL_DIR_MACOS"
+                INSTALL_DIR="$DEFAULT_INSTALL_DIR"
             fi
         fi
         uninstall_activemq

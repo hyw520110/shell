@@ -4,8 +4,7 @@
 # 支持Linux和MacOS系统
 
 # 公共变量
-DEFAULT_INSTALL_DIR_LINUX="$HOME/activemq"
-DEFAULT_INSTALL_DIR_MACOS="$HOME/activemq"
+DEFAULT_INSTALL_DIR="$HOME/activemq"
 DEFAULT_LOG_LEVEL="INFO"
 
 # 运行时变量
@@ -23,14 +22,14 @@ NC='\033[0m' # No Color
 print_usage() {
     echo "用法: $0 [选项]"
     echo "选项:"
-    echo "  -d, --dir PATH     指定安装目录（默认Linux: $DEFAULT_INSTALL_DIR_LINUX, MacOS: $DEFAULT_INSTALL_DIR_MACOS）"
+    echo "  -d, --dir PATH     指定安装目录（默认Linux: $DEFAULT_INSTALL_DIR, MacOS: $DEFAULT_INSTALL_DIR）"
     echo "  --log-level LEVEL  设置日志级别 (DEBUG, INFO, WARN, ERROR)（默认: $DEFAULT_LOG_LEVEL）"
     echo "  -f, --force        强制结束相关进程（跳过脚本优雅停止）"
     echo "  -h, --help         显示此帮助信息"
     echo ""
     echo "示例:"
     echo "  $0                                    # 使用默认目录停止（不报错退出）"
-    echo "  $0 -d /opt/activemq                  # 指定安装目录停止"
+    echo "  $0 -d $DEFAULT_INSTALL_DIR                  # 指定安装目录停止"
     echo "  $0 --log-level DEBUG                 # 设置日志级别为DEBUG"
     echo "  $0 --force                           # 强制结束进程"
 }
@@ -81,8 +80,8 @@ parse_arguments() {
     done
     if [[ -z "$INSTALL_DIR" ]]; then
         case "$(uname -s)" in
-            Linux*) INSTALL_DIR="$DEFAULT_INSTALL_DIR_LINUX" ;;
-            Darwin*) INSTALL_DIR="$DEFAULT_INSTALL_DIR_MACOS" ;;
+            Linux*) INSTALL_DIR="$DEFAULT_INSTALL_DIR" ;;
+            Darwin*) INSTALL_DIR="$DEFAULT_INSTALL_DIR" ;;
             *) log_error "不支持的操作系统: $(uname -s)"; exit 1 ;;
         esac
         log_debug "使用默认安装目录: $INSTALL_DIR"

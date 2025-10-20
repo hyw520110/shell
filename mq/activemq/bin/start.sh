@@ -2,8 +2,7 @@
 # 封装ActiveMQ启动脚本
 # 支持 -d/--dir 指定安装目录，--log-level 设置日志级别
 
-DEFAULT_INSTALL_DIR_LINUX="$HOME/activemq"
-DEFAULT_INSTALL_DIR_MACOS="$HOME/activemq"
+DEFAULT_INSTALL_DIR="$HOME/activemq"
 LOG_LEVEL="INFO"
 INSTALL_DIR=""
 
@@ -24,8 +23,8 @@ parse_arguments() {
   done
   if [[ -z "$INSTALL_DIR" ]]; then
     case "$(uname -s)" in
-      Linux*) INSTALL_DIR="$DEFAULT_INSTALL_DIR_LINUX" ;;
-      Darwin*) INSTALL_DIR="$DEFAULT_INSTALL_DIR_MACOS" ;;
+      Linux*) INSTALL_DIR="$DEFAULT_INSTALL_DIR" ;;
+      Darwin*) INSTALL_DIR="$DEFAULT_INSTALL_DIR" ;;
       *) log ERROR "不支持的操作系统: $(uname -s)"; exit 1 ;;
     esac
   fi
