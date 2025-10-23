@@ -1,36 +1,12 @@
 #!/bin/bash
 
-# ActiveMQ/Artemis一键安装配置脚本
+# ActiveMQ/Artemis 一键安装配置脚本
 # 支持Linux和MacOS系统
+# 使用模块化设计，提高代码可维护性
 
-
-
-# 公共变量
-DEFAULT_INSTALL_DIR="$HOME/activemq"
-DEFAULT_DOWNLOAD_DIR="$HOME/Downloads"
-DEFAULT_ARTEMIS_VERSION="2.41.0"
-DEFAULT_CLASSIC_VERSION="6.1.7"
-DEFAULT_LOG_LEVEL="INFO"
-SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MQ_TYPE="artemis"  # 默认安装Artemis
-
-# 默认端口
-DEFAULT_BROKER_PORT="61616"
-DEFAULT_JETTY_PORT="8161"
-DEFAULT_AMQP_PORT="5672"
-DEFAULT_STOMP_PORT="61613"
-DEFAULT_MQTT_PORT="1883"
-DEFAULT_WS_PORT="61614"
-
-# 下载链接数组（按优先级排序）
-declare -a CLASSIC_DOWNLOAD_MIRRORS=(
-    "https://archive.apache.org/dist/activemq/$VERSION/apache-activemq-$VERSION-bin.tar.gz"
-    "https://downloads.apache.org/activemq/$VERSION/apache-activemq-$VERSION-bin.tar.gz"
-)
-declare -a ARTEMIS_DOWNLOAD_MIRRORS=(
-    "https://archive.apache.org/dist/activemq/activemq-artemis/$VERSION/apache-artemis-$VERSION-bin.tar.gz"
-    "https://downloads.apache.org/activemq/activemq-artemis/$VERSION/apache-artemis-$VERSION-bin.tar.gz"
-)
+# 加载公共函数库
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh" || { echo "无法加载公共函数库"; exit 1; }
 
 # 运行时变量
 INSTALL_DIR=""
@@ -46,12 +22,9 @@ ENABLE_EXTERNAL_ACCESS=true  # 默认开启外部访问
 DISABLE_EXTERNAL_ACCESS=false
 GENERATE_RANDOM_PASSWORD=false
 LOG_LEVEL="$DEFAULT_LOG_LEVEL"
-
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+MQ_TYPE="artemis"  # 默认安装Artemis
+DEFAULT_EXTRACT_DIR="/tmp"  # 默认解压目录
+EXTRACT_DIR=""  # 实际解压目录
 
 # 打印使用说明
 print_usage() {
@@ -84,270 +57,6 @@ print_usage() {
     echo "  $0 --disable-external-access        # 禁止Web控制台外部访问"
     echo "  $0 --generate-random-password       # 生成并修改随机密码"
     echo "  $0 --log-level DEBUG                # 设置日志级别为DEBUG"
-}
-
-# MQ类型检测函数
-# 参数: $1 = MQ类型 (artemis|classic)，可选
-is_artemis() {
-    local mq_type="$1"
-    
-    # 如果未提供参数，则使用全局变量
-    if [[ -z "$mq_type" ]]; then
-        mq_type="$MQ_TYPE"
-    fi
-    
-    [[ "$mq_type" == "artemis" ]]
-}
-
-# 参数: $1 = MQ类型 (artemis|classic)，可选
-is_classic() {
-    local mq_type="$1"
-    
-    # 如果未提供参数，则使用全局变量
-    if [[ -z "$mq_type" ]]; then
-        mq_type="$MQ_TYPE"
-    fi
-    
-    [[ "$mq_type" == "classic" ]]
-}
-
-# 设置目录权限的封装函数
-set_directory_permissions() {
-    local dir_path="$1"
-    local owner="${2:-$(whoami):$(whoami)}"
-    
-    log_debug "设置目录权限: $dir_path, 所有者: $owner"
-    sudo chown -R "$owner" "$dir_path/" 2>/dev/null || chown -R "$owner" "$dir_path/" 2>/dev/null || true
-    sudo chmod -R 755 "$dir_path/" 2>/dev/null || chmod -R 755 "$dir_path/" 2>/dev/null || true
-}
-
-# 设置目录权限并记录日志
-set_directory_permissions_with_logging() {
-    local dir_path="$1"
-    local owner="${2:-$(whoami):$(whoami)}"
-    local context="${3:-目录}"
-    
-    log_debug "修复${context}权限: $dir_path"
-    set_directory_permissions "$dir_path" "$owner"
-}
-
-# 封装命令执行函数，支持自动提权执行
-execute_command() {
-    local command="$1"
-    local description="${2:-执行命令}"
-    
-    log_debug "$description: $command"
-    
-    # 首先尝试普通执行
-    if eval "$command"; then
-        return 0
-    else
-        log_debug "普通执行失败，尝试提权执行"
-        # 如果普通执行失败，尝试使用sudo提权执行
-        if command -v sudo &> /dev/null && sudo -n true 2>/dev/null; then
-            if eval "sudo $command"; then
-                return 0
-            else
-                log_warn "提权执行也失败: $command"
-                return 1
-            fi
-        else
-            log_warn "无法提权执行（没有sudo权限或sudo需要密码）: $command"
-            return 1
-        fi
-    fi
-}
-
-# 为Java 17设置兼容参数
-setup_java17_compatibility() {
-    local mq_home=$(get_mq_home)
-    local mq_conf=$(get_mq_conf)
-    
-    log_info "检查并设置Java 17兼容性参数..."
-    
-    # 检查Java版本
-    if command -v java &> /dev/null; then
-        JAVA_VERSION=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}')
-        log_debug "检测到Java版本: $JAVA_VERSION"
-        
-        if [[ "$JAVA_VERSION" == 17* ]]; then
-            log_info "检测到Java 17，设置兼容性参数"
-            
-            # 为ActiveMQ Classic设置参数
-            if is_classic; then
-                local setenv_file="$mq_conf/setenv"
-                if [[ -d "$mq_conf" ]]; then
-                    # 检查是否已经包含Java 17参数
-                    if ! grep -q "XX:-UseContainerSupport" "$setenv_file"; then
-	                    log_debug "更新setenv文件: $setenv_file"
-	                    # TODO 修改setenv_file 在文件头部添加JAVA17兼容参数
-                        echo 'export ACTIVEMQ_OPTS="-XX:-UseContainerSupport $ACTIVEMQ_OPTS"'  
-                    fi
-                fi
-            fi
-            
-            # 为ActiveMQ Artemis设置参数
-            if is_artemis; then
-                # Artemis使用环境变量
-                export ARTEMIS_OPTS="-XX:-UseContainerSupport"
-                log_debug "设置ARTEMIS_OPTS环境变量: $ARTEMIS_OPTS"
-            fi
-        else
-            log_debug "Java版本不是17，跳过兼容性参数设置"
-        fi
-    else
-        log_warn "未找到Java命令，跳过兼容性参数设置"
-    fi
-}
-
-# 设置环境变量
-set_mq_env() {
-    export MQ_HOME="$INSTALL_DIR"
-    export MQ_BASE="$INSTALL_DIR"
-    export MQ_CONF="$INSTALL_DIR/conf"
-    export MQ_DATA="$INSTALL_DIR/data"
-}
-
-# 获取MQ HOME路径
-get_mq_home() {
-    echo "$MQ_HOME"
-}
-
-# 获取MQ BIN路径
-get_mq_bin() {
-    echo "$MQ_HOME/bin"
-}
-
-# 获取MQ配置路径
-get_mq_conf() {
-    echo "$MQ_CONF"
-}
-
-# 获取MQ数据路径
-get_mq_data() {
-    echo "$MQ_DATA"
-}
-
-# 获取MQ PID文件路径
-get_mq_pid_file() {
-    if is_artemis; then
-        echo "$MQ_DATA/artemis.pid"
-    else
-        echo "$MQ_DATA/activemq.pid"
-    fi
-}
-
-# 获取MQ启动脚本路径
-get_mq_start_script() {
-    if is_artemis; then
-        echo "$MQ_HOME/bin/artemis"
-    else
-        echo "$MQ_HOME/bin/activemq"
-    fi
-}
-
-# 获取MQ停止脚本路径
-get_mq_stop_script() {
-    if is_artemis; then
-        echo "$MQ_HOME/bin/artemis"
-    else
-        echo "$MQ_HOME/bin/activemq"
-    fi
-}
-
-# 获取MQ服务名称
-get_mq_service_name() {
-    if is_artemis; then
-        echo "artemis"
-    else
-        echo "activemq"
-    fi
-}
-
-# 获取MQ名称
-# 参数: $1 = MQ类型 (artemis|classic)，可选
-get_mq_name() {
-    local mq_type="$1"
-    
-    # 如果未提供参数，则使用全局变量
-    if [[ -z "$mq_type" ]]; then
-        mq_type="$MQ_TYPE"
-    fi
-    
-    if [[ "$mq_type" == "artemis" ]]; then
-        echo "ActiveMQ Artemis"
-    else
-        echo "ActiveMQ Classic"
-    fi
-}
-
-# 通用日志函数
-log_message() {
-    local level=$1
-    local message=$2
-    local color=""
-    
-    # 检查是否应该记录此级别的日志
-    case "$LOG_LEVEL" in
-        DEBUG)
-            # DEBUG级别显示所有日志
-            ;;
-        INFO)
-            # INFO级别显示INFO、WARN、ERROR
-            [[ "$level" != "DEBUG" ]] || return
-            ;;
-        WARN)
-            # WARN级别显示WARN、ERROR
-            [[ "$level" == "WARN" || "$level" == "ERROR" ]] || return
-            ;;
-        ERROR)
-            # ERROR级别只显示ERROR
-            [[ "$level" == "ERROR" ]] || return
-            ;;
-        *)
-            # 默认显示所有日志
-            ;;
-    esac
-    
-    # 设置颜色
-    case "$level" in
-        DEBUG)
-            color="$GREEN"
-            ;;
-        INFO)
-            color="$GREEN"
-            ;;
-        WARN)
-            color="$YELLOW"
-            ;;
-        ERROR)
-            color="$RED"
-            ;;
-    esac
-    
-    # 输出日志
-    if [[ -t 1 ]]; then
-        echo -e "${color}[$level]${NC} $message" >&2
-    else
-        echo "[$level] $message" >&2
-    fi
-}
-
-# 简化日志函数
-log_debug() {
-    log_message "DEBUG" "$1"
-}
-
-log_info() {
-    log_message "INFO" "$1"
-}
-
-log_warn() {
-    log_message "WARN" "$1"
-}
-
-log_error() {
-    log_message "ERROR" "$1"
 }
 
 # 解析命令行参数
@@ -447,7 +156,7 @@ parse_arguments() {
 # 卸载MQ
 uninstall_mq() {
     MQ_NAME=$(get_mq_name)
-    log_info "开始卸载${MQ_NAME}..."
+    log_info "开始卸载$MQ_NAME..."
     
     # 检查是否已安装
     if [[ ! -d "$INSTALL_DIR" ]]; then
@@ -482,7 +191,7 @@ uninstall_mq() {
     # 移除systemd服务（如果存在）
     remove_systemd_service
     
-    log_info "${MQ_NAME}卸载完成"
+    log_info "$MQ_NAME卸载完成"
 }
 
 # 从shell配置文件中移除环境变量
@@ -497,20 +206,20 @@ remove_env_vars() {
     fi
     
     if [[ -f "$SHELL_CONFIG" ]]; then
-        if grep -q "ACTIVEMQ_HOME" "$SHELL_CONFIG"; then
-            log_info "从 $SHELL_CONFIG 中移除ActiveMQ环境变量配置"
-            # 移除包含ACTIVEMQ_HOME的整行和注释行
-            execute_command "sed -i '/# ActiveMQ Environment Variables/,/^export ACTIVEMQ_HOME/d' \"$SHELL_CONFIG\"" || \
-            execute_command "sed -i '/ACTIVEMQ_HOME/d' \"$SHELL_CONFIG\"" || true
+        if grep -q "ACTIVEMQ_HOME\\|ARTEMIS_HOME" "$SHELL_CONFIG"; then
+            log_info "从 $SHELL_CONFIG 中移除ActiveMQ/Artemis环境变量配置"
+            # 移除包含ACTIVEMQ_HOME或ARTEMIS_HOME的整行和注释行
+            execute_command "sed -i '/# ActiveMQ Environment Variables/,/^export ACTIVEMQ_HOME\|^export ARTEMIS_HOME/d' \"$SHELL_CONFIG\"" || \
+            execute_command "sed -i '/ACTIVEMQ_HOME\|ARTEMIS_HOME/d' \"$SHELL_CONFIG\"" || true
         else
-            log_info "未找到ActiveMQ环境变量配置"
+            log_info "未找到ActiveMQ/Artemis环境变量配置"
         fi
     fi
 }
 
 # 移除systemd服务
 remove_systemd_service() {
-    if [[ "$OS" == "Linux" ]]; then
+    if [[ "$(detect_os)" == "Linux" ]]; then
         if is_artemis; then
             log_info "移除ActiveMQ Artemis systemd服务..."
             execute_command "systemctl stop artemis" || true
@@ -528,48 +237,27 @@ remove_systemd_service() {
 
 # 检查是否以root权限运行（Linux下可选）
 check_root() {
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    if [[ "$(uname -s)" == "Linux"* ]]; then
         if [[ $EUID -eq 0 ]]; then
             log_warn "建议不要以root用户运行此脚本"
         fi
     fi
 }
 
-# 检查Java环境
-check_java() {
-    if ! command -v java &> /dev/null; then
-        log_error "Java未安装，请先安装Java"
-        return 1
-    fi
-    
-    java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}')
-    log_info "检测到Java版本: $java_version"
-    
-}
-
 # 检测操作系统类型
 detect_os() {
     case "$(uname -s)" in
         Linux*)
-            OS=Linux
-            if [[ -z "$INSTALL_DIR" ]]; then
-                INSTALL_DIR="$DEFAULT_INSTALL_DIR"
-            fi
+            echo "Linux"
             ;;
         Darwin*)
-            OS=MacOS
-            if [[ -z "$INSTALL_DIR" ]]; then
-                INSTALL_DIR="$DEFAULT_INSTALL_DIR"
-            fi
+            echo "MacOS"
             ;;
         *)
             log_error "不支持的操作系统: $(uname -s)"
             exit 1
             ;;
     esac
-    
-    log_info "检测到操作系统: $OS"
-    log_info "安装目录: $INSTALL_DIR"
 }
 
 # 检查是否已安装ActiveMQ
@@ -583,7 +271,7 @@ check_installed() {
             # 先尝试停止可能正在运行的服务
             log_info "正在停止ActiveMQ服务..."
             if [[ -f "$INSTALL_DIR/bin/stop.sh" ]]; then
-                "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+                "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --${MQ_TYPE} || true
             else
                 log_warn "未找到stop.sh脚本，跳过停止服务步骤"
             fi
@@ -644,7 +332,10 @@ download_mq() {
     set_version_variables "$mq_type" "$version"
     
     # 确保下载目录存在
-    execute_command "mkdir -p \"$download_dir\"" "创建下载目录"
+    if ! execute_command "mkdir -p \"$download_dir\"" "创建下载目录"; then
+        log_error "无法创建下载目录: $download_dir"
+        return 1
+    fi
     
     # 切换到下载目录
     cd "$download_dir"
@@ -674,7 +365,7 @@ download_mq() {
     fi
     
     local mq_name=$(get_mq_name "$mq_type")
-    log_info "开始下载${mq_name}版本 ${version}..."
+    log_info "开始下载$mq_name版本 ${version}..."
     log_info "下载目录: $download_dir"
     
     # 尝试从多个源下载
@@ -751,7 +442,7 @@ download_mq() {
             fi
         else
             log_error "系统中未找到aria2c、wget或curl命令"
-            exit 1
+            return 1
         fi
     done
     
@@ -769,7 +460,7 @@ download_mq() {
                 return $?
             else
                 log_info "下载已取消"
-                return 0
+                return 1
             fi
         elif [[ "$mq_type" == "classic" ]] && [[ "$version" != "$DEFAULT_CLASSIC_VERSION" ]]; then
             read -p "是否下载默认Classic版本 $DEFAULT_CLASSIC_VERSION? [y/N] " -n 1 -r
@@ -781,17 +472,17 @@ download_mq() {
                 return $?
             else
                 log_info "下载已取消"
-                return 0
+                return 1
             fi
         else
             log_warn "下载默认版本失败，请检查网络连接"
-            return 0
+            return 1
         fi
     fi
     
     if [[ "$download_success" == false ]]; then
-        log_warn "所有下载尝试均失败"
-        return 0
+        log_error "所有下载尝试均失败"
+        return 1
     fi
     
     if [[ "$mq_type" == "artemis" ]]; then
@@ -799,6 +490,8 @@ download_mq() {
     else
         log_info "ActiveMQ Classic下载完成，文件位置: $download_dir/$MQ_FILE_NAME"
     fi
+    
+    return 0
 }
 
 # 安装MQ
@@ -813,11 +506,31 @@ install_mq() {
     local download_dir="$4"
     
     local mq_name=$(get_mq_name "$mq_type")
-    log_info "开始安装${mq_name}..."
+    log_info "开始安装$mq_name..."
     
-    # 创建临时解压目录
-    local TEMP_EXTRACT_DIR=$(mktemp -d)
-    log_debug "使用临时解压目录: $TEMP_EXTRACT_DIR"
+    # 设置解压目录 - 如果未指定则使用默认值
+    if [[ -z "$EXTRACT_DIR" ]]; then
+        EXTRACT_DIR="$DEFAULT_EXTRACT_DIR"
+    fi
+    
+    # 创建解压目录
+    if ! execute_command "mkdir -p $EXTRACT_DIR"; then
+        log_error "无法创建解压目录: $EXTRACT_DIR，尝试使用临时目录"
+        EXTRACT_DIR=$(mktemp -d)
+        if [[ -z "$EXTRACT_DIR" ]] || [[ ! -d "$EXTRACT_DIR" ]]; then
+            log_error "无法创建临时解压目录"
+            return 1
+        fi
+    fi
+    log_debug "使用解压目录: $EXTRACT_DIR"
+    
+    # 创建一个唯一的子目录用于本次解压，避免冲突
+    local TEMP_EXTRACT_DIR=$(mktemp -d -p "$EXTRACT_DIR")
+    if [[ -z "$TEMP_EXTRACT_DIR" ]] || [[ ! -d "$TEMP_EXTRACT_DIR" ]]; then
+        log_error "无法在$EXTRACT_DIR中创建临时解压子目录"
+        return 1
+    fi
+    log_debug "使用临时解压子目录: $TEMP_EXTRACT_DIR"
     
     # 记录当前工作目录
     local original_dir=$(pwd)
@@ -827,34 +540,28 @@ install_mq() {
     log_debug "在临时目录中解压文件: $download_dir/$MQ_FILE_NAME"
     if ! execute_command "tar -xzf \"$download_dir/$MQ_FILE_NAME\""; then
         log_error "解压失败"
-        execute_command "rm -rf \"$TEMP_EXTRACT_DIR\""
-        return 0
+        execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
+        return 1
     fi
     
-    # 获取解压后的目录名
-    local EXTRACTED_DIR
-    if [[ "$mq_type" == "artemis" ]]; then
-        EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "apache-artemis-*" | head -n 1)
-    else
-        EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "apache-activemq-*" | head -n 1)
+    # 自动提取解压后的目录名 (即tar包中的根目录)
+    local EXTRACTED_DIR=$(tar -tzf "$download_dir/$MQ_FILE_NAME" | head -n1 | cut -d/ -f1)
+    
+    # 验证解压后的目录确实存在
+    if [[ -z "$EXTRACTED_DIR" ]] || [[ ! -d "$EXTRACTED_DIR" ]]; then
+        log_error "无法自动提取解压目录名或目录不存在"
+        execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
+        return 1
     fi
     
-    # 如果找不到标准目录名，则使用第一个目录
-    if [[ -z "$EXTRACTED_DIR" ]]; then
-        EXTRACTED_DIR=$(ls -d */ | head -n 1)
-    fi
-    
-    # 检查是否找到了解压后的目录
-    if [[ -z "$EXTRACTED_DIR" ]]; then
-        log_error "无法找到解压后的目录"
-        execute_command "rm -rf \"$TEMP_EXTRACT_DIR\""
-        exit 1
-    fi
-    
-    log_debug "找到解压目录: $EXTRACTED_DIR"
+    log_debug "自动提取的解压目录: $EXTRACTED_DIR"
     
     # 确定安装目录
-    execute_command "mkdir -p $install_dir"
+    if ! execute_command "mkdir -p $install_dir"; then
+        log_error "无法创建安装目录: $install_dir"
+        execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
+        return 1
+    fi
     
     # 如果强制重装且安装目录已存在，则保存配置和数据目录
     if [[ "$FORCE_REINSTALL" == true ]] && [[ -d "$install_dir/conf" ]]; then
@@ -862,6 +569,11 @@ install_mq() {
         
         # 创建临时备份目录
         local TEMP_BACKUP_DIR=$(mktemp -d)
+        if [[ -z "$TEMP_BACKUP_DIR" ]] || [[ ! -d "$TEMP_BACKUP_DIR" ]]; then
+            log_error "无法创建备份目录"
+            execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
+            return 1
+        fi
         log_debug "备份到临时目录: $TEMP_BACKUP_DIR"
         
         # 先尝试停止可能正在运行的服务
@@ -924,19 +636,25 @@ install_mq() {
     fi
     
     # 预先将当前源目录的启动/停止脚本复制到安装目录bin，以便后续停止/启动调用
-    execute_command "mkdir -p \"$install_dir/bin\"" || true
+    if ! execute_command "mkdir -p \"$install_dir/bin\""; then
+        log_error "无法创建安装目录的bin子目录"
+        execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
+        execute_command "rm -rf \"$TEMP_BACKUP_DIR\"" || true
+        return 1
+    fi
+    
     if [[ -f "$SOURCE_DIR/start.sh" ]]; then
-        if execute_command "cp \"$SOURCE_DIR/start.sh\" \"$install_dir/bin/start.sh\""; then
-            execute_command "chmod +x \"$install_dir/bin/start.sh\"" || true
+        if ! execute_command "cp \"$SOURCE_DIR/start.sh\" \"$install_dir/bin/start.sh\""; then
+            log_warn "复制自定义start脚本失败: $SOURCE_DIR/start.sh"
         else
-            log_warn "复制自定义脚本失败: $SOURCE_DIR/start.sh"
+            execute_command "chmod +x \"$install_dir/bin/start.sh\"" || true
         fi
     fi
     if [[ -f "$SOURCE_DIR/stop.sh" ]]; then
-        if execute_command "cp \"$SOURCE_DIR/stop.sh\" \"$install_dir/bin/stop.sh\""; then
-            execute_command "chmod +x \"$install_dir/bin/stop.sh\"" || true
+        if ! execute_command "cp \"$SOURCE_DIR/stop.sh\" \"$install_dir/bin/stop.sh\""; then
+            log_warn "复制自定义stop脚本失败: $SOURCE_DIR/stop.sh"
         else
-            log_warn "复制自定义脚本失败: $SOURCE_DIR/stop.sh"
+            execute_command "chmod +x \"$install_dir/bin/stop.sh\"" || true
         fi
     fi
 
@@ -944,8 +662,8 @@ install_mq() {
     log_info "正在停止MQ服务..."
     if [[ -f "$install_dir/bin/stop.sh" ]]; then
         "$install_dir/bin/stop.sh" -d "$install_dir" --log-level "$LOG_LEVEL" --${mq_type} || true
-    elif [[ -f "$SRC_DIR/stop.sh" ]]; then
-        "$SRC_DIR/stop.sh" -d "$install_dir" --log-level "$LOG_LEVEL" --${mq_type} || true
+    elif [[ -f "$SOURCE_DIR/stop.sh" ]]; then
+        "$SOURCE_DIR/stop.sh" -d "$install_dir" --log-level "$LOG_LEVEL" --${mq_type} || true
     else
         log_warn "未找到stop.sh脚本，跳过停止服务步骤"
     fi
@@ -958,9 +676,9 @@ install_mq() {
     if ! execute_command "mkdir -p \"$install_dir\""; then
         log_error "无法创建安装目录"
         execute_command "rm -rf \"$TEMP_BACKUP_DIR\"" || true
-        execute_command "rm -rf \"$TEMP_EXTRACT_DIR\""
-        cd "$original_dir"
-        return 0
+        execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
+        cd "$original_dir" || true
+        return 1
     fi
     
     # 设置目录权限
@@ -969,37 +687,53 @@ install_mq() {
     
     # 尝试逐个复制目录和文件
     log_info "开始逐个复制文件到安装目录..."
+    local copy_success=true
     for item in "$EXTRACTED_DIR"/*; do
-        local item_name=$(basename "$item")
-        log_debug "复制 $item_name..."
-        # 确保目标目录存在
-        execute_command "mkdir -p \"$install_dir\"" || true
-        
-        # 尝试多种复制方法
-        if ! execute_command "cp -r \"$item\" \"$install_dir/\""; then
+        if [[ -e "$item" ]]; then
+            local item_name=$(basename "$item")
+            log_debug "复制 $item_name..."
+            # 确保目标目录存在
+            if ! execute_command "mkdir -p \"$install_dir\""; then
+                log_error "无法确保安装目录存在"
+                copy_success=false
+                break
+            fi
+            
+            # 尝试多种复制方法
             if ! execute_command "cp -r \"$item\" \"$install_dir/\""; then
                 if command -v rsync &> /dev/null; then
                     if ! execute_command "rsync -av \"$item\" \"$install_dir/\""; then
-                        log_error "无法复制 $item_name，跳过..."
+                        log_error "无法复制 $item_name"
+                        copy_success=false
                         continue
                     fi
                 else
-                    log_error "无法复制 $item_name，跳过..."
+                    log_error "无法复制 $item_name"
+                    copy_success=false
                     continue
                 fi
             fi
+            log_debug "成功复制 $item_name"
         fi
-        log_debug "成功复制 $item_name"
     done
+    
+    if [[ "$copy_success" == false ]]; then
+        log_error "文件复制过程中发生错误"
+        execute_command "rm -rf \"$TEMP_BACKUP_DIR\"" || true
+        execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
+        cd "$original_dir" || true
+        return 1
+    fi
     
     log_info "文件复制完成"
 
     # 将当前源目录的启动/停止脚本复制到安装目录bin
-    local SRC_DIR="$(dirname "${BASH_SOURCE[0]}")"
-    execute_command "mkdir -p $install_dir/bin" || true
-    if [[ -f "$SRC_DIR/start.sh" ]]; then
-        execute_command "cp $SRC_DIR/*.sh $install_dir/bin/" || true
-        execute_command "chmod +x $install_dir/bin/*.sh" || true
+    if execute_command "mkdir -p $install_dir/bin"; then
+        if [[ -f "$SOURCE_DIR/start.sh" ]]; then
+            if execute_command "cp $SOURCE_DIR/*.sh $install_dir/bin/"; then
+                execute_command "chmod +x $install_dir/bin/*.sh" || true
+            fi
+        fi
     fi
     
     # 恢复备份的配置和数据目录
@@ -1025,24 +759,18 @@ install_mq() {
             
             if command -v rsync &> /dev/null; then
                 if ! execute_command "rsync -a \"$TEMP_BACKUP_DIR/conf/\" \"$install_dir/conf/\""; then
-                    # 逐个复制文件
-                    cd "$TEMP_BACKUP_DIR/conf"
-                    for item in * .*; do
-                        if [[ "$item" != "." && "$item" != ".." ]]; then
-                            execute_command "cp -r \"$item\" \"$install_dir/conf/\"" || true
-                        fi
-                    done
-                    cd - > /dev/null
+                    log_error "无法恢复配置目录"
+                    copy_success=false
                 fi
             else
                 # 逐个复制文件
-                cd "$TEMP_BACKUP_DIR/conf"
+                cd "$TEMP_BACKUP_DIR/conf" || true
                 for item in * .*; do
                     if [[ "$item" != "." && "$item" != ".." ]]; then
                         execute_command "cp -r \"$item\" \"$install_dir/conf/\"" || true
                     fi
                 done
-                cd - > /dev/null
+                cd - > /dev/null || true
             fi
         fi
         
@@ -1055,33 +783,32 @@ install_mq() {
             
             if command -v rsync &> /dev/null; then
                 if ! execute_command "rsync -a \"$TEMP_BACKUP_DIR/data/\" \"$install_dir/data/\""; then
-                    # 逐个复制文件
-                    cd "$TEMP_BACKUP_DIR/data"
-                    for item in * .*; do
-                        if [[ "$item" != "." && "$item" != ".." ]]; then
-                            execute_command "cp -r \"$item\" \"$install_dir/data/\"" || true
-                        fi
-                    done
-                    cd - > /dev/null
+                    log_error "无法恢复数据目录"
+                    copy_success=false
                 fi
             else
                 # 逐个复制文件
-                cd "$TEMP_BACKUP_DIR/data"
+                cd "$TEMP_BACKUP_DIR/data" || true
                 for item in * .*; do
                     if [[ "$item" != "." && "$item" != ".." ]]; then
                         execute_command "cp -r \"$item\" \"$install_dir/data/\"" || true
                     fi
                 done
-                cd - > /dev/null
+                cd - > /dev/null || true
             fi
         fi
         
         # 清理备份目录
-        execute_command "rm -rf \"$TEMP_BACKUP_DIR\""
+        execute_command "rm -rf \"$TEMP_BACKUP_DIR\"" || true
     fi
     
     # 清理解压目录
-    execute_command "rm -rf \"$TEMP_EXTRACT_DIR\""
+    execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
+    
+    # 清理父级临时目录（如果是临时创建的）
+    if [[ "$EXTRACT_DIR" != "$DEFAULT_EXTRACT_DIR" ]]; then
+        execute_command "rm -rf \"$EXTRACT_DIR\"" || true
+    fi
     
     # 确保安装目录中的文件具有正确的权限
     log_debug "设置安装目录文件权限..."
@@ -1089,22 +816,29 @@ install_mq() {
     execute_command "chmod +x \"$install_dir/bin/\"*" || true
     
     # 设置环境变量
+    set_mq_env() {
+        export MQ_HOME="$INSTALL_DIR"
+        export MQ_BASE="$INSTALL_DIR"
+        export MQ_CONF="$INSTALL_DIR/conf"
+        export MQ_DATA="$INSTALL_DIR/data"
+    }
     set_mq_env
     export PATH="$PATH:$(get_mq_bin)"
     
     # 返回原始工作目录
-    cd "$original_dir"
+    cd "$original_dir" || true
     
-    log_info "${mq_name}安装完成，安装目录: $install_dir"
+    log_info "$mq_name安装完成，安装目录: $install_dir"
+    return 0
 }
 
 # 配置MQ
 configure_mq() {
-    if is_artemis; then
-        log_info "开始配置ActiveMQ Artemis..."
-    else
-        log_info "开始配置ActiveMQ Classic..."
-    fi
+    # 预先计算MQ类型和显示名称
+    local MQ_TYPE=$(detect_mq_type_by_path "$INSTALL_DIR")
+    local MQ_DISPLAY_NAME=$(get_mq_display_name "$MQ_TYPE")
+    
+    log_info "开始配置$MQ_DISPLAY_NAME..."
     
     # 修复安装目录权限
     log_debug "修复安装目录权限..."
@@ -1208,11 +942,7 @@ EOF
     # 为Linux创建systemd服务
     create_systemd_service
     
-    if is_artemis; then
-        log_info "ActiveMQ Artemis配置完成"
-    else
-        log_info "ActiveMQ Classic配置完成"
-    fi
+    log_info "$MQ_DISPLAY_NAME配置完成"
 }
 
 # 生成随机密码
@@ -1233,19 +963,20 @@ generate_random_password() {
 disable_authentication() {
     log_info "禁用Web控制台登录认证(默认)"
     # 确保jetty.xml存在
-    if [[ ! -f "$ACTIVEMQ_HOME/conf/jetty.xml" ]]; then
+    if [[ ! -f "$(get_mq_conf)/jetty.xml" ]]; then
         log_warn "未找到jetty.xml，跳过认证禁用"
         return 0
     fi
-    cp "$ACTIVEMQ_HOME/conf/jetty.xml" "$ACTIVEMQ_HOME/conf/jetty.xml.bak" 2>/dev/null || true
+    cp "$(get_mq_conf)/jetty.xml" "$(get_mq_conf)/jetty.xml.bak" 2>/dev/null || true
     
     # 设置authenticate属性为false
-    sed -i.bak 's/<property name="authenticate" value="true" \/>/<property name="authenticate" value="false" \/>/g' "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
-    sed -i.bak 's/<property name="authenticate" value="false" \/>/<property name="authenticate" value="false" \/>/g' "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
+    sed -i.bak 's/<property name="authenticate" value="true" \/>/<property name="authenticate" value="false" \/>/g' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
+    sed -i.bak 's/<property name="authenticate" value="false" \/>/<property name="authenticate" value="false" \/>/g' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
     
     # 如果没有找到authenticate属性，则添加一个
-    if ! grep -q "<property name=\"authenticate\"" "$ACTIVEMQ_HOME/conf/jetty.xml"; then
-        sed -i.bak '/<bean id="securityConstraint"/,/<\/bean>/ {/class="org.eclipse.jetty.util.security.Constraint"/a\        <property name="authenticate" value="false" \/>\n}' "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
+    if ! grep -q "<property name=\"authenticate\"" "$(get_mq_conf)/jetty.xml"; then
+        sed -i.bak '/<bean id="securityConstraint"/,/<\/bean>/ {/class="org.eclipse.jetty.util.security.Constraint"/a\        <property name="authenticate" value="false" \/>\
+}' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
     fi
     
     log_info "已设置Web控制台无需登录"
@@ -1253,16 +984,25 @@ disable_authentication() {
 
 # 配置安全认证和权限管理（可选开启）
 configure_security() {
-    log_info "配置ActiveMQ安全认证..."
+    # 预先计算MQ类型和显示名称
+    local MQ_TYPE=$(detect_mq_type_by_path "$INSTALL_DIR")
+    local MQ_DISPLAY_NAME=$(get_mq_display_name "$MQ_TYPE")
+    
+    log_info "配置$MQ_DISPLAY_NAME安全认证..."
     
     # 修复配置目录权限
     log_debug "修复配置目录权限..."
-    execute_command "chown -R $(whoami):$(whoami) \"$ACTIVEMQ_HOME/conf/\"" || true
-    execute_command "chmod -R 755 \"$ACTIVEMQ_HOME/conf/\"" || true
+    execute_command "chown -R $(whoami):$(whoami) \"$(get_mq_conf)/\"" || true
+    execute_command "chmod -R 755 \"$(get_mq_conf)/\"" || true
     
     # 备份原始配置文件
-    cp "$ACTIVEMQ_HOME/conf/activemq.xml" "$ACTIVEMQ_HOME/conf/activemq.xml.bak" 2>/dev/null || 
-    cp "$ACTIVEMQ_HOME/conf/activemq.xml" "$ACTIVEMQ_HOME/conf/activemq.xml.bak"
+    local activemq_conf_file="$(get_mq_conf)/activemq.xml"
+    if [[ ! -f "$activemq_conf_file" ]]; then
+        log_error "找不到activemq.xml配置文件"
+        return 1
+    fi
+    cp "$activemq_conf_file" "$activemq_conf_file.bak" 2>/dev/null || \
+    cp "$activemq_conf_file" "$activemq_conf_file.bak"
     
     # 生成随机密码（如果需要）
     local admin_password="admin"
@@ -1277,31 +1017,35 @@ configure_security() {
     fi
     
     # 查找broker标签的行号
-    local broker_line=$(grep -n "<broker " "$ACTIVEMQ_HOME/conf/activemq.xml" | head -n1 | cut -d: -f1)
+    local broker_line=$(grep -n "<broker " "$activemq_conf_file" | head -n1 | cut -d: -f1)
     
     if [[ -n "$broker_line" ]]; then
         # 查找broker标签下一行的行号（通常是空白行或注释行）
         local next_line=$((broker_line + 1))
         
         # 检查是否已存在plugins配置
-        if grep -q "<plugins>" "$ACTIVEMQ_HOME/conf/activemq.xml"; then
+        if grep -q "<plugins>" "$activemq_conf_file"; then
             log_debug "已存在plugins配置，跳过添加"
         else
             # 从conf目录下的plugins模板文件读取配置并替换密码
-            local plugins_config=$(cat "$ACTIVEMQ_HOME/conf/plugins.xml.template" | sed "s/manager/$admin_password/g" | sed "s/admin/$user_password/g" | sed "s/password/$guest_password/g")
-            
-            # 在broker标签后插入plugins配置
-            local temp_file=$(mktemp)
-            head -n "$broker_line" "$ACTIVEMQ_HOME/conf/activemq.xml" > "$temp_file"
-            echo "$plugins_config" >> "$temp_file"
-            tail -n +$((broker_line + 1)) "$ACTIVEMQ_HOME/conf/activemq.xml" >> "$temp_file"
-            mv "$temp_file" "$ACTIVEMQ_HOME/conf/activemq.xml"
-            log_debug "成功添加plugins配置到broker标签后"
+            if [[ -f "$(get_mq_conf)/plugins.xml.template" ]]; then
+                local plugins_config=$(cat "$(get_mq_conf)/plugins.xml.template" | sed "s/manager/$admin_password/g" | sed "s/admin/$user_password/g" | sed "s/password/$guest_password/g")
+                
+                # 在broker标签后插入plugins配置
+                local temp_file=$(mktemp)
+                head -n "$broker_line" "$activemq_conf_file" > "$temp_file"
+                echo "$plugins_config" >> "$temp_file"
+                tail -n +$((broker_line + 1)) "$activemq_conf_file" >> "$temp_file"
+                mv "$temp_file" "$activemq_conf_file"
+                log_debug "成功添加plugins配置到broker标签后"
+            else
+                log_warn "找不到plugins.xml.template文件，跳过plugins配置"
+            fi
         fi
     else
         log_warn "未找到broker标签，使用默认配置方法"
         # 如果找不到broker标签，直接使用ActiveMQ安装包中的默认配置文件
-        log_info "使用ActiveMQ安装包中的默认activemq.xml配置文件"
+        log_info "使用$MQ_DISPLAY_NAME安装包中的默认activemq.xml配置文件"
     fi
     
     # 配置Jetty认证
@@ -1310,7 +1054,7 @@ configure_security() {
     # 配置Jetty以允许外部访问Web控制台
     configure_web_console
     
-    log_info "安全认证配置完成"
+    log_info "$MQ_DISPLAY_NAME安全认证配置完成"
 }
 
 # 配置Jetty认证
@@ -1322,22 +1066,23 @@ configure_jetty_auth() {
     log_info "配置Jetty认证..."
     
     # 确保jetty.xml存在
-    if [[ ! -f "$ACTIVEMQ_HOME/conf/jetty.xml" ]]; then
+    if [[ ! -f "$(get_mq_conf)/jetty.xml" ]]; then
         log_warn "未找到jetty.xml，跳过认证配置"
         return 0
     fi
     
     # 设置authenticate属性为true
-    sed -i.bak 's/<property name="authenticate" value="false" \/>/<property name="authenticate" value="true" \/>/g' "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
-    sed -i.bak 's/<property name="authenticate" value="true" \/>/<property name="authenticate" value="true" \/>/g' "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
+    sed -i.bak 's/<property name="authenticate" value="false" \/>/<property name="authenticate" value="true" \/>/g' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
+    sed -i.bak 's/<property name="authenticate" value="true" \/>/<property name="authenticate" value="true" \/>/g' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
     
     # 如果没有找到authenticate属性，则添加一个
-    if ! grep -q "<property name=\"authenticate\"" "$ACTIVEMQ_HOME/conf/jetty.xml"; then
-        sed -i.bak '/<bean id="securityConstraint"/,/<\/bean>/ {/class="org.eclipse.jetty.util.security.Constraint"/a\        <property name="authenticate" value="true" \/>\n}' "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
+    if ! grep -q "<property name=\"authenticate\"" "$(get_mq_conf)/jetty.xml"; then
+        sed -i.bak '/<bean id="securityConstraint"/,/<\/bean>/ {/class="org.eclipse.jetty.util.security.Constraint"/a\        <property name="authenticate" value="true" \/>\
+}' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
     fi
     
     # 创建或更新jetty-realm.properties文件
-    local realm_file="$ACTIVEMQ_HOME/conf/jetty-realm.properties"
+    local realm_file="$(get_mq_conf)/jetty-realm.properties"
     log_info "创建或更新 $realm_file"
     
     cat > "$realm_file" <<EOF
@@ -1355,45 +1100,25 @@ EOF
     log_info "Jetty认证配置完成"
 }
 
-# 通用函数：替换host配置
-replace_host_config() {
-    local from_value="$1"
-    local to_value="$2"
-    local description="$3"
-    
-    # 尝试查找并替换host配置
-    sed -i.bak "s|<property name=\"host\" value=\"$from_value\"/>|<property name=\"host\" value=\"$to_value\"/>|g" "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
-    sed -i.bak "s|value=\"$from_value\"|value=\"$to_value\"|g" "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
-    
-    # 检查是否替换了host配置
-    if grep -q "$to_value" "$ACTIVEMQ_HOME/conf/jetty.xml"; then
-        log_info "$description"
-        return 0
-    fi
-    return 1
-}
-
-
-
 # 配置Web控制台允许外部访问
 configure_web_console() {
     log_info "配置Web控制台访问权限..."
     
     # 修复配置目录权限
     log_debug "修复配置目录权限..."
-    execute_command "chown -R $(whoami):$(whoami) \"$ACTIVEMQ_HOME/conf/\"" || true
-    execute_command "chmod -R 755 \"$ACTIVEMQ_HOME/conf/\"" || true
+    execute_command "chown -R $(whoami):$(whoami) \"$(get_mq_conf)/\"" || true
+    execute_command "chmod -R 755 \"$(get_mq_conf)/\"" || true
     
     # 检查jetty.xml是否存在（在conf目录下）
-    if [[ ! -f "$ACTIVEMQ_HOME/conf/jetty.xml" ]]; then
+    if [[ ! -f "$(get_mq_conf)/jetty.xml" ]]; then
         log_warn "jetty.xml配置文件不存在，无法配置Web控制台绑定地址"
         # 检查jetty.xml是否在根目录（某些版本的ActiveMQ会将jetty.xml放在根目录）
-        if [[ -f "$ACTIVEMQ_HOME/jetty.xml" ]]; then
+        if [[ -f "$(get_mq_home)/jetty.xml" ]]; then
             log_info "在根目录找到jetty.xml，将移动到conf目录"
-            mkdir -p "$ACTIVEMQ_HOME/conf" 2>/dev/null || mkdir -p "$ACTIVEMQ_HOME/conf"
-            cp "$ACTIVEMQ_HOME/jetty.xml" "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || 
-            cp "$ACTIVEMQ_HOME/jetty.xml" "$ACTIVEMQ_HOME/conf/jetty.xml"
-            rm "$ACTIVEMQ_HOME/jetty.xml" 2>/dev/null || rm "$ACTIVEMQ_HOME/jetty.xml"
+            mkdir -p "$(get_mq_conf)" 2>/dev/null || mkdir -p "$(get_mq_conf)"
+            cp "$(get_mq_home)/jetty.xml" "$(get_mq_conf)/jetty.xml" 2>/dev/null || \
+            cp "$(get_mq_home)/jetty.xml" "$(get_mq_conf)/jetty.xml"
+            rm "$(get_mq_home)/jetty.xml" 2>/dev/null || rm "$(get_mq_home)/jetty.xml"
         else
             log_error "无法找到jetty.xml配置文件，Web控制台可能无法正常工作"
             return 1
@@ -1401,8 +1126,8 @@ configure_web_console() {
     fi
     
     # 备份原始jetty.xml文件
-    cp "$ACTIVEMQ_HOME/conf/jetty.xml" "$ACTIVEMQ_HOME/conf/jetty.xml.bak" 2>/dev/null || 
-    cp "$ACTIVEMQ_HOME/conf/jetty.xml" "$ACTIVEMQ_HOME/conf/jetty.xml.bak"
+    cp "$(get_mq_conf)/jetty.xml" "$(get_mq_conf)/jetty.xml.bak" 2>/dev/null || \
+    cp "$(get_mq_conf)/jetty.xml" "$(get_mq_conf)/jetty.xml.bak"
     
     # 根据参数配置Web控制台访问权限
     if [[ "$DISABLE_EXTERNAL_ACCESS" == true ]]; then
@@ -1429,13 +1154,13 @@ configure_web_console() {
             replace_host_config "127.0.0.1" "0.0.0.0" "Web控制台配置为允许外部访问" || \
             replace_host_config "127.0.0.1:8161" "0.0.0.0:8161" "Web控制台配置为允许外部访问" || \
             log_warn "未能自动配置Web控制台绑定地址，可能需要手动编辑jetty.xml文件" && \
-            log_info "请检查 $ACTIVEMQ_HOME/conf/jetty.xml 文件中是否有类似 <property name=\"host\" value=\"localhost\"/> 或 <value>127.0.0.1:8161</value> 的配置项" && \
+            log_info "请检查 $(get_mq_conf)/jetty.xml 文件中是否有类似 <property name=\"host\" value=\"localhost\"/> 或 <value>127.0.0.1:8161</value> 的配置项" && \
             log_info "请将其修改为 <property name=\"host\" value=\"0.0.0.0\"/> 或 <value>0.0.0.0:8161</value> 以允许外部访问"
         fi
     fi
     
     # 确保端口8161在jetty配置中已启用
-    if ! grep -q "8161" "$ACTIVEMQ_HOME/conf/jetty.xml"; then
+    if ! grep -q "8161" "$(get_mq_conf)/jetty.xml"; then
         log_warn "警告: 未在jetty.xml中找到8161端口配置，请检查Web控制台是否正常工作"
     fi
 }
@@ -1446,12 +1171,15 @@ configure_ports() {
     
     # 修复配置目录权限
     log_debug "修复配置目录权限..."
-    execute_command "chown -R $(whoami):$(whoami) \"$ACTIVEMQ_HOME/conf/\"" || true
-    execute_command "chmod -R 755 \"$ACTIVEMQ_HOME/conf/\"" || true
+    execute_command "chown -R $(whoami):$(whoami) \"$(get_mq_conf)/\"" || true
+    execute_command "chmod -R 755 \"$(get_mq_conf)/\"" || true
     
     # 备份原始配置文件
-    cp "$ACTIVEMQ_HOME/conf/activemq.xml" "$ACTIVEMQ_HOME/conf/activemq.xml.bak" 2>/dev/null || 
-    cp "$ACTIVEMQ_HOME/conf/activemq.xml" "$ACTIVEMQ_HOME/conf/activemq.xml.bak"
+    local activemq_conf_file="$(get_mq_conf)/activemq.xml"
+    if [[ -f "$activemq_conf_file" ]]; then
+        cp "$activemq_conf_file" "$activemq_conf_file.bak" 2>/dev/null || \
+        cp "$activemq_conf_file" "$activemq_conf_file.bak"
+    fi
     
     # 配置所有端口（端口已在configure_activemq函数中查找）
     log_info "使用端口: Broker=$BROKER_PORT, Jetty=$JETTY_PORT, AMQP=$AMQP_PORT, STOMP=$STOMP_PORT, MQTT=$MQTT_PORT, WebSocket=$WS_PORT"
@@ -1460,47 +1188,47 @@ configure_ports() {
     if [[ -n "$BROKER_PORT" && "$BROKER_PORT" != "$DEFAULT_BROKER_PORT" ]]; then
         log_info "将Broker端口从$DEFAULT_BROKER_PORT修改为$BROKER_PORT"
         # 查找并替换Broker端口配置
-        sed -i.bak "s|tcp://0.0.0.0:$DEFAULT_BROKER_PORT|tcp://0.0.0.0:$BROKER_PORT|g" "$ACTIVEMQ_HOME/conf/activemq.xml" 2>/dev/null || true
-        sed -i.bak "s|:$DEFAULT_BROKER_PORT|:$BROKER_PORT|g" "$ACTIVEMQ_HOME/conf/activemq.xml" 2>/dev/null || true
+        sed -i.bak "s|tcp://0.0.0.0:$DEFAULT_BROKER_PORT|tcp://0.0.0.0:$BROKER_PORT|g" "$activemq_conf_file" 2>/dev/null || true
+        sed -i.bak "s|:$DEFAULT_BROKER_PORT|:$BROKER_PORT|g" "$activemq_conf_file" 2>/dev/null || true
     fi
     
     # 配置Jetty端口
     if [[ -n "$JETTY_PORT" && "$JETTY_PORT" != "$DEFAULT_JETTY_PORT" ]]; then
         log_info "将Jetty端口从$DEFAULT_JETTY_PORT修改为$JETTY_PORT"
         # 查找并替换Jetty端口配置
-        sed -i.bak "s|$DEFAULT_JETTY_PORT|$JETTY_PORT|g" "$ACTIVEMQ_HOME/conf/jetty.xml" 2>/dev/null || true
+        sed -i.bak "s|$DEFAULT_JETTY_PORT|$JETTY_PORT|g" "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
     fi
     
     # 配置AMQP端口
     if [[ -n "$AMQP_PORT" && "$AMQP_PORT" != "$DEFAULT_AMQP_PORT" ]]; then
         log_info "将AMQP端口从$DEFAULT_AMQP_PORT修改为$AMQP_PORT"
         # 查找并替换AMQP端口配置
-        sed -i.bak "s|amqp://0.0.0.0:$DEFAULT_AMQP_PORT|amqp://0.0.0.0:$AMQP_PORT|g" "$ACTIVEMQ_HOME/conf/activemq.xml" 2>/dev/null || true
-        sed -i.bak "s|:$DEFAULT_AMQP_PORT|:$AMQP_PORT|g" "$ACTIVEMQ_HOME/conf/activemq.xml" 2>/dev/null || true
+        sed -i.bak "s|amqp://0.0.0.0:$DEFAULT_AMQP_PORT|amqp://0.0.0.0:$AMQP_PORT|g" "$activemq_conf_file" 2>/dev/null || true
+        sed -i.bak "s|:$DEFAULT_AMQP_PORT|:$AMQP_PORT|g" "$activemq_conf_file" 2>/dev/null || true
     fi
     
     # 配置STOMP端口
     if [[ -n "$STOMP_PORT" && "$STOMP_PORT" != "$DEFAULT_STOMP_PORT" ]]; then
         log_info "将STOMP端口从$DEFAULT_STOMP_PORT修改为$STOMP_PORT"
         # 查找并替换STOMP端口配置
-        sed -i.bak "s|stomp://0.0.0.0:$DEFAULT_STOMP_PORT|stomp://0.0.0.0:$STOMP_PORT|g" "$ACTIVEMQ_HOME/conf/activemq.xml" 2>/dev/null || true
-        sed -i.bak "s|:$DEFAULT_STOMP_PORT|:$STOMP_PORT|g" "$ACTIVEMQ_HOME/conf/activemq.xml" 2>/dev/null || true
+        sed -i.bak "s|stomp://0.0.0.0:$DEFAULT_STOMP_PORT|stomp://0.0.0.0:$STOMP_PORT|g" "$activemq_conf_file" 2>/dev/null || true
+        sed -i.bak "s|:$DEFAULT_STOMP_PORT|:$STOMP_PORT|g" "$activemq_conf_file" 2>/dev/null || true
     fi
     
     # 配置MQTT端口
     if [[ -n "$MQTT_PORT" && "$MQTT_PORT" != "$DEFAULT_MQTT_PORT" ]]; then
         log_info "将MQTT端口从$DEFAULT_MQTT_PORT修改为$MQTT_PORT"
         # 查找并替换MQTT端口配置
-        sed -i.bak "s|mqtt://0.0.0.0:$DEFAULT_MQTT_PORT|mqtt://0.0.0.0:$MQTT_PORT|g" "$ACTIVEMQ_HOME/conf/activemq.xml" 2>/dev/null || true
-        sed -i.bak "s|:$DEFAULT_MQTT_PORT|:$MQTT_PORT|g" "$ACTIVEMQ_HOME/conf/activemq.xml" 2>/dev/null || true
+        sed -i.bak "s|mqtt://0.0.0.0:$DEFAULT_MQTT_PORT|mqtt://0.0.0.0:$MQTT_PORT|g" "$activemq_conf_file" 2>/dev/null || true
+        sed -i.bak "s|:$DEFAULT_MQTT_PORT|:$MQTT_PORT|g" "$activemq_conf_file" 2>/dev/null || true
     fi
     
     # 配置WebSocket端口
     if [[ -n "$WS_PORT" && "$WS_PORT" != "$DEFAULT_WS_PORT" ]]; then
         log_info "将WebSocket端口从$DEFAULT_WS_PORT修改为$WS_PORT"
         # 查找并替换WebSocket端口配置
-        sed -i.bak "s|ws://0.0.0.0:$DEFAULT_WS_PORT|ws://0.0.0.0:$WS_PORT|g" "$ACTIVEMQ_HOME/conf/activemq.xml" 2>/dev/null || true
-        sed -i.bak "s|:$DEFAULT_WS_PORT|:$WS_PORT|g" "$ACTIVEMQ_HOME/conf/activemq.xml" 2>/dev/null || true
+        sed -i.bak "s|ws://0.0.0.0:$DEFAULT_WS_PORT|ws://0.0.0.0:$WS_PORT|g" "$activemq_conf_file" 2>/dev/null || true
+        sed -i.bak "s|:$DEFAULT_WS_PORT|:$WS_PORT|g" "$activemq_conf_file" 2>/dev/null || true
     fi
     
     log_info "端口配置完成"
@@ -1514,7 +1242,7 @@ show_network_troubleshooting_info() {
     log_info "1. 防火墙设置 - 确保$JETTY_PORT端口已开放"
     log_info "   - 对于iptables: sudo iptables -A INPUT -p tcp --dport $JETTY_PORT -j ACCEPT"
     log_info "   - 对于firewalld: sudo firewall-cmd --add-port=$JETTY_PORT/tcp --permanent && sudo firewall-cmd --reload"
-    log_info "2. 检查 $ACTIVEMQ_HOME/conf/jetty.xml 文件中的绑定配置"
+    log_info "2. 检查 $(get_mq_conf)/jetty.xml 文件中的绑定配置"
     log_info "3. 确认本机IP地址: $(hostname -I | awk '{print $1}')"
     log_info "4. 可以通过以下命令检查端口是否监听: netstat -tlnp | grep $JETTY_PORT 或 ss -tlnp | grep $JETTY_PORT"
     log_info "5. 如需修改jetty.xml，请将host值设为0.0.0.0而非localhost"
@@ -1526,7 +1254,7 @@ configure_persistence() {
     
     # 为持久化数据创建目录（在安装目录下创建data目录）
     # 注意：在强制重装模式下，我们会保留此目录以保护用户数据
-    local PERSISTENCE_DIR="$INSTALL_DIR/data"
+    local PERSISTENCE_DIR="$(get_mq_data)"
     execute_command "mkdir -p \"$PERSISTENCE_DIR\""
     
     # 修复data目录权限
@@ -1535,8 +1263,11 @@ configure_persistence() {
     # 确保data目录下的文件有正确的权限
     execute_command "find \"$PERSISTENCE_DIR/\" -type f -exec chmod 664 {} \;" || true
     # 在activemq.xml中配置持久化存储路径
-    sed -i.bak "s|dataDirectory=\"\${activemq.data}\"|dataDirectory=\"$PERSISTENCE_DIR\"|g" "$ACTIVEMQ_HOME/conf/activemq.xml" 2>/dev/null || \
-    sed -i.bak "s|dataDirectory=\"\${activemq.data}\"|dataDirectory=\"$PERSISTENCE_DIR\"|g" "$ACTIVEMQ_HOME/conf/activemq.xml"
+    local activemq_conf_file="$(get_mq_conf)/activemq.xml"
+    if [[ -f "$activemq_conf_file" ]]; then
+        sed -i.bak "s|dataDirectory=\"\${activemq.data}\"|dataDirectory=\"$PERSISTENCE_DIR\"|g" "$activemq_conf_file" 2>/dev/null || \
+        sed -i.bak "s|dataDirectory=\"\${activemq.data}\"|dataDirectory=\"$PERSISTENCE_DIR\"|g" "$activemq_conf_file"
+    fi
     
     log_info "持久化存储配置完成，数据将保存在: $PERSISTENCE_DIR"
     log_info "注意：持久化数据已保留，如需清理请手动删除此目录"
@@ -1554,7 +1285,8 @@ configure_firewall() {
     local mqtt_port=${MQTT_PORT:-1883}
     local ws_port=${WS_PORT:-61614}
     
-    if [[ "$OS" == "Linux" ]]; then
+    local os_type=$(detect_os)
+    if [[ "$os_type" == "Linux" ]]; then
         # 检测防火墙类型 (firewalld 或 iptables)
         if command -v firewall-cmd &> /dev/null; then
             # 使用firewalld
@@ -1602,11 +1334,11 @@ configure_firewall() {
 
 # 启动MQ服务
 start_mq() {
-    if is_artemis; then
-        log_info "启动ActiveMQ Artemis服务..."
-    else
-        log_info "启动ActiveMQ Classic服务..."
-    fi
+    # 预先计算MQ类型和显示名称
+    local MQ_TYPE=$(detect_mq_type_by_path "$INSTALL_DIR")
+    local MQ_DISPLAY_NAME=$(get_mq_display_name "$MQ_TYPE")
+    
+    log_info "启动$MQ_DISPLAY_NAME服务..."
     
     # 修复安装目录权限
     log_debug "修复安装目录权限..."
@@ -1614,20 +1346,20 @@ start_mq() {
     execute_command "chmod -R 755 \"$INSTALL_DIR/\"" || true
     
     # 确保data目录存在且权限正确
-    log_debug "确保data目录存在: $INSTALL_DIR/data"
-    execute_command "mkdir -p \"$INSTALL_DIR/data\""
-    if [[ "$OS" == "Linux" ]]; then
+    log_debug "确保data目录存在: $(get_mq_data)"
+    execute_command "mkdir -p \"$(get_mq_data)\""
+    local os_type=$(detect_os)
+    if [[ "$os_type" == "Linux" ]]; then
         # 设置data目录权限，确保当前用户有权限
-        log_debug "设置data目录权限: $INSTALL_DIR/data"
-        execute_command "chown -R $(whoami):$(whoami) \"$INSTALL_DIR/data\"" || true
-        execute_command "chmod 755 \"$INSTALL_DIR/data\"" || true
+        log_debug "设置data目录权限: $(get_mq_data)"
+        execute_command "chown -R $(whoami):$(whoami) \"$(get_mq_data)\"" || true
+        execute_command "chmod 755 \"$(get_mq_data)\"" || true
         # 确保data目录下的文件也有正确的权限
-        execute_command "find \"$INSTALL_DIR/data/\" -type f -exec chmod 664 {} \;" || true
+        execute_command "find \"$(get_mq_data)/\" -type f -exec chmod 664 {} \;" || true
     fi
 
-    
     # 为Java 17设置兼容参数
-    setup_java17_compatibility
+    setup_java17_compatibility_by_type "$INSTALL_DIR" "$MQ_TYPE"
     
     # 切换到安装目录启动，避免getcwd错误
     cd "$INSTALL_DIR"
@@ -1635,15 +1367,11 @@ start_mq() {
     # 优先使用安装目录中的封装启动脚本
     if [[ -f "$INSTALL_DIR/bin/start.sh" ]]; then
         log_info "调用封装启动脚本: $INSTALL_DIR/bin/start.sh"
-        if is_artemis; then
-            START_OUTPUT=$($INSTALL_DIR/bin/start.sh -d "$INSTALL_DIR" --artemis --log-level "$LOG_LEVEL" 2>&1)
-        else
-            START_OUTPUT=$($INSTALL_DIR/bin/start.sh -d "$INSTALL_DIR" --classic --log-level "$LOG_LEVEL" 2>&1)
-        fi
+        START_OUTPUT=$($INSTALL_DIR/bin/start.sh -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" 2>&1)
         echo "$START_OUTPUT"
     else
         log_debug "执行启动命令"
-        if is_artemis; then
+        if [[ "$MQ_TYPE" == "artemis" ]]; then
             log_info "执行启动命令: $INSTALL_DIR/bin/artemis run"
             START_OUTPUT=$($INSTALL_DIR/bin/artemis run 2>&1)
         else
@@ -1656,413 +1384,44 @@ start_mq() {
     # 等待一小段时间让PID文件创建完成
     sleep 3
     
-    if is_artemis; then
-        log_info "ActiveMQ Artemis服务已启动"
-    else
-        log_info "ActiveMQ Classic服务已启动"
-    fi
+    log_info "$MQ_DISPLAY_NAME服务已启动"
 }
 
 # 重启ActiveMQ服务
 restart_activemq() {
     log_info "重启ActiveMQ服务以应用配置更改..."
     
-    if [[ -f "$ACTIVEMQ_HOME/bin/stop.sh" ]]; then
-        "$ACTIVEMQ_HOME/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+    if [[ -f "$INSTALL_DIR/bin/stop.sh" ]]; then
+        "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
     fi
-    if [[ -f "$ACTIVEMQ_HOME/bin/start.sh" ]]; then
-        "$ACTIVEMQ_HOME/bin/start.sh" -d "$INSTALL_DIR" || "$ACTIVEMQ_HOME/bin/activemq" start
+    if [[ -f "$INSTALL_DIR/bin/start.sh" ]]; then
+        "$INSTALL_DIR/bin/start.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || {
+            # 自动检测MQ类型并重启
+            if [[ -x "$INSTALL_DIR/bin/artemis" ]]; then
+                "$INSTALL_DIR/bin/artemis" restart
+            elif [[ -x "$INSTALL_DIR/bin/activemq" ]]; then
+                "$INSTALL_DIR/bin/activemq" restart
+            fi
+        }
     else
-        $ACTIVEMQ_HOME/bin/activemq restart
+        # 自动检测MQ类型并重启
+        if [[ -x "$INSTALL_DIR/bin/artemis" ]]; then
+            "$INSTALL_DIR/bin/artemis" restart
+        elif [[ -x "$INSTALL_DIR/bin/activemq" ]]; then
+            "$INSTALL_DIR/bin/activemq" restart
+        else
+            log_warn "未找到可执行的重启脚本"
+        fi
     fi
     
     log_info "ActiveMQ服务已重启"
 }
 
-# 从配置文件提取日志文件路径
-get_log_file_path() {
-    log_debug "正在提取日志文件路径..."
-    
-    # 根据MQ类型设置HOME变量
-    local mq_home=$(get_mq_home)
-    
-    # 优先检查log4j2配置文件
-    local log_file_path=""
-    if [[ -f "$mq_home/conf/log4j2.properties" ]]; then
-        log_file_path=$(grep -E "^appender\.file\.fileName\s*=" "$mq_home/conf/log4j2.properties" | head -n1 | cut -d'=' -f2- | xargs)
-        log_debug "从log4j2.properties找到日志路径: $log_file_path"
-    fi
-    
-    # 如果log4j2未找到，检查log4j配置文件
-    if [[ -z "$log_file_path" && -f "$mq_home/conf/log4j.properties" ]]; then
-        log_file_path=$(grep -E "^log4j\.appender\.file\.File\s*=" "$mq_home/conf/log4j.properties" | head -n1 | cut -d'=' -f2- | xargs)
-        log_debug "从log4j.properties找到日志路径: $log_file_path"
-    fi
-    
-    # 处理变量替换和路径转换
-    if [[ -n "$log_file_path" ]]; then
-        if is_artemis; then
-            log_file_path=$(echo "$log_file_path" | sed "s|\${artemis.home}|$mq_home|g" | sed "s|\${artemis.instance}|$INSTALL_DIR|g" | sed "s|\${artemis.instance.dir}|$INSTALL_DIR|g")
-        else
-            log_file_path=$(echo "$log_file_path" | sed "s|\${activemq\.base}|$mq_home|g" | sed "s|\${activemq\.data}|$INSTALL_DIR/data|g" | sed "s|\${karaf\.data}|$INSTALL_DIR/data|g")
-        fi
-        [[ "$log_file_path" =~ ^[^/] ]] && log_file_path="$mq_home/$log_file_path"
-        log_debug "处理后的日志路径: $log_file_path"
-    else
-        if is_artemis; then
-            log_file_path="$INSTALL_DIR/log/artemis.log"
-        else
-            log_file_path="$INSTALL_DIR/data/activemq.log"
-        fi
-        log_debug "使用默认日志路径: $log_file_path"
-    fi
-    
-    log_debug "${MQ_NAME}日志文件路径: $log_file_path"
-    
-    echo "$log_file_path"
-    return 0
-}
-
-# 获取并显示进程信息
-show_process_info() {
-    log_info "正在获取ActiveMQ进程信息..."
-    
-    # 使用官方status命令获取进程信息
-    local mq_home=$(get_mq_home)
-    local mq_bin=$(get_mq_bin)
-    
-    if [[ -x "$mq_bin/activemq" ]] || [[ -x "$mq_bin/artemis" ]]; then
-        log_info "使用官方status命令获取进程信息..."
-        
-        if is_artemis; then
-            # 对于Artemis，使用status命令
-            if [[ -x "$mq_bin/artemis" ]]; then
-                local status_output=$("$mq_bin/artemis" status 2>&1)
-                local exit_code=$?
-                
-                if [[ $exit_code -eq 0 ]] || echo "$status_output" | grep -q "is running"; then
-                    log_info "ActiveMQ Artemis服务正在运行"
-                    log_debug "Status输出: $status_output"
-                    # 尝试提取PID信息
-                    local pid_from_status=$(echo "$status_output" | grep -o "pid '[0-9]*'" | grep -o "[0-9]*")
-                    if [[ -n "$pid_from_status" ]]; then
-                        log_info "ActiveMQ Artemis进程PID: $pid_from_status"
-                        if command -v ps &> /dev/null; then
-                            log_info "ActiveMQ Artemis进程详情:"
-                            ps -p "$pid_from_status" -f 2>/dev/null || log_warn "无法获取进程详情"
-                        fi
-                    fi
-                else
-                    log_warn "ActiveMQ Artemis服务未运行"
-                    log_debug "Status输出: $status_output"
-                fi
-            fi
-        else
-            # 对于Classic，使用status命令
-            if [[ -x "$mq_bin/activemq" ]]; then
-                local status_output=$("$mq_bin/activemq" status 2>&1)
-                local exit_code=$?
-                
-                if [[ $exit_code -eq 0 ]] || echo "$status_output" | grep -q "is running"; then
-                    log_info "ActiveMQ Classic服务正在运行"
-                    log_debug "Status输出: $status_output"
-                    # 尝试提取PID信息
-                    local pid_from_status=$(echo "$status_output" | grep -o "pid '[0-9]*'" | grep -o "[0-9]*")
-                    if [[ -n "$pid_from_status" ]]; then
-                        log_info "ActiveMQ Classic进程PID: $pid_from_status"
-                        if command -v ps &> /dev/null; then
-                            log_info "ActiveMQ Classic进程详情:"
-                            ps -p "$pid_from_status" -f 2>/dev/null || log_warn "无法获取进程详情"
-                        fi
-                    fi
-                else
-                    log_warn "ActiveMQ Classic服务未运行"
-                    log_debug "Status输出: $status_output"
-                fi
-            fi
-        fi
-        return 0
-    fi
-    
-    # 如果status命令不可用，回退到进程检查
-    log_info "Status命令不可用，回退到进程检查..."
-    
-    # 通过关键词查找进程
-    local PID=""
-    if is_artemis; then
-        PID=$(pgrep -f "artemis.*run" 2>/dev/null || pgrep -f "java.*artemis" 2>/dev/null)
-        if [[ -n "$PID" ]]; then
-            log_info "通过进程名找到ActiveMQ Artemis进程 (PID: $PID)"
-            if command -v ps &> /dev/null; then
-                log_info "ActiveMQ Artemis进程详情:"
-                ps -p "$PID" -f 2>/dev/null || log_warn "无法获取进程详情"
-            fi
-        else
-            log_warn "未找到ActiveMQ Artemis进程"
-        fi
-    else
-        PID=$(pgrep -f "activemq.*start" 2>/dev/null || pgrep -f "java.*activemq" 2>/dev/null)
-        if [[ -n "$PID" ]]; then
-            log_info "通过进程名找到ActiveMQ Classic进程 (PID: $PID)"
-            if command -v ps &> /dev/null; then
-                log_info "ActiveMQ Classic进程详情:"
-                ps -p "$PID" -f 2>/dev/null || log_warn "无法获取进程详情"
-            fi
-        else
-            log_warn "未找到ActiveMQ Classic进程"
-        fi
-    fi
-}
-
-# 获取并显示端口信息
-show_port_info() {
-    log_info "正在获取ActiveMQ端口信息..."
-    
-    # 设置默认端口
-    local broker_port=${BROKER_PORT:-61616}
-    local jetty_port=${JETTY_PORT:-8161}
-    local amqp_port=${AMQP_PORT:-5672}
-    local stomp_port=${STOMP_PORT:-61613}
-    local mqtt_port=${MQTT_PORT:-1883}
-    local ws_port=${WS_PORT:-61614}
-    
-    # 检查ActiveMQ常用端口
-    ACTIVE_PORTS=()
-    
-    # 尝试使用多种工具检查端口
-    if command -v ss &> /dev/null; then
-        log_info "使用ss命令检查端口..."
-        # 查找与ActiveMQ相关的监听端口
-        ACTIVE_PORTS+=( $(ss -tlnp 2>/dev/null | grep -i activemq | awk '{print $4}' | sed 's/.*://' | sort -u) )
-        # 如果没有找到ActiveMQ特定端口，则查找常用端口
-        if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]]; then
-            ACTIVE_PORTS+=( $(ss -tlnp 2>/dev/null | grep -E ":$broker_port|:$jetty_port|:$amqp_port|:$stomp_port|:$mqtt_port|:$ws_port" | awk '{print $4}' | sed 's/.*://' | sort -u) )
-        fi
-    fi
-    
-    if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]] && command -v netstat &> /dev/null; then
-        log_info "使用netstat命令检查端口..."
-        # 查找与ActiveMQ相关的监听端口
-        ACTIVE_PORTS+=( $(netstat -tlnp 2>/dev/null | grep -i activemq | awk '{print $4}' | sed 's/.*://' | sort -u) )
-        # 如果没有找到ActiveMQ特定端口，则查找常用端口
-        if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]]; then
-            ACTIVE_PORTS+=( $(netstat -tlnp 2>/dev/null | grep -E ":$broker_port|:$jetty_port|:$amqp_port|:$stomp_port|:$mqtt_port|:$ws_port" | awk '{print $4}' | sed 's/.*://' | sort -u) )
-        fi
-    fi
-    
-    if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]] && command -v lsof &> /dev/null; then
-        log_info "使用lsof命令检查端口..."
-        # 查找与ActiveMQ相关的监听端口
-        ACTIVE_PORTS+=( $(lsof -i -P -n 2>/dev/null | grep -i activemq | grep LISTEN | awk '{print $9}' | sed 's/.*://' | sort -u) )
-        # 如果没有找到ActiveMQ特定端口，则查找常用端口
-        if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]]; then
-            ACTIVE_PORTS+=( $(lsof -i :$broker_port,:$jetty_port,:$amqp_port,:$stomp_port,:$mqtt_port,:$ws_port -sTCP:LISTEN -n 2>/dev/null | awk '{print $9}' | sed 's/.*://' | sort -u) )
-        fi
-    fi
-    
-    if [[ ${#ACTIVE_PORTS[@]} -gt 0 ]]; then
-        log_info "ActiveMQ端口信息:"
-        for port in "${ACTIVE_PORTS[@]}"; do
-            case $port in
-                $broker_port)    desc="OpenWire (消息传输)" ;;
-                $jetty_port)     desc="Web Console" ;;
-                $amqp_port)      desc="AMQP" ;;
-                $stomp_port)     desc="STOMP" ;;
-                $mqtt_port)      desc="MQTT" ;;
-                $ws_port)        desc="WebSocket" ;;
-                *)               desc="未知协议" ;;
-            esac
-            log_info "  $port: $desc"
-        done
-    else
-        log_warn "未找到ActiveMQ监听的端口"
-        log_info "可能的原因:"
-        log_info "  1. ActiveMQ服务未启动"
-        log_info "  2. 端口配置有误"
-        log_info "  3. 防火墙阻止了端口"
-    fi
-}
-
-# 显示日志文件路径和内容
-show_log_info() {
-    log_info "正在获取日志信息..."
-    
-    # 从配置文件提取日志文件路径
-    local LOG_FILE_PATH=$(get_log_file_path)
-    
-    if [[ -n "$LOG_FILE_PATH" ]]; then
-        log_info "ActiveMQ日志文件路径: $LOG_FILE_PATH"
-        if [[ -f "$LOG_FILE_PATH" ]]; then
-            local LOG_SIZE=$(stat -c%s "$LOG_FILE_PATH" 2>/dev/null || stat -f%z "$LOG_FILE_PATH" 2>/dev/null)
-            if [[ "$LOG_SIZE" =~ ^[0-9]+$ ]]; then
-                log_info "日志文件大小: $LOG_SIZE 字节"
-            else
-                log_info "日志文件大小: 无法确定"
-            fi
-        else
-            log_warn "日志文件不存在: $LOG_FILE_PATH"
-        fi
-    else
-        log_warn "无法确定日志文件路径"
-    fi
-    
-    # 检查data目录中的其他日志文件
-    if [[ -d "$INSTALL_DIR/data" ]]; then
-        local OTHER_LOGS=$(find "$INSTALL_DIR/data" -name "*.log" -type f 2>/dev/null | grep -v "$LOG_FILE_PATH")
-        if [[ -n "$OTHER_LOGS" ]]; then
-            log_info "其他日志文件:"
-            echo "$OTHER_LOGS" | while read log_file; do
-                log_info "  - $log_file"
-                # 显示其他日志文件的部分内容
-                if [[ -f "$log_file" ]]; then
-                    local FILE_SIZE=$(stat -c%s "$log_file" 2>/dev/null || stat -f%z "$log_file" 2>/dev/null)
-                    log_debug "    文件大小: $FILE_SIZE 字节"
-                    if [[ "$FILE_SIZE" -gt 0 ]] && [[ "$FILE_SIZE" -lt 1048576 ]]; then  # 只处理小于1MB的文件
-                        # 检查是否为文本文件
-                        if file "$log_file" 2>/dev/null | grep -q "text"; then
-                            log_debug "    文件内容预览:"
-                            head -n 5 "$log_file" 2>/dev/null | sed 's/^/      /' || log_debug "    无法读取文件内容"
-                        else
-                            log_debug "    文件不是文本格式，跳过内容显示"
-                        fi
-                    fi
-                fi
-            done
-        fi
-    fi
-}
-
-# 验证MQ是否成功启动
-verify_mq_startup() {
-    log_info "验证${MQ_NAME}启动状态..."
-    
-    # 等待一段时间让服务完全启动
-    log_debug "等待5秒让服务完全启动..."
-    sleep 5
-    
-    # 使用官方status命令检查服务状态
-    local mq_home=$(get_mq_home)
-    local mq_bin=$(get_mq_bin)
-    
-    if [[ -x "$mq_bin/activemq" ]] || [[ -x "$mq_bin/artemis" ]]; then
-        log_info "使用官方status命令检查服务状态..."
-        
-        if is_artemis; then
-            # 对于Artemis，使用status命令
-            if [[ -x "$mq_bin/artemis" ]]; then
-                local status_output=$("$mq_bin/artemis" status 2>&1)
-                local exit_code=$?
-                
-                if [[ $exit_code -eq 0 ]] || echo "$status_output" | grep -q "is running"; then
-                    log_info "${MQ_NAME}服务正在运行"
-                    log_debug "Status输出: $status_output"
-                    return 0
-                else
-                    log_warn "${MQ_NAME}服务未运行"
-                    log_debug "Status输出: $status_output"
-                    return 1
-                fi
-            fi
-        else
-            # 对于Classic，使用status命令
-            if [[ -x "$mq_bin/activemq" ]]; then
-                local status_output=$("$mq_bin/activemq" status 2>&1)
-                local exit_code=$?
-                
-                if [[ $exit_code -eq 0 ]] || echo "$status_output" | grep -q "is running"; then
-                    log_info "${MQ_NAME}服务正在运行"
-                    log_debug "Status输出: $status_output"
-                    return 0
-                else
-                    log_warn "${MQ_NAME}服务未运行"
-                    log_debug "Status输出: $status_output"
-                    return 1
-                fi
-            fi
-        fi
-    fi
-    
-    # 如果status命令不可用，回退到进程检查
-    log_info "Status命令不可用，回退到进程检查..."
-    
-    # 通过关键词查找进程
-    local PID=""
-    if is_artemis; then
-        PID=$(pgrep -f "artemis.*run" 2>/dev/null || pgrep -f "java.*artemis" 2>/dev/null)
-        if [[ -n "$PID" ]]; then
-            log_info "通过进程名找到ActiveMQ Artemis进程 (PID: $PID)"
-            if command -v ps &> /dev/null; then
-                log_info "ActiveMQ Artemis进程详情:"
-                ps -p "$PID" -f 2>/dev/null || log_warn "无法获取进程详情"
-            fi
-            return 0
-        else
-            log_warn "未找到ActiveMQ Artemis进程"
-            return 1
-        fi
-    else
-        PID=$(pgrep -f "activemq.*start" 2>/dev/null || pgrep -f "java.*activemq" 2>/dev/null)
-        if [[ -n "$PID" ]]; then
-            log_info "通过进程名找到ActiveMQ Classic进程 (PID: $PID)"
-            if command -v ps &> /dev/null; then
-                log_info "ActiveMQ Classic进程详情:"
-                ps -p "$PID" -f 2>/dev/null || log_warn "无法获取进程详情"
-            fi
-            return 0
-        else
-            log_warn "未找到ActiveMQ Classic进程"
-            return 1
-        fi
-    fi
-}
-
-# 验证安装
-verify_installation() {
-    log_info "验证${MQ_NAME}安装..."
-    
-    # 获取日志文件路径
-    local LOG_FILE_PATH=$(get_log_file_path)
-    
-    # 验证MQ启动状态
-    if verify_mq_startup; then
-        log_info "${MQ_NAME}启动成功"
-        
-        # 显示进程信息
-        show_process_info
-        
-        # 显示端口信息
-        show_port_info
-        
-        # 显示日志信息
-        show_log_info
-    else
-        log_warn "${MQ_NAME}启动失败，请检查日志文件"
-        if [[ -n "$LOG_FILE_PATH" ]]; then
-            tail -n 20 "$LOG_FILE_PATH" 2>/dev/null || echo "无法读取日志文件: $LOG_FILE_PATH"
-        fi
-        # 即使启动失败，也显示进程、端口和日志信息以帮助诊断
-        show_process_info
-        show_port_info
-        show_log_info
-        return 1
-    fi
-    
-    # 尝试连接管理端口
-    if command -v curl &> /dev/null; then
-        if curl -s --connect-timeout 10 http://localhost:8161 > /dev/null; then
-            log_info "${MQ_NAME}管理界面可访问: http://localhost:8161"
-            log_info "默认用户名/密码: admin/admin (请在生产环境中修改)"
-        else
-            log_warn "无法连接到管理界面，请检查配置"
-        fi
-    fi
-}
-
 # 为Linux创建systemd服务
 create_systemd_service() {
-    if [[ "$OS" == "Linux" ]]; then
+    if [[ "$(detect_os)" == "Linux" ]]; then
         local mq_name=$(get_mq_name)
-        log_info "创建${mq_name} systemd服务..."
+        log_info "创建$mq_name systemd服务..."
         
         # 创建mq用户和组（如果不存在）
         if ! id "mq" &>/dev/null; then
@@ -2075,12 +1434,12 @@ create_systemd_service() {
         execute_command "chmod 644 \"$INSTALL_DIR/conf/\"" || execute_command "chmod 644 \"$INSTALL_DIR/conf/\"" || true
         
         # 确保data目录存在且权限正确
-        execute_command "mkdir -p \"$INSTALL_DIR/data\""
+        execute_command "mkdir -p \"$(get_mq_data)\""
         # 如果mq用户存在，使用该用户；否则使用当前用户
         if id "mq" &>/dev/null; then
-            set_directory_permissions "$INSTALL_DIR/data" "mq:mq"
+            set_directory_permissions "$(get_mq_data)" "mq:mq"
         else
-            set_directory_permissions "$INSTALL_DIR/data"
+            set_directory_permissions "$(get_mq_data)"
         fi
         
         # 确定服务运行用户
@@ -2094,13 +1453,13 @@ create_systemd_service() {
         local service_env_conf="MQ_CONF=$INSTALL_DIR/conf"
         local service_env_data="MQ_DATA=$INSTALL_DIR/data"
         
-        # 使用自定义启动脚本
+        # 使用自定义启动脚本（自动检测MQ类型）
         local service_exec_start="$INSTALL_DIR/bin/start.sh -d $INSTALL_DIR"
         local service_exec_stop="$INSTALL_DIR/bin/stop.sh -d $INSTALL_DIR --log-level $LOG_LEVEL"
         
         # 创建systemd服务文件内容
         local SERVICE_FILE_CONTENT="[Unit]
-Description=${mq_name} Message Broker
+Description=$mq_name Message Broker
 After=network.target
 
 [Service]
@@ -2127,11 +1486,11 @@ WantedBy=multi-user.target"
         
         # 尝试写入服务文件
         if echo "$SERVICE_FILE_CONTENT" | execute_command "tee /etc/systemd/system/$service_file_name" > /dev/null 2>/dev/null; then
-            log_info "${mq_name} systemd服务文件创建成功"
+            log_info "$mq_name systemd服务文件创建成功"
             # 重新加载systemd配置
             execute_command "systemctl daemon-reload" || true
         else
-            log_warn "无法创建${mq_name} systemd服务文件，可能没有足够权限"
+            log_warn "无法创建$mq_name systemd服务文件，可能没有足够权限"
             log_info "您可以手动创建服务文件，内容如下："
             log_info "----------------------------------------"
             echo "$SERVICE_FILE_CONTENT"
@@ -2166,7 +1525,7 @@ main() {
         log_info "执行卸载模式"
         detect_os  # 确定默认安装目录
         if [[ -z "$INSTALL_DIR" ]]; then
-            if [[ "$OS" == "Linux" ]]; then
+            if [[ "$(detect_os)" == "Linux" ]]; then
                 INSTALL_DIR="$DEFAULT_INSTALL_DIR"
             else
                 INSTALL_DIR="$DEFAULT_INSTALL_DIR"
@@ -2177,17 +1536,34 @@ main() {
     fi
     
     MQ_NAME=$(get_mq_name)
-    log_info "开始安装${MQ_NAME} $MQ_VERSION..."
+    log_info "开始安装$MQ_NAME $MQ_VERSION..."
     
     check_root
-    detect_os
+    OS=$(detect_os)
+    if [[ -z "$INSTALL_DIR" ]]; then
+        case "$OS" in
+            Linux*) INSTALL_DIR="$DEFAULT_INSTALL_DIR" ;;
+            MacOS*) INSTALL_DIR="$DEFAULT_INSTALL_DIR" ;;
+        esac
+    fi
+    log_info "检测到操作系统: $OS"
+    log_info "安装目录: $INSTALL_DIR"
     check_installed
     if ! check_java; then
-        log_warn "Java未安装或版本不满足，退出但返回码为0"
-        exit 0
+        log_error "Java未安装或版本不满足，退出"
+        exit 1
     fi
-    download_mq || log_warn "下载失败或取消，跳过安装并返回码0"
-    install_mq
+    
+    if ! download_mq; then
+        log_error "下载失败，退出"
+        exit 1
+    fi
+    
+    if ! install_mq; then
+        log_error "安装失败，退出"
+        exit 1
+    fi
+    
     configure_mq
     
     # 如果配置了Web控制台，则重启服务以应用更改
@@ -2199,7 +1575,7 @@ main() {
     verify_installation
     cleanup
     
-    log_info "${MQ_NAME}安装配置完成！"
+    log_info "$MQ_NAME安装配置完成！"
     # 设置默认端口
     local broker_port=${BROKER_PORT:-61616}
     local jetty_port=${JETTY_PORT:-8161}
@@ -2208,7 +1584,7 @@ main() {
     local mqtt_port=${MQTT_PORT:-1883}
     local ws_port=${WS_PORT:-61614}
     
-    log_info "访问 http://localhost:$jetty_port 或 http://$(hostname -I | awk '{print $1}'):$jetty_port 查看管理界面"
+    log_info "访问 http://localhost:$jetty_port 或 http://$(hostname -I | awk '{print $1}'):8161 查看管理界面"
     log_info "默认用户名/密码: admin/admin (请在生产环境中修改)"
     
     log_info ""
