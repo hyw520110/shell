@@ -26,12 +26,12 @@ NC='\033[0m' # No Color
 
 # 下载链接数组（按优先级排序）
 declare -a CLASSIC_DOWNLOAD_MIRRORS=(
-    "https://archive.apache.org/dist/activemq/\$VERSION/apache-activemq-\$VERSION-bin.tar.gz"
-    "https://downloads.apache.org/activemq/\$VERSION/apache-activemq-\$VERSION-bin.tar.gz"
+    "https://archive.apache.org/dist/activemq/$DEFAULT_CLASSIC_VERSION/apache-activemq-$DEFAULT_CLASSIC_VERSION-bin.tar.gz"
+    "https://downloads.apache.org/activemq/$DEFAULT_CLASSIC_VERSION/apache-activemq-$DEFAULT_CLASSIC_VERSION-bin.tar.gz"
 )
 declare -a ARTEMIS_DOWNLOAD_MIRRORS=(
-    "https://archive.apache.org/dist/activemq/activemq-artemis/\$VERSION/apache-artemis-\$VERSION-bin.tar.gz"
-    "https://downloads.apache.org/activemq/activemq-artemis/\$VERSION/apache-artemis-\$VERSION-bin.tar.gz"
+    "https://archive.apache.org/dist/activemq/activemq-artemis/$DEFAULT_ARTEMIS_VERSION/apache-artemis-$DEFAULT_ARTEMIS_VERSION-bin.tar.gz"
+    "https://downloads.apache.org/activemq/activemq-artemis/$DEFAULT_ARTEMIS_VERSION/apache-artemis-$DEFAULT_ARTEMIS_VERSION-bin.tar.gz"
 )
 
 # 通用日志函数
