@@ -11,3 +11,17 @@
 .DS_Store
 **/.DS_Store/**
 **/*.orig
+<<<<<<< HEAD
+=======
+
+# Added by Illuminated Cloud
+.sf/
+.sfdx/
+.localdev/
+/IlluminatedCloud/
+/out/
+node_modules/
+/.illuminatedCloud/
+**/tsconfig*.json
+**/*.tsbuildinfo
+>>>>>>> 2a074d7d352bba425d41adc650ce7d08825287a4

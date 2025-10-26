@@ -1,134 +1,365 @@
 #!/usr/bin/env bash
-# redis安装、配置、启动脚本，主机模式(单机模式、伪集群、TODO分布式集群)和docker-compose模式(单机模式、TODO 集群模式)
+# redis启动脚本
 
-# 节点数，单机模式1(默认);集群模式大于6的单数(大于2即可，集群节点数为3时，1个节点停服整个集群不可用，一般节点数推荐7)
 num=${1:-1}
-# 端口，集群模式为起始端口
 port=${2:-6379}
+conf_to_use=${3} # 接收第三个参数作为指定配置文件
 
-#  下载url，默认离线安装,如当前目录不完整且离线安装包不存在时 执行下载 进行离线安装
-url=https://github.com/redis/redis/archive/7.0.5.tar.gz
-# 从url中提取压缩文件名
-gz_file_name=${url##*/}
-# 下载文件路径，文件名从下载url提取
-gz_file=/opt/softs/$gz_file_name
-# 解压临时目录
-tmp_dir=/tmp/redis-${gz_file_name%*.tar.gz}
-# 自启动服务脚本
-service_dir=/usr/lib/systemd/system
 CURRENT_DIR=`cd $(dirname $0); pwd -P`
 BASE_DIR=${CURRENT_DIR%/*}
+conf_dir="$BASE_DIR/conf"
+# 系统日志目录
+system_log_dir=/var/log/redis
 
-cnf=$BASE_DIR/conf/redis.conf
-log_dir=/var/log/redis
-# 密码
-password=`cat $cnf|grep requirepass|grep -Ev "^#"|awk '{print $2}'`
-password=${password:-123456}
+# 检测操作系统类型
+OS_TYPE=$(uname)
+
+# 检查安装目录权限
+check_install_permissions() {
+    local install_dir="$1"
+    if [ ! -w "$install_dir" ]; then
+        echo "错误: 没有对安装目录 $install_dir 的写权限"
+        read -p "是否尝试修复权限? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            # 尝试修复权限
+            if [[ "$OS_TYPE" == "Darwin" ]]; then
+                sudo chown -R $(whoami) "$install_dir"
+            else
+                sudo chown -R $(id -u):$(id -g) "$install_dir"
+            fi
+            chmod -R 755 "$install_dir"
+            
+            # 再次检查权限
+            if [ ! -w "$install_dir" ]; then
+                echo "权限修复失败，请手动修复权限或选择其他安装目录"
+                return 1
+            fi
+        else
+            echo "请手动修复权限或选择其他安装目录"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# 启动 redis-server 并打印进程
+startup(){
+    local conf_file="$1"
+    
+    # 检查配置文件是否存在
+    if [ ! -f "$conf_file" ]; then
+        echo "错误: 配置文件不存在: $conf_file"
+        return 1
+    fi
+    
+    # 获取日志文件路径
+    local logfile=$(grep "^logfile " "$conf_file" | awk '{print $2}')
+    
+    # 如果配置文件中没有指定日志文件，则使用默认路径
+    if [ -z "$logfile" ]; then
+        logfile="$BASE_DIR/logs/redis.log"
+    fi
+    
+    # 确保日志目录存在且有权限
+    local logdir=$(dirname "$logfile")
+    if [ ! -d "$logdir" ]; then
+        echo "正在创建日志目录: $logdir"
+        if [[ "$logdir" == /var/log/* ]]; then
+            # 系统日志目录需要sudo权限
+            if ! sudo mkdir -p "$logdir" 2>/dev/null && ! mkdir -p "$logdir" 2>/dev/null; then
+                echo "警告: 无法创建日志目录 $logdir"
+            fi
+        else
+            mkdir -p "$logdir"
+        fi
+    fi
+    
+    # 检查日志目录权限
+    if [ ! -w "$logdir" ]; then
+        echo "警告: 没有对日志目录 $logdir 的写权限"
+    fi
+    
+    $BASE_DIR/bin/redis-server "$conf_file"
+    
+    # 等待Redis启动
+    sleep 2
+    
+    if is_redis_running; then
+        echo "Redis 启动成功，进程信息如下："
+        ps -ef|grep "redis-server"|grep -v grep
+        echo "日志文件位置: $logfile"
+    else
+        echo "Redis 启动失败，请检查配置和日志"
+        # 显示systemd状态（如果使用systemd）
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl status redis.service --no-pager 2>/dev/null || echo "未找到redis systemd服务"
+        fi
+        return 1
+    fi
+}
+
+# 如果通过参数指定了配置文件，则直接使用它启动
+if [ -n "$conf_to_use" ] && [ -f "$conf_to_use" ]; then
+    echo "正在使用指定的配置文件启动: $conf_to_use"
+    # 需要 is_redis_running 函数，所以要先定义或移到前面
+    is_redis_running() {
+      [ `ps -ef|grep "redis-server"|grep -v grep|wc -l` -gt 0 ]
+    }
+    if is_redis_running; then
+      echo "Redis 已经启动，进程信息如下："
+      ps -ef|grep $BASE_DIR|grep -v grep
+      exit 0
+    fi
+    startup "$conf_to_use"
+    exit $?
+fi
 
 cd $BASE_DIR
 
-# 已启动则打印进程退出
-[ `ps -ef|grep $BASE_DIR|grep -v grep|wc -l` -gt 0 ] && ps -ef|grep $BASE_DIR|grep -v grep &&  exit 0
-[ `docker -v 2>/dev/null |grep version|grep -v grep |wc -l` -gt  0 ] && [ `docker-compose ps |grep -Ev "NAME|exited"|grep running|grep -v grep|wc -l` -gt 0 ] &&  docker-compose ps && exit 0
-[ `netstat -tunlp | grep $port |grep -v grep| wc -l` -gt 0 ] && echo "port $port is already in used"&& exit 0
+# 检查安装目录权限
+if ! check_install_permissions "$BASE_DIR"; then
+    exit 1
+fi
 
-# 参数检查
-[ $num -lt 6 ] && [ $num -ne 1 ] && echo "Number of nodes must be: 1 (stand-alone mode), or odd number greater than 6 (cluster mode)" && exit 1 
+# 检查 redis-server 是否存在
+if [ ! -f $BASE_DIR/bin/redis-server ] || [ ! -x $BASE_DIR/bin/redis-server ]; then
+    echo "未找到可执行的 redis-server，正在尝试安装..."
+    # 调用安装目录下的安装脚本
+    if [ -f "$BASE_DIR/bin/install.sh" ] && [ -x "$BASE_DIR/bin/install.sh" ]; then
+        "$BASE_DIR/bin/install.sh" /opt/redis $num $port
+    else
+        echo "错误: 未找到可执行的安装脚本"
+        exit 1
+    fi
+fi
 
-# 检查目录不存在则创建
-mDir(){
-  [ ! -d $1 ] && mkdir -p $1 
+# 检查进程是否已启动
+is_redis_running() {
+    # 更准确地检测Redis进程是否运行，只检测redis-server进程
+    [ `ps -ef|grep "redis-server"|grep -v grep|wc -l` -gt 0 ]
 }
-# 启动
+
+# systemd 启动服务并打印状态
+start_systemd_services() {
+    # macOS系统不支持systemd
+    if [[ "$(uname)" == "Darwin" ]]; then
+        echo "macOS系统不支持systemd服务"
+        return 1
+    fi
+    
+    local svcs="$1"
+    local desc="$2"
+    echo "$desc：$svcs，正在启动..."
+    for svc in $svcs; do
+        sudo systemctl start $svc
+        sudo systemctl status $svc --no-pager
+    done
+}
+
+# 启动 redis-server 并打印进程
 startup(){
-	$CURRENT_DIR/redis-server $1 
-	[ `ps -ef|grep $BASE_DIR|grep -v grep|wc -l` -gt 0 ] && echo "redis started:" && ps -ef|grep $BASE_DIR|grep -v grep
+    local conf_file="$1"
+    
+    # 检查配置文件是否存在
+    if [ ! -f "$conf_file" ]; then
+        echo "错误: 配置文件不存在: $conf_file"
+        return 1
+    fi
+    
+    # 获取日志文件路径
+    local logfile=$(grep "^logfile " "$conf_file" | awk '{print $2}')
+    
+    # 如果配置文件中没有指定日志文件，则使用默认路径
+    if [ -z "$logfile" ]; then
+        logfile="$BASE_DIR/logs/redis.log"
+    fi
+    
+    # 确保日志目录存在且有权限
+    local logdir=$(dirname "$logfile")
+    if [ ! -d "$logdir" ]; then
+        echo "正在创建日志目录: $logdir"
+        if [[ "$logdir" == /var/log/* ]]; then
+            # 系统日志目录需要sudo权限
+            if ! sudo mkdir -p "$logdir" 2>/dev/null && ! mkdir -p "$logdir" 2>/dev/null; then
+                echo "警告: 无法创建日志目录 $logdir"
+            fi
+        else
+            mkdir -p "$logdir"
+        fi
+    fi
+    
+    # 检查日志目录权限
+    if [ ! -w "$logdir" ]; then
+        echo "警告: 没有对日志目录 $logdir 的写权限"
+    fi
+    
+    $BASE_DIR/bin/redis-server "$conf_file"
+    
+    # 等待Redis启动
+    sleep 2
+    
+    if is_redis_running; then
+        echo "Redis 启动成功，进程信息如下："
+        ps -ef|grep "redis-server"|grep -v grep
+        echo "日志文件位置: $logfile"
+    else
+        echo "Redis 启动失败，请检查配置和日志"
+        # 显示systemd状态（如果使用systemd）
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl status redis.service --no-pager 2>/dev/null || echo "未找到redis systemd服务"
+        fi
+        return 1
+    fi
 }
-# 编译安装
-install(){
-	# wget $url -o $gz_file 下载大小有问题
-	[ ! -d $tmp_dir ] && mkdir -p $tmp_dir && [ ! -f $gz_file ] && wget $url -o $gz_file 
-	#&& cd $tmp_dir && wget $url 
-	[ "`ls -A $tmp_dir`" ] || tar -zxvf $gz_file -C ${tmp_dir%/*} >/dev/null 2>&1 &
-	cd $tmp_dir
-	make && make install PREFIX=$BASE_DIR
-	sleep 1s 
-	cd $BASE_DIR
-}
-# 安装自启动服务，参数1：服务名；参数2：配置文件全路径
-install-service(){
-    [ "$1" == "redis" ] && p=6379 || p=${1#*-}
-    echo "port:$p"
-	if [ ! -f $service_dir/$1.service ];then
-cat >> $service_dir/$1.service << EOF
-[Unit]
-Description=redis
-After=network.target
 
-[Service]
-Type=forking
-ExecStart=$BASE_DIR/bin/redis-server $2 
-ExecStop=$BASE_DIR/bin/stop.sh $p 
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-		systemctl daemon-reload 
-		systemctl enable redis.service
-	fi
+# 启动集群所有节点
+start_cluster_nodes() {
+    local confs=("$@")
+    local host=""
+    for conf in "${confs[@]}"; do
+        p=$(grep '^port ' "$conf" | awk '{print $2}')
+        # 根据操作系统使用不同的netstat命令
+        if [[ "$OS_TYPE" == "Darwin" ]]; then
+            [ `netstat -an 2>/dev/null | grep "\.$p " | wc -l` -gt 0 ] && echo "端口 $p 已被占用，跳过该节点。" && continue
+        else
+            [ `netstat -tunlp 2>/dev/null | grep $p | wc -l` -gt 0 ] && echo "端口 $p 已被占用，跳过该节点。" && continue
+        fi
+        $CURRENT_DIR/redis-server "$conf"
+        host+="127.0.0.1:$p "
+    done
+    echo "如需自动创建集群请手动执行："
+    echo "$CURRENT_DIR/redis-cli --cluster create $host --cluster-replicas 1 -a <password>"
 }
-# 检查日志目录
-mDir $log_dir
-mDir $BASE_DIR/data && chmod -R 775 $BASE_DIR/data
-#sed -i "/^\# requirepass .*/requirepass $password/"  $cnf
-#sed -i "/^\# masterauth .*/masterauth $password/" $cnf
-if [  ! -f $CURRENT_DIR/redis-server ];then
-	install	
+
+# 1. 查找所有 systemd redis 服务，匹配安装目录，提取配置文件
+find_redis_services_and_confs() {
+    # macOS系统不支持systemd
+    if [[ "$(uname)" == "Darwin" ]]; then
+        echo "|"
+        return
+    fi
+    
+    local match_dir="$BASE_DIR"
+    local confs=()
+    local svcs=()
+    for svc in $(systemctl list-unit-files 2>/dev/null | grep -E '^redis.*\.service' | awk '{print $1}'); do
+        exec_line=$(systemctl cat $svc 2>/dev/null | grep ExecStart | grep "$match_dir/bin/redis-server")
+        conf_file=$(systemctl cat $svc 2>/dev/null | grep ExecStart | grep -oE '[^ ]+\.conf')
+        if [ -n "$exec_line" ] && [ -f "$conf_file" ]; then
+            confs+=("$conf_file")
+            svcs+=("$svc")
+        fi
+    done
+    echo "${confs[*]}|${svcs[*]}"
+}
+
+# 2. 查找安装目录下所有 redis 配置文件
+find_local_confs() {
+    find "$conf_dir" -maxdepth 1 -type f -name 'redis*.conf'
+}
+
+# 3. 判断单个配置文件是单机还是集群
+# 返回 single/cluster/none
+# 单机: cluster-enabled no 或未开启
+# 集群: cluster-enabled yes
+# none: 配置文件不存在
+
+detect_mode_by_conf() {
+    local conf="$1"
+    [ ! -f "$conf" ] && echo none && return
+    if grep -q '^cluster-enabled[[:space:]]*yes' "$conf"; then
+        echo cluster
+    else
+        echo single
+    fi
+}
+
+# 汇总所有配置文件类型，返回 single/cluster/both/none
+# 参数: 配置文件列表
+
+detect_mode_by_confs() {
+    local has_single=0
+    local has_cluster=0
+    for conf in "$@"; do
+        mode=$(detect_mode_by_conf "$conf")
+        [ "$mode" = "single" ] && has_single=1
+        [ "$mode" = "cluster" ] && has_cluster=1
+    done
+    if [ $has_single -eq 1 ] && [ $has_cluster -eq 0 ]; then
+        echo single
+    elif [ $has_single -eq 0 ] && [ $has_cluster -eq 1 ]; then
+        echo cluster
+    elif [ $has_single -eq 1 ] && [ $has_cluster -eq 1 ]; then
+        echo both
+    else
+        echo none
+    fi
+}
+
+# 已启动则打印进程并退出
+if is_redis_running; then
+    echo "Redis 已经启动，进程信息如下："
+    ps -ef|grep $BASE_DIR|grep -v grep
+    exit 0
 fi
-# 集群模式
-if [ $num -gt 6 ];then
-  	# 主机伪集群(在一台主机上部署集群) TODO 1、判断集群是否已经启动ok；2、分布式集群 https://www.cnblogs.com/wangjunjiehome/p/16086925.html
-	host=""
-	for p in `seq $(($port+1)) $(($port+$num))`
-	do
-		#dir=`echo $i | awk '{printf("%02d\n",$0)}'`
-		# 检测端口 是否已被占用，TODO 递增检测空闲端口
-		[ `netstat -tunlp | grep $p | wc -l` -gt 0 ] && echo "port $port is already in use" && continue
-		[ ! -f $BASE_DIR/conf/redis-$p.conf ] && cp $cnf $BASE_DIR/conf/redis-$p.conf
-		sed -i -e "s#logfile .*.log#logfile $log_dir/redis-$p.log#" $BASE_DIR/conf/redis-$p.conf
-		sed -i  "s#dir ./#dir $BASE_DIR/data/$p#" $BASE_DIR/conf/redis-$p.conf && mDir $BASE_DIR/data/$p
-		#修改端口号
-		sed -i "s#$port#$p#g" $BASE_DIR/conf/redis-$p.conf
-		sed -i "s#daemonize no#daemonize yes#" $BASE_DIR/conf/redis-$p.conf
-		sed -i "s/# cluster-enabled yes/cluster-enabled yes/" $BASE_DIR/conf/redis-$p.conf
-		sed -i "s/# cluster-node-timeout/cluster-node-timeout/" $BASE_DIR/conf/redis-$p.conf
-		sed -i "s/# cluster-config-file/cluster-config-file/" $BASE_DIR/conf/redis-$p.conf
-		#启动
-		$CURRENT_DIR/redis-server $BASE_DIR/conf/redis-$p.conf
-		# 安装自启动服务
-		install-service redis-$p $BASE_DIR/conf/redis-$p.conf
-		host+="127.0.0.1:$p "
-	done
-	#创建集群
-	$CURRENT_DIR/redis-cli --cluster create $host --cluster-replicas 1 -a $password 
-	$CURRENT_DIR/redis-cli --cluster info -a $password
-	exit 0
+
+if [ `docker -v 2>/dev/null |grep version|grep -v grep |wc -l` -gt  0 ] && [ `docker-compose ps 2>/dev/null |grep -Ev "NAME|exited"|grep running|grep -v grep|wc -l` -gt 0 ]; then
+    echo "检测到 Redis Docker 服务已启动："
+    docker-compose ps 2>/dev/null
+    exit 0
 fi
 
-# 单机模式
-# docker未安装
-if [ `docker -v 2>/dev/null |grep version|grep -v grep |wc -l` -eq  0 ];then
-    # 主机模式
-	# 日志目录不存在则创建
-	logfile=`cat $cnf |grep "logfile "|awk '{print $2}'`
-	[ ! -d ${logfile%/*} ] && mkdir ${logfile%/*}
-	sed -i "s#dir ./#dir $BASE_DIR/data#" $cnf
-	startup $BASE_DIR/conf/redis.conf
-	#启动失败 执行安装 在启动
-	[ `ps -ef|grep $BASE_DIR|grep -v grep|wc -l` -eq 0 ] && install && startup $BASE_DIR/conf/redis.conf 
-	install-service redis $BASE_DIR/conf/redis.conf
+[ `netstat -tunlp 2>/dev/null | grep $port |grep -v grep| wc -l` -gt 0 ] && echo "端口 $port 已被占用，无法启动。" && exit 0
+
+# 优先 systemd 服务方式
+svc_confs_and_svcs=$(find_redis_services_and_confs)
+svc_confs=( $(echo "$svc_confs_and_svcs" | cut -d'|' -f1) )
+svcs=( $(echo "$svc_confs_and_svcs" | cut -d'|' -f2) )
+mode=
+if [ ${#svc_confs[@]} -gt 0 ]; then
+    mode=$(detect_mode_by_confs "${svc_confs[@]}")
+    if [ "$mode" = "single" ]; then
+        start_systemd_services "${svcs[*]}" "检测到单机 systemd 服务"
+        [ $? -eq 0 ] && exit 0
+    elif [ "$mode" = "cluster" ]; then
+        start_systemd_services "${svcs[*]}" "检测到集群 systemd 服务"
+        [ $? -eq 0 ] && exit 0
+    elif [ "$mode" = "both" ]; then
+        if [ "$num" -gt 1 ]; then
+            start_systemd_services "${svcs[*]}" "检测到单机和集群 systemd 服务，num=$num，选择启动集群服务"
+        else
+            start_systemd_services "${svcs[*]}" "检测到单机和集群 systemd 服务，num=$num，选择启动单机服务"
+        fi
+        [ $? -eq 0 ] && exit 0
+    fi
+fi
+
+# 本地配置文件方式
+local_confs=( $(find_local_confs) )
+mode=$(detect_mode_by_confs "${local_confs[@]}")
+if [ "$mode" = "single" ]; then
+    echo "检测到单机模式配置。"
+    startup "${local_confs[0]}"
+elif [ "$mode" = "cluster" ]; then
+    echo "检测到集群模式配置。"
+    start_cluster_nodes "${local_confs[@]}"
+elif [ "$mode" = "both" ]; then
+    if [ "$num" -gt 1 ]; then
+        echo "检测到单机和集群配置，num=$num，选择集群模式。"
+        start_cluster_nodes "${local_confs[@]}"
+    else
+        echo "检测到单机和集群配置，num=$num，选择单机模式。"
+        startup "${local_confs[0]}"
+    fi
 else
-	#docker-compose模式启动
-	[ `docker-compose ps |grep -Ev "NAME|exited"|grep running|wc -l` -eq 0 ] && docker-compose up -d && docker-compose ps 
+    # 如果没有找到配置文件，尝试使用默认配置文件
+    default_conf="$BASE_DIR/conf/redis.conf"
+    if [ -f "$default_conf" ]; then
+        echo "使用默认配置文件启动单机模式。"
+        startup "$default_conf"
+    else
+        echo "未检测到有效的 Redis 配置文件，请检查 $conf_dir 目录。" >&2
+        exit 1
+    fi
 fi
