@@ -24,6 +24,9 @@ for server in "${mcp_servers[@]}"; do
     MCP_SERVERS_NAMES+=("$name")
 done
 
+# 文档目录变量
+DOCS_DIR="${docs_dir:-./ai-docs}"
+
 # 通用MCP配置映射函数 - 将MCP名称转换为变量名
 get_server_config_var() {
     local server_name=$1
@@ -317,6 +320,7 @@ show_menu() {
     
     # 添加MCP服务器配置选项
     echo -e "m. 🔧 ${CYAN}管理 MCP 服务器配置${NC}"
+    echo -e "d. 📚 ${CYAN}管理 AI 指令文档${NC}"
     echo -e "r. 🔄 ${CYAN}刷新${NC}"
     echo -e "q. 🚪 ${RED}退出${NC}"
     echo ""
@@ -990,6 +994,8 @@ process_choice() {
     # 检查是否为字母选择
     if [[ "$choice" == "m" || "$choice" == "M" ]]; then
         manage_mcp_servers
+    elif [[ "$choice" == "d" || "$choice" == "D" ]]; then
+        manage_ai_docs
     elif [[ "$choice" == "r" || "$choice" == "R" ]]; then
         echo -e "${CYAN}🔄 刷新...${NC}"
         source ai-tools.conf
@@ -1240,6 +1246,470 @@ add_all_mcp_configs_to_file() {
         # 部分失败，保留临时文件用于调试
         echo -e "${YELLOW}⚠️ $ai_tool_name 部分配置更新失败，保留临时文件 $temp_config 用于调试${NC}"
         return 1
+    fi
+}
+
+# 检查文档是否存在
+doc_exists() {
+    local tool_name=$1
+    local doc_file="$DOCS_DIR/${tool_name}.md"
+    
+    [[ -f "$doc_file" ]]
+}
+
+# 创建AI工具文档
+create_ai_doc() {
+    local tool_name=$1
+    local doc_type=${2:-"basic"}  # 默认为basic，可选advanced
+    
+    local doc_file="$DOCS_DIR/${tool_name}.md"
+    
+    # 选择模板
+    local template_file
+    if [[ "$doc_type" == "advanced" ]]; then
+        template_file="$DOCS_DIR/template-advanced.md"
+    else
+        template_file="$DOCS_DIR/template-basic.md"
+    fi
+    
+    # 如果模板不存在，创建基础内容
+    if [[ ! -f "$template_file" ]]; then
+        if [[ "$doc_type" == "advanced" ]]; then
+            cat > "$template_file" << 'EOF'
+# [AI_TOOL_NAME] 完善指令文档
+
+## 概述
+[AI_TOOL_NAME] 是一个功能强大的AI工具，用于[详细功能描述]。
+
+## 安装
+```bash
+# 安装命令
+npm install -g ai_tool_package
+```
+
+## 命令详解
+
+### 基础命令
+- `ai_tool_command --help`: 显示帮助信息
+- `ai_tool_command --version`: 显示版本信息
+- `ai_tool_command --config`: 配置工具
+
+### 高级命令
+- `ai_tool_command chat`: 启动对话模式
+- `ai_tool_command analyze <file>`: 分析文件
+- `ai_tool_command generate <prompt>`: 生成内容
+- `ai_tool_command settings`: 管理设置
+- `ai_tool_command run <script>`: 运行脚本
+
+## 使用示例
+
+### 示例1: 基础对话
+```bash
+ai_tool_command "Hello, how can you help me?"
+```
+
+### 示例2: 文件分析
+```bash
+ai_tool_command analyze myfile.js
+```
+
+### 示例3: 代码生成
+```bash
+ai_tool_command generate "Write a Python function to calculate factorial"
+```
+
+## 配置说明
+### 配置文件
+- 位置: `~/.config/ai_tool/config.json`
+- 内容:
+```json
+{
+  "api_key": "your_api_key",
+  "default_model": "model_name",
+  "temperature": 0.7
+}
+```
+
+### 环境变量
+- `AI_TOOL_TOKEN`: API密钥
+- `AI_TOOL_MODEL`: 默认模型
+- `AI_TOOL_VERBOSE`: 详细输出模式 (true/false)
+
+## 最佳实践
+1. 在处理敏感数据时使用本地模型
+2. 定期更新工具到最新版本
+3. 合理设置temperature参数控制输出创意性
+
+## 常见问题与解决方案
+1. 问题: 认证失败
+   解决: 检查API密钥是否正确配置
+2. 问题: 响应缓慢
+   解决: 尝试切换到不同的模型或检查网络连接
+3. 问题: 命令未识别
+   解决: 确认工具已正确安装并加入PATH
+
+## 扩展功能
+- MCP (Model Context Protocol) 支持
+- 插件系统
+- 自定义模板
+
+## 参考资源
+- 官方文档: [链接]
+- 社区支持: [链接]
+- 故障排除: [链接]
+EOF
+        else
+            cat > "$template_file" << 'EOF'
+# [AI_TOOL_NAME] 基础指令文档
+
+## 简介
+[AI_TOOL_NAME] 是一个AI工具，用于[功能描述]。
+
+## 基础命令
+- `ai_tool_command --help`: 显示帮助信息
+- `ai_tool_command --version`: 显示版本信息
+- `ai_tool_command [options] <input>`: 执行主要功能
+
+## 基本用法
+```bash
+ai_tool_command "your input here"
+```
+
+## 配置
+- 配置文件位置: `~/.config/ai_tool/.ai_tool_config`
+- 环境变量: `AI_TOOL_TOKEN`
+
+## 常见问题
+1. 问题: [问题描述]
+   解决: [解决方案]
+EOF
+        fi
+    fi
+    
+    # 复制模板并替换占位符
+    sed -e "s/\[AI_TOOL_NAME\]/$tool_name/g" \
+        -e "s/ai_tool_command/$(echo $tool_name | cut -d: -f1)/g" \
+        -e "s/ai_tool_package/$tool_name/g" \
+        -e "s/ai_tool/$tool_name/g" \
+        "$template_file" > "$doc_file"
+    
+    echo -e "${GREEN}✅ $tool_name 的文档已创建: $doc_file${NC}"
+}
+
+# 管理AI指令文档
+manage_ai_docs() {
+    echo -e "${CYAN}📚 管理 AI 指令文档${NC}"
+    
+    # 创建文档目录（如果不存在）
+    if [[ ! -d "$DOCS_DIR" ]]; then
+        mkdir -p "$DOCS_DIR"
+        echo -e "${YELLOW}⚠️ 文档目录不存在，已创建: $DOCS_DIR${NC}"
+    fi
+    
+    # 检查是否安装了jq，以支持更复杂的文档处理
+    local has_jq=false
+    if command -v jq >/dev/null 2>&1; then
+        has_jq=true
+    fi
+    
+    # 显示已安装工具的文档状态
+    echo -e "${GREEN}📊 已安装工具的文档状态:${NC}"
+    local installed_tools_count=0
+    for tool in "${TOOLS[@]}"; do
+        local cmd=$(echo $tool | cut -d: -f1)
+        local name=$(echo $tool | cut -d: -f2)
+        
+        if command_exists "$cmd"; then
+            local doc_file="$DOCS_DIR/${cmd}.md"
+            if [[ -f "$doc_file" ]]; then
+                echo -e "  ✅ $name ($cmd) - 文档已存在"
+            else
+                echo -e "  ❌ $name ($cmd) - 文档未创建"
+            fi
+            ((installed_tools_count++))
+        fi
+    done
+    
+    if [[ $installed_tools_count -eq 0 ]]; then
+        echo -e "${YELLOW}⚠️ 没有已安装的AI工具${NC}"
+        return
+    fi
+    
+    echo ""
+    echo -e "AI 指令文档管理选项:"
+    echo -e "1. ${GREEN}批量创建已安装工具的文档（基础版）${NC}"
+    echo -e "2. ${GREEN}批量创建已安装工具的文档（完善版）${NC}"
+    echo -e "3. ${YELLOW}为单个工具创建文档${NC}"
+    echo -e "4. ${BLUE}查看现有文档列表${NC}"
+    echo -e "5. ${BLUE}编辑现有文档${NC}"
+    echo -e "6. ${RED}删除文档${NC}"
+    echo -e "7. ${BLUE}返回主菜单${NC}"
+    echo ""
+    
+    read -p "请选择操作 (1-7): " docs_choice
+    
+    case $docs_choice in
+        1)
+            echo -e "${CYAN}🔄 批量创建基础版文档...${NC}"
+            batch_create_docs "basic"
+            ;;
+        2)
+            echo -e "${CYAN}🔄 批量创建完善版文档...${NC}"
+            batch_create_docs "advanced"
+            ;;
+        3)
+            create_single_doc
+            ;;
+        4)
+            list_docs
+            ;;
+        5)
+            edit_doc
+            ;;
+        6)
+            delete_doc
+            ;;
+        7)
+            echo -e "${GREEN}🔙 返回主菜单${NC}"
+            ;;
+        *)
+            echo -e "${RED}❌ 无效选项${NC}"
+            ;;
+    esac
+}
+
+# 批量创建文档
+batch_create_docs() {
+    local doc_type=$1
+    echo -e "${CYAN}🔄 批量创建 $doc_type 版文档...${NC}"
+    
+    local created_count=0
+    local skipped_count=0
+    
+    for tool in "${TOOLS[@]}"; do
+        local cmd=$(echo $tool | cut -d: -f1)
+        local name=$(echo $tool | cut -d: -f2)
+        
+        if command_exists "$cmd"; then
+            if doc_exists "$cmd"; then
+                echo -e "${YELLOW}⚠️ $name ($cmd) 的文档已存在，跳过${NC}"
+                ((skipped_count++))
+            else
+                create_ai_doc "$cmd" "$doc_type"
+                ((created_count++))
+            fi
+        fi
+    done
+    
+    echo -e "${GREEN}✅ 批量创建完成: $created_count 个文档已创建，$skipped_count 个文档已跳过${NC}"
+}
+
+# 为单个工具创建文档
+create_single_doc() {
+    echo -e "${CYAN}➕ 为单个工具创建文档${NC}"
+    
+    # 显示已安装的工具供选择
+    local installed_tools=()
+    local i=1
+    for tool in "${TOOLS[@]}"; do
+        local cmd=$(echo $tool | cut -d: -f1)
+        local name=$(echo $tool | cut -d: -f2)
+        
+        if command_exists "$cmd"; then
+            local doc_status=""
+            if doc_exists "$cmd"; then
+                doc_status=" (文档已存在)"
+            else
+                doc_status=" (无文档)"
+            fi
+            echo -e "$i. $name ($cmd) $doc_status"
+            installed_tools+=("$cmd")
+            ((i++))
+        fi
+    done
+    
+    if [[ ${#installed_tools[@]} -eq 0 ]]; then
+        echo -e "${YELLOW}⚠️ 没有已安装的AI工具${NC}"
+        return
+    fi
+    
+    echo -e "${#installed_tools[@]}. ${CYAN}为所有未创建文档的工具创建${NC}"
+    echo ""
+    
+    read -p "请选择工具 (1-${#installed_tools[@]} or ${#installed_tools[@]} for all): " tool_choice
+    
+    if [[ $tool_choice -ge 1 && $tool_choice -lt ${#installed_tools[@]} ]]; then
+        local selected_tool="${installed_tools[$((tool_choice-1))]}"
+        
+        # 检查文档是否已存在
+        if doc_exists "$selected_tool"; then
+            read -p "文档已存在，是否要覆盖? (y/N): " overwrite
+            if [[ "$overwrite" != "y" && "$overwrite" != "Y" ]]; then
+                echo -e "${YELLOW}⚠️ 操作已取消${NC}"
+                return
+            fi
+        fi
+        
+        echo -e "选择文档类型:"
+        echo -e "1. 基础版"
+        echo -e "2. 完善版"
+        read -p "请选择 (1-2): " type_choice
+        
+        local doc_type
+        case $type_choice in
+            1) doc_type="basic" ;;
+            2) doc_type="advanced" ;;
+            *) 
+                echo -e "${RED}❌ 无效选项，使用基础版${NC}"
+                doc_type="basic"
+                ;;
+        esac
+        
+        create_ai_doc "$selected_tool" "$doc_type"
+        
+    elif [[ $tool_choice -eq ${#installed_tools[@]} ]]; then
+        echo -e "选择文档类型:"
+        echo -e "1. 基础版"
+        echo -e "2. 完善版"
+        read -p "请选择 (1-2): " type_choice
+        
+        local doc_type
+        case $type_choice in
+            1) doc_type="basic" ;;
+            2) doc_type="advanced" ;;
+            *) 
+                echo -e "${RED}❌ 无效选项，使用基础版${NC}"
+                doc_type="basic"
+                ;;
+        esac
+        
+        # 为所有未创建文档的工具创建
+        local created_count=0
+        for tool_cmd in "${installed_tools[@]}"; do
+            if ! doc_exists "$tool_cmd"; then
+                create_ai_doc "$tool_cmd" "$doc_type"
+                ((created_count++))
+            else
+                echo -e "${YELLOW}⚠️ $tool_cmd 的文档已存在，跳过${NC}"
+            fi
+        done
+        
+        if [[ $created_count -eq 0 ]]; then
+            echo -e "${GREEN}✅ 所有已安装工具的文档都已创建${NC}"
+        else
+            echo -e "${GREEN}✅ $created_count 个工具的文档已创建${NC}"
+        fi
+    else
+        echo -e "${RED}❌ 无效选项${NC}"
+    fi
+}
+
+# 列出现有文档
+list_docs() {
+    echo -e "${CYAN}📋 现有文档列表:${NC}"
+    
+    if [[ ! -d "$DOCS_DIR" ]]; then
+        echo -e "${YELLOW}⚠️ 文档目录不存在: $DOCS_DIR${NC}"
+        return
+    fi
+    
+    local docs=("$DOCS_DIR"/*.md)
+    if [[ -e "${docs[0]}" ]]; then
+        for doc in "${docs[@]}"; do
+            if [[ -f "$doc" ]]; then
+                local doc_name=$(basename "$doc")
+                echo -e "📄 $doc_name"
+            fi
+        done
+    else
+        echo -e "${YELLOW}⚠️ 没有找到文档文件${NC}"
+    fi
+}
+
+# 编辑文档
+edit_doc() {
+    echo -e "${CYAN}✏️ 编辑文档${NC}"
+    
+    if [[ ! -d "$DOCS_DIR" ]]; then
+        echo -e "${YELLOW}⚠️ 文档目录不存在: $DOCS_DIR${NC}"
+        return
+    fi
+    
+    local docs=("$DOCS_DIR"/*.md)
+    if [[ -e "${docs[0]}" ]]; then
+        echo -e "${GREEN}选择要编辑的文档:${NC}"
+        local doc_files=()
+        local i=1
+        for doc in "${docs[@]}"; do
+            if [[ -f "$doc" ]]; then
+                local doc_name=$(basename "$doc")
+                echo -e "$i. $doc_name"
+                doc_files+=("$doc")
+                ((i++))
+            fi
+        done
+        
+        read -p "请选择文档 (1-${#doc_files[@]}): " doc_choice
+        
+        if [[ $doc_choice -ge 1 && $doc_choice -le ${#doc_files[@]} ]]; then
+            local selected_doc="${doc_files[$((doc_choice-1))]}"
+            echo -e "${CYAN}使用默认编辑器打开: $selected_doc${NC}"
+            
+            # 检查可用的编辑器
+            if command -v ${VISUAL:-${EDITOR:-vi}} >/dev/null 2>&1; then
+                ${VISUAL:-${EDITOR:-vi}} "$selected_doc"
+                echo -e "${GREEN}✅ 文档编辑完成${NC}"
+            else
+                echo -e "${YELLOW}⚠️ 未找到合适的编辑器${NC}"
+            fi
+        else
+            echo -e "${RED}❌ 无效选项${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️ 没有找到可编辑的文档${NC}"
+    fi
+}
+
+# 删除文档
+delete_doc() {
+    echo -e "${CYAN}🗑️ 删除文档${NC}"
+    
+    if [[ ! -d "$DOCS_DIR" ]]; then
+        echo -e "${YELLOW}⚠️ 文档目录不存在: $DOCS_DIR${NC}"
+        return
+    fi
+    
+    local docs=("$DOCS_DIR"/*.md)
+    if [[ -e "${docs[0]}" ]]; then
+        echo -e "${GREEN}选择要删除的文档:${NC}"
+        local doc_files=()
+        local i=1
+        for doc in "${docs[@]}"; do
+            if [[ -f "$doc" ]]; then
+                local doc_name=$(basename "$doc")
+                echo -e "$i. $doc_name"
+                doc_files+=("$doc")
+                ((i++))
+            fi
+        done
+        
+        read -p "请选择文档 (1-${#doc_files[@]}): " doc_choice
+        
+        if [[ $doc_choice -ge 1 && $doc_choice -le ${#doc_files[@]} ]]; then
+            local selected_doc="${doc_files[$((doc_choice-1))]}"
+            read -p "确定要删除 $selected_doc? (y/N): " confirm
+            
+            if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                rm "$selected_doc"
+                echo -e "${GREEN}✅ 文档已删除: $selected_doc${NC}"
+            else
+                echo -e "${YELLOW}❌ 删除操作已取消${NC}"
+            fi
+        else
+            echo -e "${RED}❌ 无效选项${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️ 没有找到可删除的文档${NC}"
     fi
 }
 
