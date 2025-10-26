@@ -154,17 +154,24 @@ setup_java17_compatibility_by_type() {
                 local setenv_file="$conf_dir/setenv"
                 if [[ -d "$conf_dir" ]]; then
                     log_debug "更新setenv文件: $setenv_file"
-                    # 修复 TODO: 修改setenv_file 在文件头部添加JAVA17兼容参数
                     if [[ ! -f "$setenv_file" ]]; then
                         touch "$setenv_file"
                     fi
                     
                     # 检查是否已经包含Java 17参数
                     if ! grep -q "XX:-UseContainerSupport" "$setenv_file"; then
+                        log_info "在 $setenv_file 头部添加Java 17兼容性参数"
+                        local temp_file=$(mktemp)
                         {
                             echo '# Added by install script for Java 17 compatibility'
                             echo 'export ACTIVEMQ_OPTS="-XX:-UseContainerSupport $ACTIVEMQ_OPTS"'
-                        } >> "$setenv_file"
+                            echo ''
+                        } > "$temp_file"
+                        cat "$setenv_file" >> "$temp_file"
+                        # 使用mv替换，并处理权限问题
+                        mv "$temp_file" "$setenv_file" || sudo mv "$temp_file" "$setenv_file"
+                    else
+                        log_debug "Java 17兼容性参数已存在于 $setenv_file"
                     fi
                 fi
             fi
@@ -419,9 +426,9 @@ collect_pids() {
     fi
     
     if command -v ss &> /dev/null; then
-        pids_ports=$(ss -tlnp 2>/dev/null | grep -E ":61616|:8161" | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | tr '\n' ' ')
+        pids_ports=$(ss -tlnp 2>/dev/null | grep -E ":$DEFAULT_BROKER_PORT|:$DEFAULT_JETTY_PORT" | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | tr '\n' ' ')
     elif command -v lsof &> /dev/null; then
-        pids_ports=$( (lsof -i:61616 -t 2>/dev/null; lsof -i:8161 -t 2>/dev/null) | tr '\n' ' ')
+        pids_ports=$( (lsof -i:$DEFAULT_BROKER_PORT -t 2>/dev/null; lsof -i:$DEFAULT_JETTY_PORT -t 2>/dev/null) | tr '\n' ' ')
     fi
     
     echo "$pids_cmd $pids_ports" | tr ' ' '\n' | grep -E '^[0-9]+$' | sort -u | tr '\n' ' '
@@ -472,8 +479,8 @@ verify_installation() {
     
     # 尝试连接管理端口
     if command -v curl &> /dev/null; then
-        if curl -s --connect-timeout 10 http://localhost:8161 > /dev/null; then
-            log_info "$(get_mq_name)管理界面可访问: http://localhost:8161"
+        if curl -s --connect-timeout 10 http://localhost:$DEFAULT_JETTY_PORT > /dev/null; then
+            log_info "$(get_mq_name)管理界面可访问: http://localhost:$DEFAULT_JETTY_PORT"
             log_info "默认用户名/密码: admin/admin (请在生产环境中修改)"
         else
             log_warn "无法连接到管理界面，请检查配置"
@@ -811,20 +818,30 @@ show_log_info() {
     fi
 }
 
-# 通用函数：替换host配置
+# 通用函数：使用xmlstarlet替换host配置
 replace_host_config() {
-    local from_value="$1"
-    local to_value="$2"
-    local description="$3"
-    
-    # 尝试查找并替换host配置
-    sed -i.bak "s|<property name=\"host\" value=\"$from_value\"/>|<property name=\"host\" value=\"$to_value\"/>|g" "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
-    sed -i.bak "s|value=\"$from_value\"|value=\"$to_value\"|g" "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
-    
-    # 检查是否替换了host配置
-    if grep -q "$to_value" "$(get_mq_conf)/jetty.xml"; then
-        log_info "$description"
-        return 0
+    local to_value="$1"
+    local description="$2"
+    local jetty_xml_path="$(get_mq_conf)/jetty.xml"
+
+    if ! command -v xmlstarlet &> /dev/null; then
+        log_error "xmlstarlet 命令未找到，无法修改XML配置文件。"
+        log_error "请先安装 xmlstarlet (例如: brew install xmlstarlet 或 sudo apt-get install xmlstarlet)"
+        return 1
     fi
-    return 1
+
+    # 备份配置文件
+    cp "$jetty_xml_path" "$jetty_xml_path.bak" 2>/dev/null || true
+
+    log_info "$description"
+    # 使用xmlstarlet更新所有已知连接器bean中的host属性
+    # 通常是 'jettyPort' bean, 但也可能在其他自定义的bean中
+    if xmlstarlet ed -L -u "//bean[contains(@class, 'org.eclipse.jetty.server.ServerConnector')]/property[@name='host']/@value" -v "$to_value" "$jetty_xml_path" 2>/dev/null && \
+       xmlstarlet ed -L -u "//bean[@id='jettyPort']/property[@name='host']/@value" -v "$to_value" "$jetty_xml_path" 2>/dev/null; then
+        log_info "成功更新主机配置为 '$to_value' 在 $jetty_xml_path"
+        return 0
+    else
+        log_warn "使用xmlstarlet更新主机配置失败。 $jetty_xml_path 的结构可能已更改或文件不存在。"
+        return 1
+    fi
 }

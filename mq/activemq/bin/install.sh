@@ -962,21 +962,27 @@ generate_random_password() {
 # 默认禁用认证：设置Jetty authenticate=false
 disable_authentication() {
     log_info "禁用Web控制台登录认证(默认)"
-    # 确保jetty.xml存在
-    if [[ ! -f "$(get_mq_conf)/jetty.xml" ]]; then
+    local jetty_xml="$(get_mq_conf)/jetty.xml"
+    if [[ ! -f "$jetty_xml" ]]; then
         log_warn "未找到jetty.xml，跳过认证禁用"
         return 0
     fi
-    cp "$(get_mq_conf)/jetty.xml" "$(get_mq_conf)/jetty.xml.bak" 2>/dev/null || true
-    
-    # 设置authenticate属性为false
-    sed -i.bak 's/<property name="authenticate" value="true" \/>/<property name="authenticate" value="false" \/>/g' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
-    sed -i.bak 's/<property name="authenticate" value="false" \/>/<property name="authenticate" value="false" \/>/g' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
-    
-    # 如果没有找到authenticate属性，则添加一个
-    if ! grep -q "<property name=\"authenticate\"" "$(get_mq_conf)/jetty.xml"; then
-        sed -i.bak '/<bean id="securityConstraint"/,/<\/bean>/ {/class="org.eclipse.jetty.util.security.Constraint"/a\        <property name="authenticate" value="false" \/>\
-}' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
+    cp "$jetty_xml" "$jetty_xml.bak" 2>/dev/null || true
+
+    if ! command -v xmlstarlet &> /dev/null; then
+        log_error "xmlstarlet 命令未找到，无法修改XML配置文件。"
+        return 1
+    fi
+
+    # 查找securityConstraint bean并设置authenticate为false
+    # 如果属性不存在，则创建它
+    if xmlstarlet sel -t -v "//bean[@id='securityConstraint']/property[@name='authenticate']" "$jetty_xml" 2>/dev/null | grep -q "value"; then
+        xmlstarlet ed -L -u "//bean[@id='securityConstraint']/property[@name='authenticate']/@value" -v "false" "$jetty_xml"
+    else
+        # 插入新属性
+        xmlstarlet ed -L -s "//bean[@id='securityConstraint']" -t elem -n "property" \
+            -i "//bean[@id='securityConstraint']/property[last()]" -t attr -n "name" -v "authenticate" \
+            -i "//bean[@id='securityConstraint']/property[last()]" -t attr -n "value" -v "false" "$jetty_xml"
     fi
     
     log_info "已设置Web控制台无需登录"
@@ -992,8 +998,8 @@ configure_security() {
     
     # 修复配置目录权限
     log_debug "修复配置目录权限..."
-    execute_command "chown -R $(whoami):$(whoami) \"$(get_mq_conf)/\"" || true
-    execute_command "chmod -R 755 \"$(get_mq_conf)/\"" || true
+    execute_command "chown -R $(whoami):$(whoami) \\"$(get_mq_conf)/\\"\" || true
+    execute_command "chmod -R 755 \\"$(get_mq_conf)/\\"\" || true
     
     # 备份原始配置文件
     local activemq_conf_file="$(get_mq_conf)/activemq.xml"
@@ -1001,8 +1007,7 @@ configure_security() {
         log_error "找不到activemq.xml配置文件"
         return 1
     fi
-    cp "$activemq_conf_file" "$activemq_conf_file.bak" 2>/dev/null || \
-    cp "$activemq_conf_file" "$activemq_conf_file.bak"
+    cp "$activemq_conf_file" "$activemq_conf_file.bak" 2>/dev/null || true
     
     # 生成随机密码（如果需要）
     local admin_password="admin"
@@ -1016,36 +1021,28 @@ configure_security() {
         log_info "生成随机密码: admin/$admin_password, user/$user_password, guest/$guest_password"
     fi
     
-    # 查找broker标签的行号
-    local broker_line=$(grep -n "<broker " "$activemq_conf_file" | head -n1 | cut -d: -f1)
-    
-    if [[ -n "$broker_line" ]]; then
-        # 查找broker标签下一行的行号（通常是空白行或注释行）
-        local next_line=$((broker_line + 1))
-        
-        # 检查是否已存在plugins配置
-        if grep -q "<plugins>" "$activemq_conf_file"; then
-            log_debug "已存在plugins配置，跳过添加"
-        else
-            # 从conf目录下的plugins模板文件读取配置并替换密码
-            if [[ -f "$(get_mq_conf)/plugins.xml.template" ]]; then
-                local plugins_config=$(cat "$(get_mq_conf)/plugins.xml.template" | sed "s/manager/$admin_password/g" | sed "s/admin/$user_password/g" | sed "s/password/$guest_password/g")
-                
-                # 在broker标签后插入plugins配置
-                local temp_file=$(mktemp)
-                head -n "$broker_line" "$activemq_conf_file" > "$temp_file"
-                echo "$plugins_config" >> "$temp_file"
-                tail -n +$((broker_line + 1)) "$activemq_conf_file" >> "$temp_file"
-                mv "$temp_file" "$activemq_conf_file"
-                log_debug "成功添加plugins配置到broker标签后"
+    # 检查是否已存在plugins配置
+    if ! xmlstarlet sel -t -v "//broker/plugins" "$activemq_conf_file" 2>/dev/null | grep -q "simpleAuthenticationPlugin"; then
+        if [[ -f "$(get_mq_conf)/plugins.xml.template" ]]; then
+            local temp_plugins_file=$(mktemp)
+            # 替换模板中的密码
+            cat "$(get_mq_conf)/plugins.xml.template" | \
+                sed "s/manager/$admin_password/g" | \
+                sed "s/admin/$user_password/g" | \
+                sed "s/password/$guest_password/g" > "$temp_plugins_file"
+            
+            # 使用xmlstarlet在broker标签内插入plugins配置
+            if xmlstarlet ed -L -s "//broker" -t xml -f "$temp_plugins_file" "$activemq_conf_file"; then
+                log_debug "成功添加plugins配置到broker标签内"
             else
-                log_warn "找不到plugins.xml.template文件，跳过plugins配置"
+                log_warn "使用xmlstarlet添加plugins配置失败"
             fi
+            rm "$temp_plugins_file"
+        else
+            log_warn "找不到plugins.xml.template文件，跳过plugins配置"
         fi
     else
-        log_warn "未找到broker标签，使用默认配置方法"
-        # 如果找不到broker标签，直接使用ActiveMQ安装包中的默认配置文件
-        log_info "使用$MQ_DISPLAY_NAME安装包中的默认activemq.xml配置文件"
+        log_debug "已存在plugins配置，跳过添加"
     fi
     
     # 配置Jetty认证
@@ -1062,27 +1059,32 @@ configure_jetty_auth() {
     local admin_password="$1"
     local user_password="$2"
     local guest_password="$3"
+    local conf_dir=$(get_mq_conf)
+    local jetty_xml="$conf_dir/jetty.xml"
     
     log_info "配置Jetty认证..."
     
-    # 确保jetty.xml存在
-    if [[ ! -f "$(get_mq_conf)/jetty.xml" ]]; then
+    if [[ ! -f "$jetty_xml" ]]; then
         log_warn "未找到jetty.xml，跳过认证配置"
         return 0
     fi
+
+    if ! command -v xmlstarlet &> /dev/null; then
+        log_error "xmlstarlet 命令未找到，无法修改XML配置文件。"
+        return 1
+    fi
     
     # 设置authenticate属性为true
-    sed -i.bak 's/<property name="authenticate" value="false" \/>/<property name="authenticate" value="true" \/>/g' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
-    sed -i.bak 's/<property name="authenticate" value="true" \/>/<property name="authenticate" value="true" \/>/g' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
-    
-    # 如果没有找到authenticate属性，则添加一个
-    if ! grep -q "<property name=\"authenticate\"" "$(get_mq_conf)/jetty.xml"; then
-        sed -i.bak '/<bean id="securityConstraint"/,/<\/bean>/ {/class="org.eclipse.jetty.util.security.Constraint"/a\        <property name="authenticate" value="true" \/>\
-}' "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
+    if xmlstarlet sel -t -v "//bean[@id='securityConstraint']/property[@name='authenticate']" "$jetty_xml" 2>/dev/null | grep -q "value"; then
+        xmlstarlet ed -L -u "//bean[@id='securityConstraint']/property[@name='authenticate']/@value" -v "true" "$jetty_xml"
+    else
+        xmlstarlet ed -L -s "//bean[@id='securityConstraint']" -t elem -n "property" \
+            -i "//bean[@id='securityConstraint']/property[last()]" -t attr -n "name" -v "authenticate" \
+            -i "//bean[@id='securityConstraint']/property[last()]" -t attr -n "value" -v "true" "$jetty_xml"
     fi
     
     # 创建或更新jetty-realm.properties文件
-    local realm_file="$(get_mq_conf)/jetty-realm.properties"
+    local realm_file="$conf_dir/jetty-realm.properties"
     log_info "创建或更新 $realm_file"
     
     cat > "$realm_file" <<EOF
@@ -1093,7 +1095,6 @@ user: $user_password, user
 guest: $guest_password, guest
 EOF
     
-    # 设置文件权限
     chmod 600 "$realm_file" 2>/dev/null || true
     chown $(whoami):$(whoami) "$realm_file" 2>/dev/null || true
     
@@ -1103,132 +1104,95 @@ EOF
 # 配置Web控制台允许外部访问
 configure_web_console() {
     log_info "配置Web控制台访问权限..."
+    local conf_dir=$(get_mq_conf)
+    local jetty_xml="$conf_dir/jetty.xml"
     
     # 修复配置目录权限
     log_debug "修复配置目录权限..."
-    execute_command "chown -R $(whoami):$(whoami) \"$(get_mq_conf)/\"" || true
-    execute_command "chmod -R 755 \"$(get_mq_conf)/\"" || true
+    execute_command "chown -R $(whoami):$(whoami) \"$conf_dir/\"" || true
+    execute_command "chmod -R 755 \"$conf_dir/\"" || true
     
-    # 检查jetty.xml是否存在（在conf目录下）
-    if [[ ! -f "$(get_mq_conf)/jetty.xml" ]]; then
+    # 检查jetty.xml是否存在
+    if [[ ! -f "$jetty_xml" ]]; then
         log_warn "jetty.xml配置文件不存在，无法配置Web控制台绑定地址"
-        # 检查jetty.xml是否在根目录（某些版本的ActiveMQ会将jetty.xml放在根目录）
-        if [[ -f "$(get_mq_home)/jetty.xml" ]]; then
-            log_info "在根目录找到jetty.xml，将移动到conf目录"
-            mkdir -p "$(get_mq_conf)" 2>/dev/null || mkdir -p "$(get_mq_conf)"
-            cp "$(get_mq_home)/jetty.xml" "$(get_mq_conf)/jetty.xml" 2>/dev/null || \
-            cp "$(get_mq_home)/jetty.xml" "$(get_mq_conf)/jetty.xml"
-            rm "$(get_mq_home)/jetty.xml" 2>/dev/null || rm "$(get_mq_home)/jetty.xml"
-        else
-            log_error "无法找到jetty.xml配置文件，Web控制台可能无法正常工作"
-            return 1
-        fi
+        return 1
     fi
     
     # 备份原始jetty.xml文件
-    cp "$(get_mq_conf)/jetty.xml" "$(get_mq_conf)/jetty.xml.bak" 2>/dev/null || \
-    cp "$(get_mq_conf)/jetty.xml" "$(get_mq_conf)/jetty.xml.bak"
+    cp "$jetty_xml" "$jetty_xml.bak" 2>/dev/null || true
     
     # 根据参数配置Web控制台访问权限
     if [[ "$DISABLE_EXTERNAL_ACCESS" == true ]]; then
         log_info "配置Web控制台仅允许本地访问..."
-        
-        # 尝试多种方式配置Web控制台仅允许本地访问
-        if ! replace_host_config "0.0.0.0" "localhost" "Web控制台配置为仅允许本地访问"; then
-            log_info "未找到标准的0.0.0.0配置，正在查找其他可能的配置项..."
-            
-            # 尝试替换其他可能的host配置
-            replace_host_config "127.0.0.1" "localhost" "Web控制台配置为仅允许本地访问" || \
-            replace_host_config "127.0.0.1:8161" "localhost:8161" "Web控制台配置为仅允许本地访问" || \
-            replace_host_config "0.0.0.0:8161" "localhost:8161" "Web控制台配置为仅允许本地访问" || \
-            log_warn "未能自动配置Web控制台绑定地址，可能需要手动编辑jetty.xml文件"
-        fi
+        replace_host_config "localhost" "Web控制台配置为仅允许本地访问"
     else
         log_info "配置Web控制台允许外部访问..."
-        
-        # 尝试多种方式配置Web控制台允许外部访问
-        if ! replace_host_config "localhost" "0.0.0.0" "Web控制台配置为允许外部访问"; then
-            log_info "未找到标准的localhost配置，正在查找其他可能的配置项..."
-            
-            # 尝试替换其他可能的host配置
-            replace_host_config "127.0.0.1" "0.0.0.0" "Web控制台配置为允许外部访问" || \
-            replace_host_config "127.0.0.1:8161" "0.0.0.0:8161" "Web控制台配置为允许外部访问" || \
-            log_warn "未能自动配置Web控制台绑定地址，可能需要手动编辑jetty.xml文件" && \
-            log_info "请检查 $(get_mq_conf)/jetty.xml 文件中是否有类似 <property name=\"host\" value=\"localhost\"/> 或 <value>127.0.0.1:8161</value> 的配置项" && \
-            log_info "请将其修改为 <property name=\"host\" value=\"0.0.0.0\"/> 或 <value>0.0.0.0:8161</value> 以允许外部访问"
-        fi
+        replace_host_config "0.0.0.0" "Web控制台配置为允许外部访问"
     fi
     
-    # 确保端口8161在jetty配置中已启用
-    if ! grep -q "8161" "$(get_mq_conf)/jetty.xml"; then
-        log_warn "警告: 未在jetty.xml中找到8161端口配置，请检查Web控制台是否正常工作"
+    # 确保端口$DEFAULT_JETTY_PORT在jetty配置中已启用
+    if ! grep -q "$DEFAULT_JETTY_PORT" "$jetty_xml"; then
+        log_warn "警告: 未在jetty.xml中找到$DEFAULT_JETTY_PORT端口配置，请检查Web控制台是否正常工作"
     fi
 }
 
 # 配置端口
 configure_ports() {
     log_info "配置ActiveMQ端口..."
-    
-    # 修复配置目录权限
-    log_debug "修复配置目录权限..."
-    execute_command "chown -R $(whoami):$(whoami) \"$(get_mq_conf)/\"" || true
-    execute_command "chmod -R 755 \"$(get_mq_conf)/\"" || true
-    
-    # 备份原始配置文件
-    local activemq_conf_file="$(get_mq_conf)/activemq.xml"
-    if [[ -f "$activemq_conf_file" ]]; then
-        cp "$activemq_conf_file" "$activemq_conf_file.bak" 2>/dev/null || \
-        cp "$activemq_conf_file" "$activemq_conf_file.bak"
+    local activemq_xml="$(get_mq_conf)/activemq.xml"
+    local jetty_xml="$(get_mq_conf)/jetty.xml"
+
+    if ! command -v xmlstarlet &> /dev/null; then
+        log_error "xmlstarlet 命令未找到，无法修改XML配置文件。"
+        return 1
     fi
-    
-    # 配置所有端口（端口已在configure_activemq函数中查找）
+
+    # 修复配置目录权限和备份
+    if [[ -f "$activemq_xml" ]]; then
+        execute_command "chown $(whoami):$(whoami) \\"$activemq_xml\\"\" || true
+        cp "$activemq_xml" "$activemq_xml.bak" 2>/dev/null || true
+    fi
+    if [[ -f "$jetty_xml" ]]; then
+        execute_command "chown $(whoami):$(whoami) \\"$jetty_xml\\"\" || true
+        cp "$jetty_xml" "$jetty_xml.bak" 2>/dev/null || true
+    fi
+
+    # 辅助函数，用于更新transportConnector中的URI
+    update_transport_uri() {
+        local protocol_name="$1"
+        local old_port="$2"
+        local new_port="$3"
+        if [[ -n "$new_port" && "$new_port" != "$old_port" && -f "$activemq_xml" ]]; then
+            log_info "将 $protocol_name 端口从 $old_port 修改为 $new_port"
+            # 从URI中提取旧的URI
+            local old_uri=$(xmlstarlet sel -t -v "//transportConnector[@name='$protocol_name']/@uri" "$activemq_xml" 2>/dev/null)
+            if [[ -n "$old_uri" ]]; then
+                # 仅替换端口部分
+                local new_uri=$(echo "$old_uri" | sed "s/:$old_port/:$new_port/")
+                xmlstarlet ed -L -u "//transportConnector[@name='$protocol_name']/@uri" -v "$new_uri" "$activemq_xml"
+            else
+                log_warn "在 activemq.xml 中未找到名为 '$protocol_name' 的 transportConnector"
+            fi
+        fi
+    }
+
     log_info "使用端口: Broker=$BROKER_PORT, Jetty=$JETTY_PORT, AMQP=$AMQP_PORT, STOMP=$STOMP_PORT, MQTT=$MQTT_PORT, WebSocket=$WS_PORT"
-    
-    # 配置Broker端口
-    if [[ -n "$BROKER_PORT" && "$BROKER_PORT" != "$DEFAULT_BROKER_PORT" ]]; then
-        log_info "将Broker端口从$DEFAULT_BROKER_PORT修改为$BROKER_PORT"
-        # 查找并替换Broker端口配置
-        sed -i.bak "s|tcp://0.0.0.0:$DEFAULT_BROKER_PORT|tcp://0.0.0.0:$BROKER_PORT|g" "$activemq_conf_file" 2>/dev/null || true
-        sed -i.bak "s|:$DEFAULT_BROKER_PORT|:$BROKER_PORT|g" "$activemq_conf_file" 2>/dev/null || true
-    fi
+
+    # 配置各个协议端口
+    update_transport_uri "openwire" "$DEFAULT_BROKER_PORT" "$BROKER_PORT"
+    update_transport_uri "amqp" "$DEFAULT_AMQP_PORT" "$AMQP_PORT"
+    update_transport_uri "stomp" "$DEFAULT_STOMP_PORT" "$STOMP_PORT"
+    update_transport_uri "mqtt" "$DEFAULT_MQTT_PORT" "$MQTT_PORT"
+    update_transport_uri "ws" "$DEFAULT_WS_PORT" "$WS_PORT"
     
     # 配置Jetty端口
     if [[ -n "$JETTY_PORT" && "$JETTY_PORT" != "$DEFAULT_JETTY_PORT" ]]; then
         log_info "将Jetty端口从$DEFAULT_JETTY_PORT修改为$JETTY_PORT"
-        # 查找并替换Jetty端口配置
-        sed -i.bak "s|$DEFAULT_JETTY_PORT|$JETTY_PORT|g" "$(get_mq_conf)/jetty.xml" 2>/dev/null || true
-    fi
-    
-    # 配置AMQP端口
-    if [[ -n "$AMQP_PORT" && "$AMQP_PORT" != "$DEFAULT_AMQP_PORT" ]]; then
-        log_info "将AMQP端口从$DEFAULT_AMQP_PORT修改为$AMQP_PORT"
-        # 查找并替换AMQP端口配置
-        sed -i.bak "s|amqp://0.0.0.0:$DEFAULT_AMQP_PORT|amqp://0.0.0.0:$AMQP_PORT|g" "$activemq_conf_file" 2>/dev/null || true
-        sed -i.bak "s|:$DEFAULT_AMQP_PORT|:$AMQP_PORT|g" "$activemq_conf_file" 2>/dev/null || true
-    fi
-    
-    # 配置STOMP端口
-    if [[ -n "$STOMP_PORT" && "$STOMP_PORT" != "$DEFAULT_STOMP_PORT" ]]; then
-        log_info "将STOMP端口从$DEFAULT_STOMP_PORT修改为$STOMP_PORT"
-        # 查找并替换STOMP端口配置
-        sed -i.bak "s|stomp://0.0.0.0:$DEFAULT_STOMP_PORT|stomp://0.0.0.0:$STOMP_PORT|g" "$activemq_conf_file" 2>/dev/null || true
-        sed -i.bak "s|:$DEFAULT_STOMP_PORT|:$STOMP_PORT|g" "$activemq_conf_file" 2>/dev/null || true
-    fi
-    
-    # 配置MQTT端口
-    if [[ -n "$MQTT_PORT" && "$MQTT_PORT" != "$DEFAULT_MQTT_PORT" ]]; then
-        log_info "将MQTT端口从$DEFAULT_MQTT_PORT修改为$MQTT_PORT"
-        # 查找并替换MQTT端口配置
-        sed -i.bak "s|mqtt://0.0.0.0:$DEFAULT_MQTT_PORT|mqtt://0.0.0.0:$MQTT_PORT|g" "$activemq_conf_file" 2>/dev/null || true
-        sed -i.bak "s|:$DEFAULT_MQTT_PORT|:$MQTT_PORT|g" "$activemq_conf_file" 2>/dev/null || true
-    fi
-    
-    # 配置WebSocket端口
-    if [[ -n "$WS_PORT" && "$WS_PORT" != "$DEFAULT_WS_PORT" ]]; then
-        log_info "将WebSocket端口从$DEFAULT_WS_PORT修改为$WS_PORT"
-        # 查找并替换WebSocket端口配置
-        sed -i.bak "s|ws://0.0.0.0:$DEFAULT_WS_PORT|ws://0.0.0.0:$WS_PORT|g" "$activemq_conf_file" 2>/dev/null || true
-        sed -i.bak "s|:$DEFAULT_WS_PORT|:$WS_PORT|g" "$activemq_conf_file" 2>/dev/null || true
+        if [[ -f "$jetty_xml" ]]; then
+            xmlstarlet ed -L -u "//bean[@id='jettyPort']/property[@name='port']/@value" -v "$JETTY_PORT" "$jetty_xml"
+        else
+            log_warn "未找到 jetty.xml，跳过Jetty端口配置"
+        fi
     fi
     
     log_info "端口配置完成"
@@ -1252,21 +1216,29 @@ show_network_troubleshooting_info() {
 configure_persistence() {
     log_info "配置ActiveMQ持久化存储..."
     
-    # 为持久化数据创建目录（在安装目录下创建data目录）
-    # 注意：在强制重装模式下，我们会保留此目录以保护用户数据
+    # 为持久化数据创建目录
     local PERSISTENCE_DIR="$(get_mq_data)"
-    execute_command "mkdir -p \"$PERSISTENCE_DIR\""
+    execute_command "mkdir -p \\"$PERSISTENCE_DIR\\""
     
     # 修复data目录权限
     log_debug "修复data目录权限..."
     set_directory_permissions_with_logging "$PERSISTENCE_DIR" "$(whoami):$(whoami)" "持久化数据目录"
-    # 确保data目录下的文件有正确的权限
-    execute_command "find \"$PERSISTENCE_DIR/\" -type f -exec chmod 664 {} \;" || true
+    execute_command "find \\"$PERSISTENCE_DIR/\\" -type f -exec chmod 664 {} \\;" || true
+    
     # 在activemq.xml中配置持久化存储路径
     local activemq_conf_file="$(get_mq_conf)/activemq.xml"
     if [[ -f "$activemq_conf_file" ]]; then
-        sed -i.bak "s|dataDirectory=\"\${activemq.data}\"|dataDirectory=\"$PERSISTENCE_DIR\"|g" "$activemq_conf_file" 2>/dev/null || \
-        sed -i.bak "s|dataDirectory=\"\${activemq.data}\"|dataDirectory=\"$PERSISTENCE_DIR\"|g" "$activemq_conf_file"
+        if ! command -v xmlstarlet &> /dev/null; then
+            log_error "xmlstarlet 命令未找到，无法修改XML配置文件。"
+        else
+            log_debug "使用xmlstarlet更新持久化目录..."
+            # 同时更新kahaDB, levelDB和broker的dataDirectory属性
+            xmlstarlet ed -L \
+                -u "//persistenceAdapter/kahaDB/@directory" -v "$PERSISTENCE_DIR" \
+                -u "//persistenceAdapter/levelDB/@directory" -v "$PERSISTENCE_DIR" \
+                -u "//broker/@dataDirectory" -v "$PERSISTENCE_DIR" \
+                "$activemq_conf_file" 2>/dev/null
+        fi
     fi
     
     log_info "持久化存储配置完成，数据将保存在: $PERSISTENCE_DIR"
@@ -1277,14 +1249,6 @@ configure_persistence() {
 configure_firewall() {
     log_info "配置防火墙..."
     
-    # 设置默认端口
-    local broker_port=${BROKER_PORT:-61616}
-    local jetty_port=${JETTY_PORT:-8161}
-    local amqp_port=${AMQP_PORT:-5672}
-    local stomp_port=${STOMP_PORT:-61613}
-    local mqtt_port=${MQTT_PORT:-1883}
-    local ws_port=${WS_PORT:-61614}
-    
     local os_type=$(detect_os)
     if [[ "$os_type" == "Linux" ]]; then
         # 检测防火墙类型 (firewalld 或 iptables)
@@ -1294,12 +1258,12 @@ configure_firewall() {
                 log_info "检测到firewalld，配置防火墙规则..."
                 
                 # 开放ActiveMQ端口
-                execute_command "firewall-cmd --zone=public --add-port=$broker_port/tcp --permanent" || true
-                execute_command "firewall-cmd --zone=public --add-port=$jetty_port/tcp --permanent" || true
-                execute_command "firewall-cmd --zone=public --add-port=$amqp_port/tcp --permanent" || true
-                execute_command "firewall-cmd --zone=public --add-port=$stomp_port/tcp --permanent" || true
-                execute_command "firewall-cmd --zone=public --add-port=$mqtt_port/tcp --permanent" || true
-                execute_command "firewall-cmd --zone=public --add-port=$ws_port/tcp --permanent" || true
+                execute_command "firewall-cmd --zone=public --add-port=$BROKER_PORT/tcp --permanent" || true
+                execute_command "firewall-cmd --zone=public --add-port=$JETTY_PORT/tcp --permanent" || true
+                execute_command "firewall-cmd --zone=public --add-port=$AMQP_PORT/tcp --permanent" || true
+                execute_command "firewall-cmd --zone=public --add-port=$STOMP_PORT/tcp --permanent" || true
+                execute_command "firewall-cmd --zone=public --add-port=$MQTT_PORT/tcp --permanent" || true
+                execute_command "firewall-cmd --zone=public --add-port=$WS_PORT/tcp --permanent" || true
                 
                 # 重新加载防火墙配置
                 execute_command "firewall-cmd --reload" || true
@@ -1313,12 +1277,12 @@ configure_firewall() {
             log_info "检测到iptables，配置防火墙规则..."
             
             # 添加ActiveMQ端口规则
-            execute_command "iptables -A INPUT -p tcp --dport $broker_port -j ACCEPT" || true
-            execute_command "iptables -A INPUT -p tcp --dport $jetty_port -j ACCEPT" || true
-            execute_command "iptables -A INPUT -p tcp --dport $amqp_port -j ACCEPT" || true
-            execute_command "iptables -A INPUT -p tcp --dport $stomp_port -j ACCEPT" || true
-            execute_command "iptables -A INPUT -p tcp --dport $mqtt_port -j ACCEPT" || true
-            execute_command "iptables -A INPUT -p tcp --dport $ws_port -j ACCEPT" || true
+            execute_command "iptables -A INPUT -p tcp --dport $BROKER_PORT -j ACCEPT" || true
+            execute_command "iptables -A INPUT -p tcp --dport $JETTY_PORT -j ACCEPT" || true
+            execute_command "iptables -A INPUT -p tcp --dport $AMQP_PORT -j ACCEPT" || true
+            execute_command "iptables -A INPUT -p tcp --dport $STOMP_PORT -j ACCEPT" || true
+            execute_command "iptables -A INPUT -p tcp --dport $MQTT_PORT -j ACCEPT" || true
+            execute_command "iptables -A INPUT -p tcp --dport $WS_PORT -j ACCEPT" || true
             
             log_info "iptables防火墙配置完成，注意重启后规则可能丢失，请保存配置"
         else
@@ -1346,16 +1310,17 @@ start_mq() {
     execute_command "chmod -R 755 \"$INSTALL_DIR/\"" || true
     
     # 确保data目录存在且权限正确
-    log_debug "确保data目录存在: $(get_mq_data)"
-    execute_command "mkdir -p \"$(get_mq_data)\""
+    local mq_data_dir=$(get_mq_data)
+    log_debug "确保data目录存在: $mq_data_dir"
+    execute_command "mkdir -p \"$mq_data_dir\""
     local os_type=$(detect_os)
     if [[ "$os_type" == "Linux" ]]; then
         # 设置data目录权限，确保当前用户有权限
-        log_debug "设置data目录权限: $(get_mq_data)"
-        execute_command "chown -R $(whoami):$(whoami) \"$(get_mq_data)\"" || true
-        execute_command "chmod 755 \"$(get_mq_data)\"" || true
+        log_debug "设置data目录权限: $mq_data_dir"
+        execute_command "chown -R $(whoami):$(whoami) \"$mq_data_dir\"" || true
+        execute_command "chmod 755 \"$mq_data_dir\"" || true
         # 确保data目录下的文件也有正确的权限
-        execute_command "find \"$(get_mq_data)/\" -type f -exec chmod 664 {} \;" || true
+        execute_command "find \"$mq_data_dir/\" -type f -exec chmod 664 {} \;" || true
     fi
 
     # 为Java 17设置兼容参数
@@ -1421,6 +1386,7 @@ restart_activemq() {
 create_systemd_service() {
     if [[ "$(detect_os)" == "Linux" ]]; then
         local mq_name=$(get_mq_name)
+        local mq_data_dir=$(get_mq_data)
         log_info "创建$mq_name systemd服务..."
         
         # 创建mq用户和组（如果不存在）
@@ -1434,12 +1400,12 @@ create_systemd_service() {
         execute_command "chmod 644 \"$INSTALL_DIR/conf/\"" || execute_command "chmod 644 \"$INSTALL_DIR/conf/\"" || true
         
         # 确保data目录存在且权限正确
-        execute_command "mkdir -p \"$(get_mq_data)\""
+        execute_command "mkdir -p \"$mq_data_dir\""
         # 如果mq用户存在，使用该用户；否则使用当前用户
         if id "mq" &>/dev/null; then
-            set_directory_permissions "$(get_mq_data)" "mq:mq"
+            set_directory_permissions "$mq_data_dir" "mq:mq"
         else
-            set_directory_permissions "$(get_mq_data)"
+            set_directory_permissions "$mq_data_dir"
         fi
         
         # 确定服务运行用户
@@ -1451,7 +1417,7 @@ create_systemd_service() {
         # 统一的环境变量
         local service_env_home="MQ_HOME=$INSTALL_DIR"
         local service_env_conf="MQ_CONF=$INSTALL_DIR/conf"
-        local service_env_data="MQ_DATA=$INSTALL_DIR/data"
+        local service_env_data="MQ_DATA=$mq_data_dir"
         
         # 使用自定义启动脚本（自动检测MQ类型）
         local service_exec_start="$INSTALL_DIR/bin/start.sh -d $INSTALL_DIR"
@@ -1576,24 +1542,17 @@ main() {
     cleanup
     
     log_info "$MQ_NAME安装配置完成！"
-    # 设置默认端口
-    local broker_port=${BROKER_PORT:-61616}
-    local jetty_port=${JETTY_PORT:-8161}
-    local amqp_port=${AMQP_PORT:-5672}
-    local stomp_port=${STOMP_PORT:-61613}
-    local mqtt_port=${MQTT_PORT:-1883}
-    local ws_port=${WS_PORT:-61614}
     
-    log_info "访问 http://localhost:$jetty_port 或 http://$(hostname -I | awk '{print $1}'):8161 查看管理界面"
+    log_info "访问 http://localhost:$JETTY_PORT 或 http://$(hostname -I | awk '{print $1}'):$JETTY_PORT 查看管理界面"
     log_info "默认用户名/密码: admin/admin (请在生产环境中修改)"
     
     log_info ""
     log_info "客户端连接信息："
-    log_info "  OpenWire连接URL: tcp://localhost:$broker_port"
-    log_info "  AMQP连接URL: amqp://localhost:$amqp_port"
-    log_info "  STOMP连接URL: stomp://localhost:$stomp_port"
-    log_info "  MQTT连接URL: mqtt://localhost:$mqtt_port"
-    log_info "  WebSocket连接URL: ws://localhost:$ws_port"
+    log_info "  OpenWire连接URL: tcp://localhost:$BROKER_PORT"
+    log_info "  AMQP连接URL: amqp://localhost:$AMQP_PORT"
+    log_info "  STOMP连接URL: stomp://localhost:$STOMP_PORT"
+    log_info "  MQTT连接URL: mqtt://localhost:$MQTT_PORT"
+    log_info "  WebSocket连接URL: ws://localhost:$WS_PORT"
     if [[ "$GENERATE_RANDOM_PASSWORD" == true ]]; then
         log_info "  用户名: admin (或创建的其他用户)"
         log_info "  密码: 请查看上面生成的随机密码"
