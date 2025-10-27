@@ -371,10 +371,10 @@ EOF
         fi
     fi
 
-    if [ $? -ne 0 ]; then
-        echo "生成${FRPS_CONF_NAME}配置文件失败。"
-        exit 1
-    fi
+  if [ $? -ne 0 ]; then
+      echo "生成${FRPS_CONF_NAME}配置文件失败。"
+      exit 1
+  fi
 }
 # 获取当前IP地址
 function get_current_ip() {

@@ -170,5 +170,4 @@ main() {
     echo "  清理 pip 缓存：uv pip cache purge"
 }
 
-# === 执行主逻辑 ===
 main

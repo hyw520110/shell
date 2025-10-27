@@ -186,6 +186,14 @@ install_docker(){
             echo_info "检测到Intel芯片"
             DMG_URL="https://desktop.docker.com/mac/main/amd64/Docker.dmg"
         fi
+<<<<<<< HEAD
+        # 不想使用Docker Desktop可以使用Colima替代： brew install colima docker docker-compose
+        # 启动 Colima 虚拟机，并指定适合的参数
+        # colima start --arch aarch64 --runtime containerd --cpu 4 --memory 8 --disk 20
+        # 绑定 Docker CLI 到 Colima
+        # docker context use colima
+=======
+>>>>>>> 2a074d7d352bba425d41adc650ce7d08825287a4
         # 下载Docker Desktop
         DMG_FILE="~/Downloads/Docker.dmg"
         echo_info "正在下载Docker Desktop: $DMG_URL"
@@ -215,5 +223,21 @@ install_docker(){
     fi
 }
 
+<<<<<<< HEAD
+install_docker_compose(){
+	# 安装docker-compose (仅适用于Linux)
+	if [[ "$OSTYPE" == "linux-gnu"* ]] && [ ! -f $f ]; then
+	    url="https://github.com/docker/compose/releases/download/v2.11.1/docker-compose-$(uname -s)-$(uname -m)"
+	    echo $url
+	    curl -L $url -o $f
+	    chmod +x $f
+	fi
+}
+ 	
 install_docker 
 install_docker_compose
+   
+=======
+install_docker 
+install_docker_compose
+>>>>>>> 2a074d7d352bba425d41adc650ce7d08825287a4

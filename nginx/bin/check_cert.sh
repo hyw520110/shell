@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # API域名和端口
+
 API_DOMAIN="api.pg-bo.me"
 API_PORT=443
 

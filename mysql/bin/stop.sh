@@ -1,5 +1,4 @@
 #!/bin/bash
-# MySQL停止脚本
 
 # 检查是否以root或sudo运行，如果不是则自动使用sudo重新运行
 if [ "$EUID" -ne 0 ] && [ -z "$ALREADY_ELEVATED" ]; then

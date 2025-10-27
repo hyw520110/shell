@@ -143,8 +143,22 @@ install_deps() {
         exit 1
     fi
 }
+<<<<<<< HEAD
+# 清理函数
+cleanup() {
+    local dir="$1"
+    if [[ -d "$dir" ]]; then
+        echo "删除目录: $dir"
+        rm -rf "$dir"
+    fi
+}
 
 install_ffmpeg() {
+    local SOURCE_DIR=""
+=======
+
+install_ffmpeg() {
+>>>>>>> 2a074d7d352bba425d41adc650ce7d08825287a4
     echo "🚀 开始安装 FFmpeg ${FFMPEG_VERSION}..."
  	install_deps
     # 下载文件
@@ -229,8 +243,13 @@ install_ffmpeg() {
 
     if [ $? -eq 0 ]; then
         echo "🎉 FFmpeg 安装成功！"
+<<<<<<< HEAD
+        cleanup  "$SOURCE_DIR"
+		# 成功后源码目录会被trap清理，无需手动调用
+=======
         rm -rf $download_path
         # 成功后源码目录会被trap清理，无需手动调用
+>>>>>>> 2a074d7d352bba425d41adc650ce7d08825287a4
     else
         echo "❌ FFmpeg 安装验证失败"
         exit 1
@@ -250,4 +269,8 @@ main() {
     echo "⏱️  总耗时: $(($duration / 60)) 分 $(($duration % 60)) 秒"
 }
 
+<<<<<<< HEAD
 main
+=======
+main
+>>>>>>> 2a074d7d352bba425d41adc650ce7d08825287a4
