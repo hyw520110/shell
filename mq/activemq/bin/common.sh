@@ -107,19 +107,29 @@ validate_install_dir() {
 # 检测并设置MQ类型
 detect_mq_type_by_path() {
     local install_dir="$1"
+    local silent="${2:-false}"  # 添加静默参数
+    
     if [[ -x "$install_dir/bin/artemis" ]]; then
+        [[ "$silent" != "true" ]] && log_debug "检测到Artemis MQ"
         echo "artemis"
     elif [[ -x "$install_dir/bin/activemq" ]]; then
+        [[ "$silent" != "true" ]] && log_debug "检测到Classic MQ"
         echo "classic"
     else
-        log_warn "在 $install_dir/bin 中未找到 artemis 或 activemq 启动脚本，尝试通过进程检测MQ类型"
+        if [[ "$silent" != "true" ]]; then
+            log_warn "在 $install_dir/bin 中未找到 artemis 或 activemq 启动脚本，尝试通过进程检测MQ类型"
+        fi
         # 尝试通过进程检测MQ类型
         if pgrep -f "artemis.*run|org.apache.activemq.artemis|Artemis" > /dev/null 2>&1; then
+            [[ "$silent" != "true" ]] && log_debug "通过进程检测到Artemis MQ"
             echo "artemis"
         elif pgrep -f "activemq.jar|org.apache.activemq|ActiveMQ" > /dev/null 2>&1; then
+            [[ "$silent" != "true" ]] && log_debug "通过进程检测到Classic MQ"
             echo "classic"
         else
-            log_warn "无法自动检测MQ类型，使用默认classic类型"
+            if [[ "$silent" != "true" ]]; then
+                log_warn "无法自动检测MQ类型，使用默认classic类型"
+            fi
             echo "classic"
         fi
     fi
@@ -592,7 +602,7 @@ show_port_info() {
     # 检查$(get_mq_name)常用端口
     local ACTIVE_PORTS=()
     
-    # 尝试使用多种工具检查端口
+    # 优先使用ss命令，如果不存在则使用lsof，最后使用netstat
     if command -v ss &> /dev/null; then
         log_info "使用ss命令检查端口..."
         # 查找与$(get_mq_name)相关的监听端口
@@ -602,9 +612,16 @@ show_port_info() {
         if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]]; then
             ACTIVE_PORTS+=( $(ss -tlnp 2>/dev/null | grep -E ":$broker_port|:$jetty_port|:$amqp_port|:$stomp_port|:$mqtt_port|:$ws_port" | awk '{print $4}' | sed 's/.*://' | sort -u) )
         fi
-    fi
-    
-    if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]] && command -v netstat &> /dev/null; then
+    elif command -v lsof &> /dev/null; then
+        log_info "使用lsof命令检查端口..."
+        # 查找与$(get_mq_name)相关的监听端口
+        ACTIVE_PORTS+=( $(lsof -i -P -n 2>/dev/null | grep -i activemq | grep LISTEN | awk '{print $9}' | sed 's/.*://' | sort -u) )
+        ACTIVE_PORTS+=( $(lsof -i -P -n 2>/dev/null | grep -i artemis | grep LISTEN | awk '{print $9}' | sed 's/.*://' | sort -u) )
+        # 如果没有找到特定端口，则查找常用端口
+        if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]]; then
+            ACTIVE_PORTS+=( $(lsof -i :$broker_port,:$jetty_port,:$amqp_port,:$stomp_port,:$mqtt_port,:$ws_port -sTCP:LISTEN -n 2>/dev/null | awk '{print $9}' | sed 's/.*://' | sort -u) )
+        fi
+    elif command -v netstat &> /dev/null; then
         log_info "使用netstat命令检查端口..."
         # 查找与$(get_mq_name)相关的监听端口
         ACTIVE_PORTS+=( $(netstat -tlnp 2>/dev/null | grep -i activemq | awk '{print $4}' | sed 's/.*://' | sort -u) )
@@ -613,16 +630,21 @@ show_port_info() {
         if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]]; then
             ACTIVE_PORTS+=( $(netstat -tlnp 2>/dev/null | grep -E ":$broker_port|:$jetty_port|:$amqp_port|:$stomp_port|:$mqtt_port|:$ws_port" | awk '{print $4}' | sed 's/.*://' | sort -u) )
         fi
+    else
+        log_warn "系统中未找到ss、lsof或netstat命令，无法检测端口"
+        return 1
     fi
     
-    if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]] && command -v lsof &> /dev/null; then
-        log_info "使用lsof命令检查端口..."
-        # 查找与$(get_mq_name)相关的监听端口
-        ACTIVE_PORTS+=( $(lsof -i -P -n 2>/dev/null | grep -i activemq | grep LISTEN | awk '{print $9}' | sed 's/.*://' | sort -u) )
-        ACTIVE_PORTS+=( $(lsof -i -P -n 2>/dev/null | grep -i artemis | grep LISTEN | awk '{print $9}' | sed 's/.*://' | sort -u) )
-        # 如果没有找到特定端口，则查找常用端口
-        if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]]; then
+    # 如果还是没有找到端口，等待几秒再检查一次
+    if [[ ${#ACTIVE_PORTS[@]} -eq 0 ]]; then
+        log_info "等待5秒后再次检查端口..."
+        sleep 5
+        if command -v ss &> /dev/null; then
+            ACTIVE_PORTS+=( $(ss -tlnp 2>/dev/null | grep -E ":$broker_port|:$jetty_port|:$amqp_port|:$stomp_port|:$mqtt_port|:$ws_port" | awk '{print $4}' | sed 's/.*://' | sort -u) )
+        elif command -v lsof &> /dev/null; then
             ACTIVE_PORTS+=( $(lsof -i :$broker_port,:$jetty_port,:$amqp_port,:$stomp_port,:$mqtt_port,:$ws_port -sTCP:LISTEN -n 2>/dev/null | awk '{print $9}' | sed 's/.*://' | sort -u) )
+        elif command -v netstat &> /dev/null; then
+            ACTIVE_PORTS+=( $(netstat -tlnp 2>/dev/null | grep -E ":$broker_port|:$jetty_port|:$amqp_port|:$stomp_port|:$mqtt_port|:$ws_port" | awk '{print $4}' | sed 's/.*://' | sort -u) )
         fi
     fi
     
@@ -677,7 +699,13 @@ verify_mq_startup() {
                 else
                     log_warn "$(get_mq_name)服务未运行"
                     log_debug "Status输出: $status_output"
-                    return 1
+                    # 等待更长时间再次检查
+                    sleep 10
+                    status_output=$("$mq_bin/artemis" status 2>&1)
+                    if echo "$status_output" | grep -q "is running"; then
+                        log_info "$(get_mq_name)服务正在运行（延迟检测）"
+                        return 0
+                    fi
                 fi
             fi
         else

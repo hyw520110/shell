@@ -98,6 +98,88 @@ get_service_pid() {
     pgrep -f "${INSTALL_DIR}/${FRP_BIN_NAME} -c ${INSTALL_DIR}/${FRP_CONF_NAME}"
 }
 
+# 函数：获取当前内网IP
+get_local_ip() {
+    # 尝试获取默认网关的接口IP
+    local ip=$(hostname -I | awk '{print $1}')
+    if [ -n "$ip" ]; then
+        echo "$ip"
+        return
+    fi
+    
+    # 如果hostname -I不可用，尝试使用ip route获取
+    ip=$(ip route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1); exit}')
+    if [ -n "$ip" ]; then
+        echo "$ip"
+        return
+    fi
+    
+    # 备选方案：使用netstat获取
+    ip=$(netstat -rn | grep -E "^0.0.0.0|UG" | awk '{print $8}' | head -1 | xargs -I {} sh -c 'ip addr show {} | grep "inet " | grep -v "127.0.0.1" | awk "{print \$2}" | cut -d/ -f1' | head -1)
+    if [ -n "$ip" ]; then
+        echo "$ip"
+        return
+    fi
+    
+    # 如果都失败了，返回空字符串
+    echo ""
+}
+
+# 函数：更新frpc.toml中的localIP
+update_frpc_local_ip() {
+    local config_file="${INSTALL_DIR}/frpc.toml"
+    if [ "$SERVICE_TYPE" != "frpc" ] || [ ! -f "$config_file" ]; then
+        return 0
+    fi
+    
+    local current_ip=$(get_local_ip)
+    if [ -z "$current_ip" ]; then
+        echo "警告: 无法获取当前内网IP"
+        return 1
+    fi
+    
+    echo "当前内网IP: $current_ip"
+    
+    # 读取配置文件并处理proxies部分的localIP
+    local temp_config="${INSTALL_DIR}/frpc.toml.tmp"
+    local in_proxy_section=false
+    local config_updated=false
+    
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ $line =~ ^\[\[proxies\]\] ]]; then
+            in_proxy_section=true
+            echo "$line" >> "$temp_config"
+        elif [[ $line =~ ^\[.*\] ]] && [[ ! $line =~ ^\[\[proxies\]\] ]]; then
+            # 遇到其他section，重置标记
+            in_proxy_section=false
+            echo "$line" >> "$temp_config"
+        elif [[ $line =~ ^localIP= ]] && [ "$in_proxy_section" = true ]; then
+            # 提取localIP配置中的IP地址
+            local existing_ip=$(echo "$line" | sed -E 's/localIP="([^"]+)"/\1/')
+            if [ "$existing_ip" != "$current_ip" ]; then
+                # 如果IP不匹配当前IP，进行更新
+                local new_line="localIP=\"$current_ip\""
+                echo "$new_line" >> "$temp_config"
+                config_updated=true
+                echo "更新 localIP: $existing_ip -> $current_ip"
+            else
+                echo "$line" >> "$temp_config"
+            fi
+        else
+            echo "$line" >> "$temp_config"
+        fi
+    done < "$config_file"
+    
+    # 如果配置已更新，替换原文件
+    if [ "$config_updated" = true ]; then
+        mv "$temp_config" "$config_file"
+        echo "frpc.toml 配置文件已更新"
+    else
+        rm -f "$temp_config"
+        echo "frpc.toml 配置文件中localIP无需更新"
+    fi
+}
+
 # 函数：检查配置文件是否存在
 check_config_file() {
     if [ ! -f "${INSTALL_DIR}/${FRP_CONF_NAME}" ]; then
@@ -151,6 +233,11 @@ start_service() {
         exit 1
     fi
 }
+
+# 如果是frpc服务，检查并更新localIP配置
+if [ "$SERVICE_TYPE" = "frpc" ]; then
+    update_frpc_local_ip
+fi
 
 # 启动服务
 start_service

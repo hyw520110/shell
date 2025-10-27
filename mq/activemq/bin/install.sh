@@ -10,6 +10,7 @@ source "$SCRIPT_DIR/common.sh" || { echo "无法加载公共函数库"; exit 1; 
 
 # 运行时变量
 INSTALL_DIR=""
+SOURCE_DIR="$SCRIPT_DIR"  # 设置源目录为当前脚本所在目录
 DOWNLOAD_DIR=""
 FORCE_REINSTALL=false
 UNINSTALL_MODE=false
@@ -189,7 +190,7 @@ uninstall_mq() {
     fi
     
     # 如果服务正在运行，则先停止
-    log_info "正在停止MQ服务..."
+    log_debug "正在停止MQ服务..."
     "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --${PREDETERMINED_MQ_TYPE} || true
     
     if [[ "$REMOVE_DATA" == true ]]; then
@@ -279,18 +280,22 @@ detect_os() {
 
 # 检查是否已安装ActiveMQ
 check_installed() {
-    if [[ -d "$INSTALL_DIR/bin" && -d "$INSTALL_DIR/conf" ]]; then
-        log_info "检测到ActiveMQ已安装在: $INSTALL_DIR"
+    if [[ -d "$INSTALL_DIR" ]]; then
+        log_debug "检测到ActiveMQ已安装在: $INSTALL_DIR"
         
         if [[ "$FORCE_REINSTALL" == true ]]; then
             log_warn "强制重新安装模式启用，跳过确认"
         else
             # 先尝试停止可能正在运行的服务
-            log_info "正在停止ActiveMQ服务..."
+            log_debug "正在停止ActiveMQ服务..."
+            # 检查安装目录中是否已有stop.sh脚本
             if [[ -f "$INSTALL_DIR/bin/stop.sh" ]]; then
-                "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --${MQ_TYPE} || true
+                "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+            # 否则检查源目录中是否有stop.sh脚本
+            elif [[ -f "$SOURCE_DIR/stop.sh" ]]; then
+                "$SOURCE_DIR/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
             else
-                log_warn "未找到stop.sh脚本，跳过停止服务步骤"
+                log_debug "未找到stop.sh脚本，跳过停止服务步骤"
             fi
             
             read -p "ActiveMQ已在 $INSTALL_DIR 安装，是否继续安装? [y/N] " -n 1 -r
@@ -301,7 +306,7 @@ check_installed() {
             fi
         fi
     else
-        log_info "未检测到已安装的ActiveMQ，开始安装..."
+        log_debug "未检测到已安装的ActiveMQ，开始安装..."
     fi
 }
 
@@ -566,7 +571,7 @@ install_mq() {
         log_debug "备份到临时目录: $TEMP_BACKUP_DIR"
         
         # 先尝试停止可能正在运行的服务
-        log_info "正在停止MQ服务..."
+        log_debug "正在停止MQ服务..."
         "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --${MQ_TYPE} || true
         
         # 修复目录权限以便能够访问
@@ -648,13 +653,13 @@ install_mq() {
     fi
 
     # 先尝试停止可能正在运行的服务（现在已有stop.sh可用）
-    log_info "正在停止MQ服务..."
+    log_debug "正在停止MQ服务..."
     if [[ -f "$INSTALL_DIR/bin/stop.sh" ]]; then
-        "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --${MQ_TYPE} || true
+        "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
     elif [[ -f "$SOURCE_DIR/stop.sh" ]]; then
-        "$SOURCE_DIR/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --${MQ_TYPE} || true
+        "$SOURCE_DIR/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
     else
-        log_warn "未找到stop.sh脚本，跳过停止服务步骤"
+        log_debug "未找到stop.sh脚本，跳过停止服务步骤"
     fi
     
     # 等待一段时间让服务完全停止
@@ -719,9 +724,27 @@ install_mq() {
     # 将当前源目录的启动/停止脚本复制到安装目录bin
     if execute_command "mkdir -p $INSTALL_DIR/bin"; then
         if [[ -f "$SOURCE_DIR/start.sh" ]]; then
-            if execute_command "cp $SOURCE_DIR/*.sh $INSTALL_DIR/bin/"; then
-                execute_command "chmod +x $INSTALL_DIR/bin/*.sh" || true
-            fi
+            # 使用更安全的方式复制文件
+            for script in "$SOURCE_DIR"/*.sh; do
+                if [[ -f "$script" ]]; then
+                    if execute_command "cp \"$script\" $INSTALL_DIR/bin/"; then
+                        script_name=$(basename "$script")
+                        execute_command "chmod +x $INSTALL_DIR/bin/$script_name" || true
+                    fi
+                fi
+            done
+        fi
+    fi
+    
+    # 预先将当前源目录的启动/停止脚本复制到安装目录bin，以便后续停止/启动调用
+    if [[ -f "$SOURCE_DIR/start.sh" ]]; then
+        if execute_command "cp \"$SOURCE_DIR/start.sh\" \"$INSTALL_DIR/bin/start.sh\""; then
+            execute_command "chmod +x \"$INSTALL_DIR/bin/start.sh\"" || true
+        fi
+    fi
+    if [[ -f "$SOURCE_DIR/stop.sh" ]]; then
+        if execute_command "cp \"$SOURCE_DIR/stop.sh\" \"$INSTALL_DIR/bin/stop.sh\""; then
+            execute_command "chmod +x \"$INSTALL_DIR/bin/stop.sh\"" || true
         fi
     fi
     
@@ -801,8 +824,11 @@ install_mq() {
     
     # 确保安装目录中的文件具有正确的权限
     log_debug "设置安装目录文件权限..."
-    execute_command "chmod +x \"$INSTALL_DIR/bin/\"*.sh" || true
-    execute_command "chmod +x \"$INSTALL_DIR/bin/\"*" || true
+    if [[ -d "$INSTALL_DIR/bin" ]]; then
+        find "$INSTALL_DIR/bin" -type f -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
+        # 确保所有可执行文件都有执行权限
+        find "$INSTALL_DIR/bin" -type f \( -name "artemis*" -o -name "activemq*" \) -exec chmod +x {} \; 2>/dev/null || true
+    fi
     
     # 设置环境变量
     set_mq_env() {
@@ -963,6 +989,18 @@ disable_authentication() {
 configure_security() {
     log_info "配置$MQ_DISPLAY_NAME安全认证..."
     
+    # 对于Artemis，跳过Classic的配置文件检查
+    if [[ "$MQ_TYPE" == "artemis" ]]; then
+        log_info "Artemis使用不同的安全配置机制，跳过Classic安全配置"
+        return 0
+    fi
+    
+    # 检查配置目录是否存在
+    if [[ ! -d "$MQ_CONF_PATH" ]]; then
+        log_warn "配置目录不存在: $MQ_CONF_PATH，跳过安全认证配置"
+        return 0
+    fi
+    
     # 修复配置目录权限
     log_debug "修复配置目录权限..."
     execute_command "chown -R $(whoami):$(whoami) \"$MQ_CONF_PATH/\"" || true
@@ -975,6 +1013,7 @@ configure_security() {
         return 1
     fi
     cp "$activemq_conf_file" "$activemq_conf_file.bak" 2>/dev/null || true
+
     
     # 生成随机密码（如果需要）
     local admin_password="admin"
@@ -1079,8 +1118,24 @@ EOF
 # 配置Web控制台允许外部访问
 configure_web_console() {
     log_info "配置Web控制台访问权限..."
-    local conf_dir=$(get_mq_conf)
-    local jetty_xml="$conf_dir/jetty.xml"
+    
+    # 对于Artemis，跳过Classic的配置文件检查
+    if [[ "$MQ_TYPE" == "artemis" ]]; then
+        log_info "Artemis使用不同的Web控制台配置机制，跳过Classic Web控制台配置"
+        return 0
+    fi
+    
+    # 检查配置目录是否存在
+    if [[ ! -d "$MQ_CONF_PATH" ]]; then
+        log_warn "配置目录不存在: $MQ_CONF_PATH，创建目录"
+        mkdir -p "$MQ_CONF_PATH" 2>/dev/null || true
+    fi
+    
+    # 检查配置目录是否存在
+    if [[ ! -d "$MQ_CONF_PATH" ]]; then
+        log_error "无法创建配置目录: $MQ_CONF_PATH"
+        return 1
+    fi
     
     # 修复配置目录权限
     log_debug "修复配置目录权限..."
@@ -1093,15 +1148,16 @@ configure_web_console() {
         # 检查jetty.xml是否在根目录（某些版本的ActiveMQ会将jetty.xml放在根目录）
         if [[ -f "$MQ_HOME_PATH/jetty.xml" ]]; then
             log_info "在根目录找到jetty.xml，将移动到conf目录"
-            mkdir -p "$MQ_CONF_PATH" 2>/dev/null || mkdir -p "$MQ_CONF_PATH"
             cp "$MQ_HOME_PATH/jetty.xml" "$MQ_CONF_PATH/jetty.xml" 2>/dev/null || \
             cp "$MQ_HOME_PATH/jetty.xml" "$MQ_CONF_PATH/jetty.xml"
-            rm "$MQ_HOME_PATH/jetty.xml" 2>/dev/null || rm "$MQ_HOME_PATH/jetty.xml"
+            rm "$MQ_HOME_PATH/jetty.xml" 2>/dev/null || true
         else
             log_error "无法找到jetty.xml配置文件，Web控制台可能无法正常工作"
             return 1
         fi
     fi
+
+
     
     # 备份原始jetty.xml文件
     cp "$MQ_CONF_PATH/jetty.xml" "$MQ_CONF_PATH/jetty.xml.bak" 2>/dev/null || \
@@ -1147,6 +1203,12 @@ configure_web_console() {
 configure_ports() {
     log_info "配置ActiveMQ端口..."
     
+    # 检查配置目录是否存在
+    if [[ ! -d "$MQ_CONF_PATH" ]]; then
+        log_warn "配置目录不存在: $MQ_CONF_PATH，跳过端口配置"
+        return 0
+    fi
+    
     # 修复配置目录权限
     log_debug "修复配置目录权限..."
     execute_command "chown -R $(whoami):$(whoami) \"$MQ_CONF_PATH/\"" || true
@@ -1158,6 +1220,7 @@ configure_ports() {
         cp "$activemq_conf_file" "$activemq_conf_file.bak" 2>/dev/null || \
         cp "$activemq_conf_file" "$activemq_conf_file.bak"
     fi
+
     
     # 配置所有端口（端口已在configure_activemq函数中查找）
     log_info "使用端口: Broker=$BROKER_PORT, Jetty=$JETTY_PORT, AMQP=$AMQP_PORT, STOMP=$STOMP_PORT, MQTT=$MQTT_PORT, WebSocket=$WS_PORT"
@@ -1240,6 +1303,13 @@ configure_persistence() {
     set_directory_permissions_with_logging "$PERSISTENCE_DIR" "$(whoami):$(whoami)" "持久化数据目录"
     # 确保data目录下的文件有正确的权限
     execute_command "find \"$PERSISTENCE_DIR/\" -type f -exec chmod 664 {} \;" || true
+    
+    # 检查配置文件是否存在
+    if [[ ! -d "$MQ_CONF_PATH" ]]; then
+        log_warn "配置目录不存在: $MQ_CONF_PATH，跳过持久化配置"
+        return 0
+    fi
+    
     # 在activemq.xml中配置持久化存储路径
     local activemq_conf_file="$MQ_CONF_PATH/activemq.xml"
     if [[ -f "$activemq_conf_file" ]]; then
@@ -1255,8 +1325,6 @@ configure_persistence() {
 configure_firewall() {
     log_info "配置防火墙..."
     
-
-    
     if [[ "$OS_TYPE" == "Linux" ]]; then
         # 检测防火墙类型 (firewalld 或 iptables)
         if command -v firewall-cmd &> /dev/null; then
@@ -1265,8 +1333,8 @@ configure_firewall() {
                 log_info "检测到firewalld，配置防火墙规则..."
                 
                 # 开放ActiveMQ端口
-                execute_command "firewall-cmd --zone=public --add-port=$broker_port/tcp --permanent" || true
-                execute_command "firewall-cmd --zone=public --add-port=$jetty_port/tcp --permanent" || true
+                execute_command "firewall-cmd --zone=public --add-port=$BROKER_PORT/tcp --permanent" || true
+                execute_command "firewall-cmd --zone=public --add-port=$JETTY_PORT/tcp --permanent" || true
                 execute_command "firewall-cmd --zone=public --add-port=$AMQP_PORT/tcp --permanent" || true
                 execute_command "firewall-cmd --zone=public --add-port=$STOMP_PORT/tcp --permanent" || true
                 execute_command "firewall-cmd --zone=public --add-port=$MQTT_PORT/tcp --permanent" || true
@@ -1277,21 +1345,25 @@ configure_firewall() {
                 
                 log_info "firewalld防火墙配置完成"
             else
-                log_warn "firewalld未运行，跳过防火墙配置"
+                log_warn "firewalld服务未运行，跳过防火墙配置"
             fi
         elif command -v iptables &> /dev/null; then
-            # 使用iptables
-            log_info "检测到iptables，配置防火墙规则..."
-            
-            # 添加ActiveMQ端口规则
-            execute_command "iptables -A INPUT -p tcp --dport $BROKER_PORT -j ACCEPT" || true
-            execute_command "iptables -A INPUT -p tcp --dport $JETTY_PORT -j ACCEPT" || true
-            execute_command "iptables -A INPUT -p tcp --dport $AMQP_PORT -j ACCEPT" || true
-            execute_command "iptables -A INPUT -p tcp --dport $STOMP_PORT -j ACCEPT" || true
-            execute_command "iptables -A INPUT -p tcp --dport $MQTT_PORT -j ACCEPT" || true
-            execute_command "iptables -A INPUT -p tcp --dport $WS_PORT -j ACCEPT" || true
-            
-            log_info "iptables防火墙配置完成，注意重启后规则可能丢失，请保存配置"
+            # 检查iptables服务是否运行
+            if systemctl is-active --quiet iptables || systemctl is-active --quiet netfilter-persistent; then
+                log_info "检测到iptables，配置防火墙规则..."
+                
+                # 添加ActiveMQ端口规则
+                execute_command "iptables -A INPUT -p tcp --dport $BROKER_PORT -j ACCEPT" || true
+                execute_command "iptables -A INPUT -p tcp --dport $JETTY_PORT -j ACCEPT" || true
+                execute_command "iptables -A INPUT -p tcp --dport $AMQP_PORT -j ACCEPT" || true
+                execute_command "iptables -A INPUT -p tcp --dport $STOMP_PORT -j ACCEPT" || true
+                execute_command "iptables -A INPUT -p tcp --dport $MQTT_PORT -j ACCEPT" || true
+                execute_command "iptables -A INPUT -p tcp --dport $WS_PORT -j ACCEPT" || true
+                
+                log_info "iptables防火墙配置完成，注意重启后规则可能丢失，请保存配置"
+            else
+                log_warn "iptables服务未运行，跳过防火墙配置"
+            fi
         else
             log_warn "未检测到firewalld或iptables，跳过防火墙配置"
         fi
@@ -1312,16 +1384,83 @@ start_mq() {
     execute_command "chown -R $(whoami):$(whoami) \"$INSTALL_DIR/\"" || true
     execute_command "chmod -R 755 \"$INSTALL_DIR/\"" || true
     
-    # 确保data目录存在且权限正确
-    log_debug "确保data目录存在: $MQ_DATA_PATH"
-    execute_command "mkdir -p \"$MQ_DATA_PATH\""
-    if [[ "$OS_TYPE" == "Linux" ]]; then
-        # 设置data目录权限，确保当前用户有权限
-        log_debug "设置data目录权限: $MQ_DATA_PATH"
-        execute_command "chown -R $(whoami):$(whoami) \"$MQ_DATA_PATH\"" || true
-        execute_command "chmod 755 \"$MQ_DATA_PATH\"" || true
-        # 确保data目录下的文件也有正确的权限
-        execute_command "find \"$MQ_DATA_PATH/\" -type f -exec chmod 664 {} \;" || true
+    # 对于Artemis，需要创建broker实例
+    if [[ "$MQ_TYPE" == "artemis" ]]; then
+        # 检查是否已存在broker实例
+        if [[ ! -f "$INSTALL_DIR/etc/broker.xml" ]]; then
+            log_info "创建ActiveMQ Artemis broker实例..."
+            
+            # 创建必要的目录
+            execute_command "mkdir -p \"$INSTALL_DIR/etc\"" || true
+            execute_command "mkdir -p \"$INSTALL_DIR/data\"" || true
+            execute_command "mkdir -p \"$INSTALL_DIR/log\"" || true
+            
+            # 确保data目录存在且权限正确（在创建实例前设置）
+            log_debug "确保data目录存在: $MQ_DATA_PATH"
+            execute_command "mkdir -p \"$MQ_DATA_PATH\""
+            if [[ "$OS_TYPE" == "Linux" ]]; then
+                # 设置data目录权限，确保当前用户有权限
+                log_debug "设置data目录权限: $MQ_DATA_PATH"
+                execute_command "chown -R $(whoami):$(whoami) \"$MQ_DATA_PATH\"" || true
+                execute_command "chmod 755 \"$MQ_DATA_PATH\"" || true
+                # 确保data目录下的文件有正确的权限
+                execute_command "find \"$MQ_DATA_PATH/\" -type f -exec chmod 664 {} \;" || true
+            fi
+            
+            # 创建broker实例
+            local create_cmd="$INSTALL_DIR/bin/artemis create --force --allow-anonymous --require-login --user admin --password admin --role amq --name artemis --http-host 0.0.0.0 --host 0.0.0.0 $INSTALL_DIR"
+            log_info "执行创建命令: $create_cmd"
+            
+            # 使用silent模式避免交互式输入
+            CREATE_OUTPUT=$(echo -e "admin\nadmin" | $create_cmd --silent 2>&1)
+            echo "$CREATE_OUTPUT"
+            
+            # 修改artemis.profile文件添加容器支持禁用参数
+            local profile_file="$INSTALL_DIR/etc/artemis.profile"
+            if [[ -f "$profile_file" ]]; then
+                log_info "修改artemis.profile文件解决Java容器兼容性问题"
+                sed -i "s/-XX:AutoBoxCacheMax=/-XX:-UseContainerSupport -XX:AutoBoxCacheMax=/" "$profile_file"
+            fi
+            
+            # 创建setenv文件解决Java兼容性问题
+            local setenv_file="$INSTALL_DIR/etc/setenv"
+            if [[ ! -f "$setenv_file" ]]; then
+                log_info "创建setenv文件解决Java兼容性问题"
+                cat > "$setenv_file" <<'EOF'
+#!/bin/bash
+# Java options for ActiveMQ Artemis
+export JAVA_ARGS="-XX:-UseContainerSupport -XX:+UseG1GC -XX:+UseStringDeduplication -Djava.net.preferIPv4Stack=true"
+export ARTEMIS_MIN_MEMORY=512
+export ARTEMIS_MAX_MEMORY=2048
+EOF
+                chmod +x "$setenv_file"
+            fi
+        else
+            log_info "ActiveMQ Artemis broker实例已存在"
+            # 确保data目录存在且权限正确（实例存在时也设置）
+            log_debug "确保data目录存在: $MQ_DATA_PATH"
+            execute_command "mkdir -p \"$MQ_DATA_PATH\""
+            if [[ "$OS_TYPE" == "Linux" ]]; then
+                # 设置data目录权限，确保当前用户有权限
+                log_debug "设置data目录权限: $MQ_DATA_PATH"
+                execute_command "chown -R $(whoami):$(whoami) \"$MQ_DATA_PATH\"" || true
+                execute_command "chmod 755 \"$MQ_DATA_PATH\"" || true
+                # 确保data目录下的文件有正确的权限
+                execute_command "find \"$MQ_DATA_PATH/\" -type f -exec chmod 664 {} \;" || true
+            fi
+        fi
+    else
+        # 对于Classic ActiveMQ，确保data目录存在且权限正确
+        log_debug "确保data目录存在: $MQ_DATA_PATH"
+        execute_command "mkdir -p \"$MQ_DATA_PATH\""
+        if [[ "$OS_TYPE" == "Linux" ]]; then
+            # 设置data目录权限，确保当前用户有权限
+            log_debug "设置data目录权限: $MQ_DATA_PATH"
+            execute_command "chown -R $(whoami):$(whoami) \"$MQ_DATA_PATH\"" || true
+            execute_command "chmod 755 \"$MQ_DATA_PATH\"" || true
+            # 确保data目录下的文件有正确的权限
+            execute_command "find \"$MQ_DATA_PATH/\" -type f -exec chmod 664 {} \;" || true
+        fi
     fi
 
     # 为Java 17设置兼容参数
@@ -1337,10 +1476,18 @@ start_mq() {
         echo "$START_OUTPUT"
     else
         log_debug "执行启动命令"
-        local start_cmd="$INSTALL_DIR/bin/$MQ_SCRIPT_NAME $([ "$MQ_TYPE" == "artemis" ] && echo "run" || echo "start")"
-        log_info "执行启动命令: $start_cmd"
-        START_OUTPUT=$($start_cmd 2>&1)
-        echo "$START_OUTPUT"
+        if [[ "$MQ_TYPE" == "artemis" ]]; then
+            # 对于Artemis，使用服务模式启动
+            local start_cmd="$INSTALL_DIR/bin/artemis-service start"
+            log_info "执行启动命令: $start_cmd"
+            START_OUTPUT=$($start_cmd 2>&1)
+            echo "$START_OUTPUT"
+        else
+            local start_cmd="$INSTALL_DIR/bin/$MQ_SCRIPT_NAME start"
+            log_info "执行启动命令: $start_cmd"
+            START_OUTPUT=$($start_cmd 2>&1)
+            echo "$START_OUTPUT"
+        fi
     fi
     
     # 等待一小段时间让PID文件创建完成
@@ -1385,16 +1532,32 @@ create_systemd_service() {
         
         # 修复安装目录权限
         set_directory_permissions_with_logging "$INSTALL_DIR" "$(whoami):$(whoami)" "安装目录"
-        execute_command "chmod 755 \"$INSTALL_DIR/bin/\"" || execute_command "chmod 755 \"$INSTALL_DIR/bin/\"" || true
-        execute_command "chmod 644 \"$INSTALL_DIR/conf/\"" || execute_command "chmod 644 \"$INSTALL_DIR/conf/\"" || true
+        
+        # 检查并设置bin目录权限
+        if [[ -d "$INSTALL_DIR/bin" ]]; then
+            execute_command "chmod 755 "$INSTALL_DIR/bin/"" || execute_command "chmod 755 "$INSTALL_DIR/bin/"" || true
+        fi
+        
+        # 检查并设置conf目录权限
+        if [[ -d "$INSTALL_DIR/conf" ]]; then
+            execute_command "chmod 644 "$INSTALL_DIR/conf/"" || execute_command "chmod 644 "$INSTALL_DIR/conf/"" || true
+        fi
         
         # 确保data目录存在且权限正确
-        execute_command "mkdir -p \"$MQ_DATA_PATH\""
+        execute_command "mkdir -p "$MQ_DATA_PATH""
         # 如果mq用户存在，使用该用户；否则使用当前用户
         if id "mq" &>/dev/null; then
             set_directory_permissions "$MQ_DATA_PATH" "mq:mq"
         else
             set_directory_permissions "$MQ_DATA_PATH"
+        fi
+        
+        # 确保conf目录存在且权限正确
+        execute_command "mkdir -p "$MQ_CONF_PATH""
+        if id "mq" &>/dev/null; then
+            execute_command "chmod 755 "$MQ_CONF_PATH"" 2>/dev/null || execute_command "chmod 755 "$MQ_CONF_PATH"" || true
+        else
+            execute_command "chmod 755 "$MQ_CONF_PATH"" 2>/dev/null || execute_command "chmod 755 "$MQ_CONF_PATH"" || true
         fi
         
         # 确定服务运行用户
@@ -1404,9 +1567,9 @@ create_systemd_service() {
         fi
         
         # 统一的环境变量
-        local service_env_home="MQ_HOME=$MQ_HOME_PATH"
-        local service_env_conf="MQ_CONF=$MQ_CONF_PATH"
-        local service_env_data="MQ_DATA=$MQ_DATA_PATH"
+        local service_env_home="MQ_HOME=$INSTALL_DIR"
+        local service_env_conf="MQ_CONF=$INSTALL_DIR/etc"  # Artemis使用etc目录而不是conf
+        local service_env_data="MQ_DATA=$INSTALL_DIR/data"
         
         # 使用自定义启动脚本（自动检测MQ类型）
         local service_exec_start="$INSTALL_DIR/bin/start.sh -d $INSTALL_DIR"
@@ -1414,7 +1577,7 @@ create_systemd_service() {
         
         # 创建systemd服务文件内容
         local SERVICE_FILE_CONTENT="[Unit]
-Description=$mq_name Message Broker
+Description=$MQ_DISPLAY_NAME Message Broker
 After=network.target
 
 [Service]
@@ -1441,11 +1604,11 @@ WantedBy=multi-user.target"
         
         # 尝试写入服务文件
         if echo "$SERVICE_FILE_CONTENT" | execute_command "tee /etc/systemd/system/$service_file_name" > /dev/null 2>/dev/null; then
-            log_info "$mq_name systemd服务文件创建成功"
+            log_info "$MQ_DISPLAY_NAME systemd服务文件创建成功"
             # 重新加载systemd配置
             execute_command "systemctl daemon-reload" || true
         else
-            log_warn "无法创建$mq_name systemd服务文件，可能没有足够权限"
+            log_warn "无法创建$MQ_DISPLAY_NAME systemd服务文件，可能没有足够权限"
             log_info "您可以手动创建服务文件，内容如下："
             log_info "----------------------------------------"
             echo "$SERVICE_FILE_CONTENT"
@@ -1502,8 +1665,44 @@ main() {
     if [[ -z "$INSTALL_DIR" ]]; then
         INSTALL_DIR="$DEFAULT_INSTALL_DIR"
     fi
-    log_info "检测到操作系统: $OS"
+    log_info "检测到操作系统: $OS_TYPE"
     log_info "安装目录: $INSTALL_DIR"
+    
+    # 在检查已安装服务之前，先复制脚本以确保停止脚本可用
+    if [[ -f "$SOURCE_DIR/start.sh" ]] || [[ -f "$SOURCE_DIR/stop.sh" ]]; then
+        log_info "预先复制自定义脚本到安装目录..."
+        execute_command "mkdir -p \"$INSTALL_DIR/bin\"" || true
+        
+        # 复制公共函数库文件
+        if [[ -f "$SOURCE_DIR/common.sh" ]]; then
+            if execute_command "cp \"$SOURCE_DIR/common.sh\" \"$INSTALL_DIR/bin/common.sh\""; then
+                log_debug "成功复制common.sh文件"
+            else
+                log_warn "复制common.sh文件失败"
+            fi
+        fi
+        
+        # 复制启动脚本
+        if [[ -f "$SOURCE_DIR/start.sh" ]]; then
+            if execute_command "cp \"$SOURCE_DIR/start.sh\" \"$INSTALL_DIR/bin/start.sh\""; then
+                execute_command "chmod +x \"$INSTALL_DIR/bin/start.sh\"" || true
+                log_debug "成功复制start.sh脚本"
+            else
+                log_warn "复制start.sh脚本失败"
+            fi
+        fi
+        
+        # 复制停止脚本
+        if [[ -f "$SOURCE_DIR/stop.sh" ]]; then
+            if execute_command "cp \"$SOURCE_DIR/stop.sh\" \"$INSTALL_DIR/bin/stop.sh\""; then
+                execute_command "chmod +x \"$INSTALL_DIR/bin/stop.sh\"" || true
+                log_debug "成功复制stop.sh脚本"
+            else
+                log_warn "复制stop.sh脚本失败"
+            fi
+        fi
+    fi
+    
     check_installed
     if ! check_java; then
         log_error "Java未安装或版本不满足，退出"

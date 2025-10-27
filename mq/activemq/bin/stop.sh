@@ -44,6 +44,9 @@ parse_arguments() {
                 FORCE_KILL=true; shift 1 ;;
             -h|--help)
                 print_usage; exit 0 ;;
+            --artemis|--classic)
+                # 忽略MQ类型参数
+                shift 1 ;;
             *)
                 log_error "未知参数: $1"; print_usage; exit 1 ;;
         esac
@@ -64,7 +67,7 @@ parse_arguments() {
 # 停止MQ服务
 stop_mq() {
     # 预先计算MQ类型和显示名称
-    local mq_type=$(detect_mq_type_by_path "$INSTALL_DIR")
+    local mq_type=$(detect_mq_type_by_path "$INSTALL_DIR" "true")  # 静默模式检测
     local mq_display_name=$(get_mq_display_name "$mq_type")
     
     # 验证安装目录
@@ -122,7 +125,7 @@ stop_mq() {
     fi
 
     # 检查systemd服务 (仅在Linux上)
-    if [[ "$(detect_os)\" == \"Linux" ]]; then
+    if [[ "$(detect_os)" == "Linux" ]]; then
         local service_name=$(get_mq_service_name)
         if systemctl is-active --quiet "$service_name" 2>/dev/null; then
             sudo -n systemctl stop "$service_name" 2>/dev/null || true

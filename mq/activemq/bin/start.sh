@@ -55,7 +55,7 @@ main() {
   if [[ "$mq_type" == "artemis" ]]; then
     export ARTEMIS_HOME="$INSTALL_DIR"
     export ARTEMIS_BASE="$INSTALL_DIR"
-    export ARTEMIS_CONF="$INSTALL_DIR/conf"
+    export ARTEMIS_CONF="$INSTALL_DIR/etc"  # Artemis使用etc目录而不是conf
     export ARTEMIS_DATA="$INSTALL_DIR/data"
     
     # 设置Java 17兼容性参数
@@ -82,10 +82,20 @@ main() {
     case "$MODE" in
       start) 
         echo "启动$mq_display_name服务..."
-        "$INSTALL_DIR/bin/$mq_type" run ;;
+        if [[ "$mq_type" == "artemis" ]]; then
+            "$INSTALL_DIR/bin/artemis-service" start
+        else
+            "$INSTALL_DIR/bin/$mq_type" start
+        fi
+        ;;
       console) 
         echo "以控制台模式启动$mq_display_name服务..."
-        "$INSTALL_DIR/bin/$mq_type" console ;;
+        if [[ "$mq_type" == "artemis" ]]; then
+            "$INSTALL_DIR/bin/artemis" console
+        else
+            "$INSTALL_DIR/bin/$mq_type" console
+        fi
+        ;;
       *) 
         echo "错误: 未知模式: $MODE"
         exit 1 ;;
