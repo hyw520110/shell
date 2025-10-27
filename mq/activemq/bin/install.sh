@@ -974,8 +974,7 @@ configure_security() {
         log_error "找不到activemq.xml配置文件"
         return 1
     fi
-    cp "$activemq_conf_file" "$activemq_conf_file.bak" 2>/dev/null || \
-    cp "$activemq_conf_file" "$activemq_conf_file.bak"
+    cp "$activemq_conf_file" "$activemq_conf_file.bak" 2>/dev/null || true
     
     # 生成随机密码（如果需要）
     local admin_password="admin"
@@ -1016,9 +1015,7 @@ configure_security() {
             fi
         fi
     else
-        log_warn "未找到broker标签，使用默认配置方法"
-        # 如果找不到broker标签，直接使用ActiveMQ安装包中的默认配置文件
-        log_info "使用$MQ_DISPLAY_NAME安装包中的默认activemq.xml配置文件"
+        log_debug "已存在plugins配置，跳过添加"
     fi
     
     # 配置Jetty认证
@@ -1035,6 +1032,8 @@ configure_jetty_auth() {
     local admin_password="$1"
     local user_password="$2"
     local guest_password="$3"
+    local conf_dir=$(get_mq_conf)
+    local jetty_xml="$conf_dir/jetty.xml"
     
     log_info "配置Jetty认证..."
     
@@ -1042,6 +1041,11 @@ configure_jetty_auth() {
     if [[ ! -f "$MQ_CONF_PATH/jetty.xml" ]]; then
         log_warn "未找到jetty.xml，跳过认证配置"
         return 0
+    fi
+
+    if ! command -v xmlstarlet &> /dev/null; then
+        log_error "xmlstarlet 命令未找到，无法修改XML配置文件。"
+        return 1
     fi
     
     # 设置authenticate属性为true
@@ -1066,7 +1070,6 @@ user: $user_password, user
 guest: $guest_password, guest
 EOF
     
-    # 设置文件权限
     chmod 600 "$realm_file" 2>/dev/null || true
     chown $(whoami):$(whoami) "$realm_file" 2>/dev/null || true
     
@@ -1076,6 +1079,8 @@ EOF
 # 配置Web控制台允许外部访问
 configure_web_console() {
     log_info "配置Web控制台访问权限..."
+    local conf_dir=$(get_mq_conf)
+    local jetty_xml="$conf_dir/jetty.xml"
     
     # 修复配置目录权限
     log_debug "修复配置目录权限..."
