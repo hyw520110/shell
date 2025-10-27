@@ -526,15 +526,15 @@ install_mq() {
     
     # 在临时目录中解压文件
     cd "$TEMP_EXTRACT_DIR"
-    log_debug "在临时目录中解压文件: $download_dir/$MQ_FILE_NAME"
-    if ! execute_command "tar -xzf \"$download_dir/$MQ_FILE_NAME\""; then
+    log_debug "在临时目录中解压文件: $DOWNLOAD_DIR/$MQ_FILE_NAME"
+    if ! execute_command "tar -xzf \"$DOWNLOAD_DIR/$MQ_FILE_NAME\""; then
         log_error "解压失败"
         execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
         return 1
     fi
     
     # 自动提取解压后的目录名 (即tar包中的根目录)
-    local EXTRACTED_DIR=$(tar -tzf "$download_dir/$MQ_FILE_NAME" | head -n1 | cut -d/ -f1)
+    local EXTRACTED_DIR=$(tar -tzf "$DOWNLOAD_DIR/$MQ_FILE_NAME" | head -n1 | cut -d/ -f1)
     
     # 验证解压后的目录确实存在
     if [[ -z "$EXTRACTED_DIR" ]] || [[ ! -d "$EXTRACTED_DIR" ]]; then
@@ -546,14 +546,14 @@ install_mq() {
     log_debug "自动提取的解压目录: $EXTRACTED_DIR"
     
     # 确定安装目录
-    if ! execute_command "mkdir -p $install_dir"; then
-        log_error "无法创建安装目录: $install_dir"
+    if ! execute_command "mkdir -p $INSTALL_DIR"; then
+        log_error "无法创建安装目录: $INSTALL_DIR"
         execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
         return 1
     fi
     
     # 如果强制重装且安装目录已存在，则保存配置和数据目录
-    if [[ "$FORCE_REINSTALL" == true ]] && [[ -d "$install_dir/conf" ]]; then
+    if [[ "$FORCE_REINSTALL" == true ]] && [[ -d "$INSTALL_DIR/conf" ]]; then
         log_info "强制重装模式，备份配置和数据目录..."
         
         # 创建临时备份目录
@@ -567,41 +567,41 @@ install_mq() {
         
         # 先尝试停止可能正在运行的服务
         log_info "正在停止MQ服务..."
-        "$install_dir/bin/stop.sh" -d "$install_dir" --log-level "$LOG_LEVEL" --${mq_type} || true
+        "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --${MQ_TYPE} || true
         
         # 修复目录权限以便能够访问
         log_debug "尝试修复安装目录权限以进行备份..."
-        execute_command "chown -R $(whoami):$(whoami) \"$install_dir/\"" || true
-        execute_command "chmod -R 755 \"$install_dir/\"" || true
+        execute_command "chown -R $(whoami):$(whoami) \"$INSTALL_DIR/\"" || true
+        execute_command "chmod -R 755 \"$INSTALL_DIR/\"" || true
         
         # 备份配置目录（如果存在）
-        if [[ -d "$install_dir/conf" ]]; then
+        if [[ -d "$INSTALL_DIR/conf" ]]; then
             log_info "备份配置目录..."
             # 尝试使用sudo权限备份配置目录
             if command -v rsync &> /dev/null; then
-                if ! execute_command "rsync -a \"$install_dir/conf/\" \"$TEMP_BACKUP_DIR/conf/\""; then
-                    if ! execute_command "cp -r \"$install_dir/conf\" \"$TEMP_BACKUP_DIR/\""; then
+                if ! execute_command "rsync -a \"$INSTALL_DIR/conf/\" \"$TEMP_BACKUP_DIR/conf/\""; then
+                    if ! execute_command "cp -r \"$INSTALL_DIR/conf\" \"$TEMP_BACKUP_DIR/\""; then
                         log_warn "备份配置目录失败，跳过配置目录备份"
                     fi
                 fi
             else
-                if ! execute_command "cp -r \"$install_dir/conf\" \"$TEMP_BACKUP_DIR/\""; then
+                if ! execute_command "cp -r \"$INSTALL_DIR/conf\" \"$TEMP_BACKUP_DIR/\""; then
                     log_warn "备份配置目录失败，跳过配置目录备份"
                 fi
             fi
         fi
         
         # 备份数据目录（如果存在）
-        if [[ -d "$install_dir/data" ]]; then
+        if [[ -d "$INSTALL_DIR/data" ]]; then
             log_info "备份数据目录..."
             if command -v rsync &> /dev/null; then
-                if ! execute_command "rsync -a \"$install_dir/data/\" \"$TEMP_BACKUP_DIR/data/\""; then
-                    if ! execute_command "cp -r \"$install_dir/data\" \"$TEMP_BACKUP_DIR/\""; then
+                if ! execute_command "rsync -a \"$INSTALL_DIR/data/\" \"$TEMP_BACKUP_DIR/data/\""; then
+                    if ! execute_command "cp -r \"$INSTALL_DIR/data\" \"$TEMP_BACKUP_DIR/\""; then
                         log_warn "备份数据目录失败，跳过数据目录备份"
                     fi
                 fi
             else
-                if ! execute_command "cp -r \"$install_dir/data\" \"$TEMP_BACKUP_DIR/\""; then
+                if ! execute_command "cp -r \"$INSTALL_DIR/data\" \"$TEMP_BACKUP_DIR/\""; then
                     log_warn "备份数据目录失败，跳过数据目录备份"
                 fi
             fi
@@ -609,11 +609,11 @@ install_mq() {
         
         # 删除安装目录中的内容（但保留目录本身）
         log_debug "清理安装目录内容..."
-        if ! execute_command "rm -rf \"$install_dir\"/*"; then
-            log_warn "无法删除 $install_dir 中的内容，尝试逐个删除..."
+        if ! execute_command "rm -rf \"$INSTALL_DIR\"/*"; then
+            log_warn "无法删除 $INSTALL_DIR 中的内容，尝试逐个删除..."
             # 逐个删除文件和目录
-            if [[ -d "$install_dir" ]]; then
-                for item in "$install_dir"/*; do
+            if [[ -d "$INSTALL_DIR" ]]; then
+                for item in "$INSTALL_DIR"/*; do
                     if [[ -e "$item" ]]; then
                         local item_name=$(basename "$item")
                         log_debug "删除 $item_name..."
@@ -625,7 +625,7 @@ install_mq() {
     fi
     
     # 预先将当前源目录的启动/停止脚本复制到安装目录bin，以便后续停止/启动调用
-    if ! execute_command "mkdir -p \"$install_dir/bin\""; then
+    if ! execute_command "mkdir -p \"$INSTALL_DIR/bin\""; then
         log_error "无法创建安装目录的bin子目录"
         execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
         execute_command "rm -rf \"$TEMP_BACKUP_DIR\"" || true
@@ -633,26 +633,26 @@ install_mq() {
     fi
     
     if [[ -f "$SOURCE_DIR/start.sh" ]]; then
-        if ! execute_command "cp \"$SOURCE_DIR/start.sh\" \"$install_dir/bin/start.sh\""; then
+        if ! execute_command "cp \"$SOURCE_DIR/start.sh\" \"$INSTALL_DIR/bin/start.sh\""; then
             log_warn "复制自定义start脚本失败: $SOURCE_DIR/start.sh"
         else
-            execute_command "chmod +x \"$install_dir/bin/start.sh\"" || true
+            execute_command "chmod +x \"$INSTALL_DIR/bin/start.sh\"" || true
         fi
     fi
     if [[ -f "$SOURCE_DIR/stop.sh" ]]; then
-        if ! execute_command "cp \"$SOURCE_DIR/stop.sh\" \"$install_dir/bin/stop.sh\""; then
+        if ! execute_command "cp \"$SOURCE_DIR/stop.sh\" \"$INSTALL_DIR/bin/stop.sh\""; then
             log_warn "复制自定义stop脚本失败: $SOURCE_DIR/stop.sh"
         else
-            execute_command "chmod +x \"$install_dir/bin/stop.sh\"" || true
+            execute_command "chmod +x \"$INSTALL_DIR/bin/stop.sh\"" || true
         fi
     fi
 
     # 先尝试停止可能正在运行的服务（现在已有stop.sh可用）
     log_info "正在停止MQ服务..."
-    if [[ -f "$install_dir/bin/stop.sh" ]]; then
-        "$install_dir/bin/stop.sh" -d "$install_dir" --log-level "$LOG_LEVEL" --${MQ_TYPE} || true
+    if [[ -f "$INSTALL_DIR/bin/stop.sh" ]]; then
+        "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --${MQ_TYPE} || true
     elif [[ -f "$SOURCE_DIR/stop.sh" ]]; then
-        "$SOURCE_DIR/stop.sh" -d "$install_dir" --log-level "$LOG_LEVEL" --${MQ_TYPE} || true
+        "$SOURCE_DIR/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --${MQ_TYPE} || true
     else
         log_warn "未找到stop.sh脚本，跳过停止服务步骤"
     fi
@@ -662,7 +662,7 @@ install_mq() {
     
     # 确保安装目录存在
     log_debug "确保安装目录存在..."
-    if ! execute_command "mkdir -p \"$install_dir\""; then
+    if ! execute_command "mkdir -p \"$INSTALL_DIR\""; then
         log_error "无法创建安装目录"
         execute_command "rm -rf \"$TEMP_BACKUP_DIR\"" || true
         execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
@@ -672,7 +672,7 @@ install_mq() {
     
     # 设置目录权限
     log_debug "设置安装目录权限..."
-    set_directory_permissions "$install_dir"
+    set_directory_permissions "$INSTALL_DIR"
     
     # 尝试逐个复制目录和文件
     log_info "开始逐个复制文件到安装目录..."
@@ -682,16 +682,16 @@ install_mq() {
             local item_name=$(basename "$item")
             log_debug "复制 $item_name..."
             # 确保目标目录存在
-            if ! execute_command "mkdir -p \"$install_dir\""; then
+            if ! execute_command "mkdir -p \"$INSTALL_DIR\""; then
                 log_error "无法确保安装目录存在"
                 copy_success=false
                 break
             fi
             
             # 尝试多种复制方法
-            if ! execute_command "cp -r \"$item\" \"$install_dir/\""; then
+            if ! execute_command "cp -r \"$item\" \"$INSTALL_DIR/\""; then
                 if command -v rsync &> /dev/null; then
-                    if ! execute_command "rsync -av \"$item\" \"$install_dir/\""; then
+                    if ! execute_command "rsync -av \"$item\" \"$INSTALL_DIR/\""; then
                         log_error "无法复制 $item_name"
                         copy_success=false
                         continue
@@ -717,10 +717,10 @@ install_mq() {
     log_info "文件复制完成"
 
     # 将当前源目录的启动/停止脚本复制到安装目录bin
-    if execute_command "mkdir -p $install_dir/bin"; then
+    if execute_command "mkdir -p $INSTALL_DIR/bin"; then
         if [[ -f "$SOURCE_DIR/start.sh" ]]; then
-            if execute_command "cp $SOURCE_DIR/*.sh $install_dir/bin/"; then
-                execute_command "chmod +x $install_dir/bin/*.sh" || true
+            if execute_command "cp $SOURCE_DIR/*.sh $INSTALL_DIR/bin/"; then
+                execute_command "chmod +x $INSTALL_DIR/bin/*.sh" || true
             fi
         fi
     fi
@@ -728,26 +728,26 @@ install_mq() {
     # 恢复备份的配置和数据目录
     if [[ -n "$TEMP_BACKUP_DIR" ]] && [[ -d "$TEMP_BACKUP_DIR" ]]; then
         # 确保目标目录存在
-        execute_command "mkdir -p \"$install_dir/conf\"" || true
-        execute_command "mkdir -p \"$install_dir/data\"" || true
+        execute_command "mkdir -p \"$INSTALL_DIR/conf\"" || true
+        execute_command "mkdir -p \"$INSTALL_DIR/data\"" || true
         
         # 修复目标目录权限
-        execute_command "chown -R $(whoami):$(whoami) \"$install_dir/conf/\"" || true
-        execute_command "chmod -R 755 \"$install_dir/conf/\"" || true
-        execute_command "chown -R $(whoami):$(whoami) \"$install_dir/data/\"" || true
-        execute_command "chmod -R 755 \"$install_dir/data/\"" || true
+        execute_command "chown -R $(whoami):$(whoami) \"$INSTALL_DIR/conf/\"" || true
+        execute_command "chmod -R 755 \"$INSTALL_DIR/conf/\"" || true
+        execute_command "chown -R $(whoami):$(whoami) \"$INSTALL_DIR/data/\"" || true
+        execute_command "chmod -R 755 \"$INSTALL_DIR/data/\"" || true
         # 确保data目录下的文件有正确的权限
-        execute_command "find \"$install_dir/data/\" -type f -exec chmod 664 {} \;" || true
+        execute_command "find \"$INSTALL_DIR/data/\" -type f -exec chmod 664 {} \;" || true
         
         if [[ -d "$TEMP_BACKUP_DIR/conf" ]]; then
             log_info "恢复配置目录..."
             # 先清空目标目录
-            if [[ -d "$install_dir/conf" ]]; then
-                execute_command "rm -rf \"$install_dir/conf\"/*" || true
+            if [[ -d "$INSTALL_DIR/conf" ]]; then
+                execute_command "rm -rf \"$INSTALL_DIR/conf\"/*" || true
             fi
             
             if command -v rsync &> /dev/null; then
-                if ! execute_command "rsync -a \"$TEMP_BACKUP_DIR/conf/\" \"$install_dir/conf/\""; then
+                if ! execute_command "rsync -a \"$TEMP_BACKUP_DIR/conf/\" \"$INSTALL_DIR/conf/\""; then
                     log_error "无法恢复配置目录"
                     copy_success=false
                 fi
@@ -756,7 +756,7 @@ install_mq() {
                 cd "$TEMP_BACKUP_DIR/conf" || true
                 for item in * .*; do
                     if [[ "$item" != "." && "$item" != ".." ]]; then
-                        execute_command "cp -r \"$item\" \"$install_dir/conf/\"" || true
+                        execute_command "cp -r \"$item\" \"$INSTALL_DIR/conf/\"" || true
                     fi
                 done
                 cd - > /dev/null || true
@@ -766,12 +766,12 @@ install_mq() {
         if [[ -d "$TEMP_BACKUP_DIR/data" ]]; then
             log_info "恢复数据目录..."
             # 先清空目标目录
-            if [[ -d "$install_dir/data" ]]; then
-                execute_command "rm -rf \"$install_dir/data\"/*" || true
+            if [[ -d "$INSTALL_DIR/data" ]]; then
+                execute_command "rm -rf \"$INSTALL_DIR/data\"/*" || true
             fi
             
             if command -v rsync &> /dev/null; then
-                if ! execute_command "rsync -a \"$TEMP_BACKUP_DIR/data/\" \"$install_dir/data/\""; then
+                if ! execute_command "rsync -a \"$TEMP_BACKUP_DIR/data/\" \"$INSTALL_DIR/data/\""; then
                     log_error "无法恢复数据目录"
                     copy_success=false
                 fi
@@ -780,7 +780,7 @@ install_mq() {
                 cd "$TEMP_BACKUP_DIR/data" || true
                 for item in * .*; do
                     if [[ "$item" != "." && "$item" != ".." ]]; then
-                        execute_command "cp -r \"$item\" \"$install_dir/data/\"" || true
+                        execute_command "cp -r \"$item\" \"$INSTALL_DIR/data/\"" || true
                     fi
                 done
                 cd - > /dev/null || true
@@ -801,8 +801,8 @@ install_mq() {
     
     # 确保安装目录中的文件具有正确的权限
     log_debug "设置安装目录文件权限..."
-    execute_command "chmod +x \"$install_dir/bin/\"*.sh" || true
-    execute_command "chmod +x \"$install_dir/bin/\"*" || true
+    execute_command "chmod +x \"$INSTALL_DIR/bin/\"*.sh" || true
+    execute_command "chmod +x \"$INSTALL_DIR/bin/\"*" || true
     
     # 设置环境变量
     set_mq_env() {
@@ -817,7 +817,7 @@ install_mq() {
     # 返回原始工作目录
     cd "$original_dir" || true
     
-    log_info "$mq_name安装完成，安装目录: $install_dir"
+    log_info "$MQ_DISPLAY_NAME安装完成，安装目录: $INSTALL_DIR"
     return 0
 }
 

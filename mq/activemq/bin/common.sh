@@ -83,21 +83,21 @@ log_message() {
     fi
 }
 
-# 检查安装目录有效性
+# 简化版验证安装目录有效性，不输出日志
 validate_install_dir() {
     local install_dir="$1"
     if [[ -z "$install_dir" ]]; then
-        log_error "安装目录未指定"
+        echo "错误: 安装目录未指定"
         return 1
     fi
     
     if [[ ! -d "$install_dir" ]]; then
-        log_error "安装目录不存在: $install_dir"
+        echo "错误: 安装目录不存在: $install_dir"
         return 1
     fi
     
     if [[ ! -r "$install_dir" ]]; then
-        log_error "安装目录无读取权限: $install_dir"
+        echo "错误: 安装目录无读取权限: $install_dir"
         return 1
     fi
     
