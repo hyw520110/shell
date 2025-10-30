@@ -36,7 +36,7 @@ print_usage() {
     echo "  -v, --version VER  指定MQ版本（默认: Artemis $DEFAULT_ARTEMIS_VERSION, Classic $DEFAULT_CLASSIC_VERSION）"
     echo "  --artemis          安装ActiveMQ Artemis（默认）"
     echo "  --classic          安装ActiveMQ Classic"
-    echo "  -f, --force        强制重新安装（不会删除持久化数据）"
+    echo "  -f, --force        强制重新安装（不会删除持久化数据）/强制停止服务/在卸载时强制删除数据"
     echo "  -u, --uninstall    卸载MQ"
     echo "  --remove-data      与-u一起使用时，删除数据目录"
     echo "  --disable-external-access  禁止Web控制台外部访问（默认允许外部访问）"
@@ -51,10 +51,11 @@ print_usage() {
     echo "  $0 -D /tmp                          # 指定下载目录"
     echo "  $0 -v $DEFAULT_ARTEMIS_VERSION      # 指定Artemis版本"
     echo "  $0 --classic -v $DEFAULT_CLASSIC_VERSION # 指定Classic版本"
-    echo "  $0 -f                               # 强制重新安装"
+    echo "  $0 -f                               # 强制重新安装（强制停止服务）"
     echo "  $0 -u                               # 卸载MQ（保留数据）"
     echo "  $0 -u --remove-data                 # 卸载MQ并删除数据"
-    echo "  $0 -d $DEFAULT_INSTALL_DIR -f       # 指定目录并强制安装"
+    echo "  $0 -u -f                            # 卸载MQ并强制删除数据（包括数据目录）"
+    echo "  $0 -d $DEFAULT_INSTALL_DIR -f       # 指定目录并强制安装（强制停止服务）"
     echo "  $0 --disable-external-access        # 禁止Web控制台外部访问"
     echo "  $0 --generate-random-password       # 生成并修改随机密码"
     echo "  $0 --log-level DEBUG                # 设置日志级别为DEBUG"
@@ -85,6 +86,7 @@ parse_arguments() {
                 shift
                 ;;
             -f|--force)
+                # 设置强制标志，具体行为在后续根据模式确定
                 FORCE_REINSTALL=true
                 shift
                 ;;
@@ -191,7 +193,15 @@ uninstall_mq() {
     
     # 如果服务正在运行，则先停止
     log_debug "正在停止MQ服务..."
-    "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --${PREDETERMINED_MQ_TYPE} || true
+    if [[ -f "$INSTALL_DIR/bin/stop.sh" ]]; then
+        if [[ "$FORCE_REINSTALL" == true ]]; then
+            "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --force || true
+        else
+            "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+        fi
+    else
+        log_debug "停止脚本不存在: $INSTALL_DIR/bin/stop.sh，跳过停止服务步骤"
+    fi
     
     if [[ "$REMOVE_DATA" == true ]]; then
         log_info "删除安装目录及所有内容: $INSTALL_DIR"
@@ -280,8 +290,36 @@ detect_os() {
 
 # 检查是否已安装ActiveMQ
 check_installed() {
-    if [[ -d "$INSTALL_DIR" ]]; then
-        log_debug "检测到ActiveMQ已安装在: $INSTALL_DIR"
+    # 检查安装目录是否包含MQ的可执行文件
+    if [[ -d "$INSTALL_DIR" && (-x "$INSTALL_DIR/bin/artemis" || -x "$INSTALL_DIR/bin/activemq") ]]; then
+        # 检测已安装的MQ类型
+        local installed_type=""
+        local display_name=""
+        if [[ -x "$INSTALL_DIR/bin/artemis" ]]; then
+            installed_type="artemis"
+            display_name=$(get_mq_display_name "$installed_type")
+            log_debug "检测到已安装的$display_name"
+        elif [[ -x "$INSTALL_DIR/bin/activemq" ]]; then
+            installed_type="classic"
+            display_name=$(get_mq_display_name "$installed_type")
+            log_debug "检测到已安装的$display_name"
+        fi
+        
+        # 根据已安装的类型和当前请求的类型显示相应信息
+        local current_request_type="$MQ_TYPE"
+        local current_request_name=$(get_mq_display_name "$current_request_type")
+        
+        if [[ "$installed_type" == "artemis" && "$current_request_type" == "artemis" ]]; then
+            log_info "检测到ActiveMQ Artemis已安装在: $INSTALL_DIR"
+        elif [[ "$installed_type" == "classic" && "$current_request_type" == "classic" ]]; then
+            log_info "检测到ActiveMQ Classic已安装在: $INSTALL_DIR"
+        elif [[ "$installed_type" == "artemis" && "$current_request_type" == "classic" ]]; then
+            log_info "检测到ActiveMQ Artemis已安装在: $INSTALL_DIR，但您请求安装Classic版本"
+        elif [[ "$installed_type" == "classic" && "$current_request_type" == "artemis" ]]; then
+            log_info "检测到ActiveMQ Classic已安装在: $INSTALL_DIR，但您请求安装Artemis版本"
+        else
+            log_info "检测到$display_name已安装在: $INSTALL_DIR"
+        fi
         
         if [[ "$FORCE_REINSTALL" == true ]]; then
             log_warn "强制重新安装模式启用，跳过确认"
@@ -290,15 +328,30 @@ check_installed() {
             log_debug "正在停止ActiveMQ服务..."
             # 检查安装目录中是否已有stop.sh脚本
             if [[ -f "$INSTALL_DIR/bin/stop.sh" ]]; then
-                "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+                if [[ "$FORCE_REINSTALL" == true ]]; then
+                    "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --force || true
+                else
+                    "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+                fi
             # 否则检查源目录中是否有stop.sh脚本
             elif [[ -f "$SOURCE_DIR/stop.sh" ]]; then
-                "$SOURCE_DIR/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+                if [[ "$FORCE_REINSTALL" == true ]]; then
+                    "$SOURCE_DIR/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --force || true
+                else
+                    "$SOURCE_DIR/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+                fi
             else
                 log_debug "未找到stop.sh脚本，跳过停止服务步骤"
             fi
             
-            read -p "ActiveMQ已在 $INSTALL_DIR 安装，是否继续安装? [y/N] " -n 1 -r
+            # 根据安装类型显示不同的提示信息
+            if [[ "$installed_type" == "artemis" ]]; then
+                read -p "ActiveMQ Artemis已在 $INSTALL_DIR 安装，是否继续安装Artemis? [y/N] " -n 1 -r
+            elif [[ "$installed_type" == "classic" ]]; then
+                read -p "ActiveMQ Classic已在 $INSTALL_DIR 安装，是否继续安装Classic? [y/N] " -n 1 -r
+            else
+                read -p "$display_name已在 $INSTALL_DIR 安装，是否继续安装? [y/N] " -n 1 -r
+            fi
             echo
             if [[ ! $REPLY =~ ^[Yy]$ ]]; then
                 log_info "安装已取消"
@@ -572,7 +625,15 @@ install_mq() {
         
         # 先尝试停止可能正在运行的服务
         log_debug "正在停止MQ服务..."
-        "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --${MQ_TYPE} || true
+        if [[ -f "$INSTALL_DIR/bin/stop.sh" ]]; then
+            if [[ "$FORCE_REINSTALL" == true ]]; then
+                "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --force || true
+            else
+                "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+            fi
+        else
+            log_debug "停止脚本不存在: $INSTALL_DIR/bin/stop.sh，跳过停止服务步骤"
+        fi
         
         # 修复目录权限以便能够访问
         log_debug "尝试修复安装目录权限以进行备份..."
@@ -655,9 +716,17 @@ install_mq() {
     # 先尝试停止可能正在运行的服务（现在已有stop.sh可用）
     log_debug "正在停止MQ服务..."
     if [[ -f "$INSTALL_DIR/bin/stop.sh" ]]; then
-        "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+        if [[ "$FORCE_REINSTALL" == true ]]; then
+            "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --force || true
+        else
+            "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+        fi
     elif [[ -f "$SOURCE_DIR/stop.sh" ]]; then
-        "$SOURCE_DIR/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+        if [[ "$FORCE_REINSTALL" == true ]]; then
+            "$SOURCE_DIR/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --force || true
+        else
+            "$SOURCE_DIR/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+        fi
     else
         log_debug "未找到stop.sh脚本，跳过停止服务步骤"
     fi
@@ -679,37 +748,31 @@ install_mq() {
     log_debug "设置安装目录权限..."
     set_directory_permissions "$INSTALL_DIR"
     
-    # 尝试逐个复制目录和文件
-    log_info "开始逐个复制文件到安装目录..."
+    # 批量复制所有文件和目录
+    log_info "开始批量复制文件到安装目录..."
     local copy_success=true
-    for item in "$EXTRACTED_DIR"/*; do
-        if [[ -e "$item" ]]; then
-            local item_name=$(basename "$item")
-            log_debug "复制 $item_name..."
-            # 确保目标目录存在
-            if ! execute_command "mkdir -p \"$INSTALL_DIR\""; then
-                log_error "无法确保安装目录存在"
+    
+    # 确保目标目录存在
+    if ! execute_command "mkdir -p \"$INSTALL_DIR\""; then
+        log_error "无法确保安装目录存在"
+        execute_command "rm -rf \"$TEMP_BACKUP_DIR\"" || true
+        execute_command "rm -rf \"$TEMP_EXTRACT_DIR\"" || true
+        cd "$original_dir" || true
+        return 1
+    fi
+    
+    # 使用通配符批量复制所有文件和目录
+    if ! execute_command "cp -r \"$EXTRACTED_DIR\"/* \"$INSTALL_DIR/\""; then
+        if command -v rsync &> /dev/null; then
+            if ! execute_command "rsync -av \"$EXTRACTED_DIR\"/* \"$INSTALL_DIR/\""; then
+                log_error "批量复制文件失败"
                 copy_success=false
-                break
             fi
-            
-            # 尝试多种复制方法
-            if ! execute_command "cp -r \"$item\" \"$INSTALL_DIR/\""; then
-                if command -v rsync &> /dev/null; then
-                    if ! execute_command "rsync -av \"$item\" \"$INSTALL_DIR/\""; then
-                        log_error "无法复制 $item_name"
-                        copy_success=false
-                        continue
-                    fi
-                else
-                    log_error "无法复制 $item_name"
-                    copy_success=false
-                    continue
-                fi
-            fi
-            log_debug "成功复制 $item_name"
+        else
+            log_error "批量复制文件失败"
+            copy_success=false
         fi
-    done
+    fi
     
     if [[ "$copy_success" == false ]]; then
         log_error "文件复制过程中发生错误"
@@ -1313,11 +1376,11 @@ configure_persistence() {
     # 在activemq.xml中配置持久化存储路径
     local activemq_conf_file="$MQ_CONF_PATH/activemq.xml"
     if [[ -f "$activemq_conf_file" ]]; then
-        sed -i.bak "s|dataDirectory=\"\${activemq.data}\"|dataDirectory=\"$PERSISTENCE_DIR\"|g" "$activemq_conf_file" 2>/dev/null || \
-        sed -i.bak "s|dataDirectory=\"\${activemq.data}\"|dataDirectory=\"$PERSISTENCE_DIR\"|g" "$activemq_conf_file"
+        sed -i.bak "s|dataDirectory=\"\${activemq.data}\"|dataDirectory=\"$MQ_DATA_PATH\"|g" "$activemq_conf_file" 2>/dev/null || \
+        sed -i.bak "s|dataDirectory=\"\${activemq.data}\"|dataDirectory=\"$MQ_DATA_PATH\"|g" "$activemq_conf_file"
     fi
     
-    log_info "持久化存储配置完成，数据将保存在: $PERSISTENCE_DIR"
+    log_info "持久化存储配置完成，数据将保存在: $MQ_DATA_PATH"
     log_info "注意：持久化数据已保留，如需清理请手动删除此目录"
 }
 
@@ -1395,17 +1458,9 @@ start_mq() {
             execute_command "mkdir -p \"$INSTALL_DIR/data\"" || true
             execute_command "mkdir -p \"$INSTALL_DIR/log\"" || true
             
-            # 确保data目录存在且权限正确（在创建实例前设置）
+            # 确保data目录存在（在创建实例前确保目录存在）
             log_debug "确保data目录存在: $MQ_DATA_PATH"
             execute_command "mkdir -p \"$MQ_DATA_PATH\""
-            if [[ "$OS_TYPE" == "Linux" ]]; then
-                # 设置data目录权限，确保当前用户有权限
-                log_debug "设置data目录权限: $MQ_DATA_PATH"
-                execute_command "chown -R $(whoami):$(whoami) \"$MQ_DATA_PATH\"" || true
-                execute_command "chmod 755 \"$MQ_DATA_PATH\"" || true
-                # 确保data目录下的文件有正确的权限
-                execute_command "find \"$MQ_DATA_PATH/\" -type f -exec chmod 664 {} \;" || true
-            fi
             
             # 创建broker实例
             local create_cmd="$INSTALL_DIR/bin/artemis create --force --allow-anonymous --require-login --user admin --password admin --role amq --name artemis --http-host 0.0.0.0 --host 0.0.0.0 $INSTALL_DIR"
@@ -1414,6 +1469,15 @@ start_mq() {
             # 使用silent模式避免交互式输入
             CREATE_OUTPUT=$(echo -e "admin\nadmin" | $create_cmd --silent 2>&1)
             echo "$CREATE_OUTPUT"
+            
+            # 设置data目录权限（在创建实例后，启动服务前）
+            if [[ "$OS_TYPE" == "Linux" ]]; then
+                log_debug "设置data目录权限: $MQ_DATA_PATH"
+                execute_command "chown -R $(whoami):$(whoami) \"$MQ_DATA_PATH\"" || true
+                execute_command "chmod 755 \"$MQ_DATA_PATH\"" || true
+                # 确保data目录下的文件有正确的权限
+                execute_command "find \"$MQ_DATA_PATH/\" -type f -exec chmod 664 {} \;" || true
+            fi
             
             # 修改artemis.profile文件添加容器支持禁用参数
             local profile_file="$INSTALL_DIR/etc/artemis.profile"
@@ -1437,11 +1501,12 @@ EOF
             fi
         else
             log_info "ActiveMQ Artemis broker实例已存在"
-            # 确保data目录存在且权限正确（实例存在时也设置）
+            # 确保data目录存在（实例存在时也确保目录存在）
             log_debug "确保data目录存在: $MQ_DATA_PATH"
             execute_command "mkdir -p \"$MQ_DATA_PATH\""
+            
+            # 设置data目录权限（在启动服务前）
             if [[ "$OS_TYPE" == "Linux" ]]; then
-                # 设置data目录权限，确保当前用户有权限
                 log_debug "设置data目录权限: $MQ_DATA_PATH"
                 execute_command "chown -R $(whoami):$(whoami) \"$MQ_DATA_PATH\"" || true
                 execute_command "chmod 755 \"$MQ_DATA_PATH\"" || true
@@ -1450,17 +1515,9 @@ EOF
             fi
         fi
     else
-        # 对于Classic ActiveMQ，确保data目录存在且权限正确
+        # 对于Classic ActiveMQ，确保data目录存在
         log_debug "确保data目录存在: $MQ_DATA_PATH"
         execute_command "mkdir -p \"$MQ_DATA_PATH\""
-        if [[ "$OS_TYPE" == "Linux" ]]; then
-            # 设置data目录权限，确保当前用户有权限
-            log_debug "设置data目录权限: $MQ_DATA_PATH"
-            execute_command "chown -R $(whoami):$(whoami) \"$MQ_DATA_PATH\"" || true
-            execute_command "chmod 755 \"$MQ_DATA_PATH\"" || true
-            # 确保data目录下的文件有正确的权限
-            execute_command "find \"$MQ_DATA_PATH/\" -type f -exec chmod 664 {} \;" || true
-        fi
     fi
 
     # 为Java 17设置兼容参数
@@ -1501,7 +1558,11 @@ restart_activemq() {
     log_info "重启ActiveMQ服务以应用配置更改..."
     
     if [[ -f "$INSTALL_DIR/bin/stop.sh" ]]; then
-        "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+        if [[ "$FORCE_REINSTALL" == true ]]; then
+            "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" --force || true
+        else
+            "$INSTALL_DIR/bin/stop.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || true
+        fi
     fi
     if [[ -f "$INSTALL_DIR/bin/start.sh" ]]; then
         "$INSTALL_DIR/bin/start.sh" -d "$INSTALL_DIR" --log-level "$LOG_LEVEL" || {
@@ -1544,13 +1605,15 @@ create_systemd_service() {
         fi
         
         # 确保data目录存在且权限正确
-        execute_command "mkdir -p "$MQ_DATA_PATH""
+        execute_command "mkdir -p \"$MQ_DATA_PATH\""
         # 如果mq用户存在，使用该用户；否则使用当前用户
         if id "mq" &>/dev/null; then
             set_directory_permissions "$MQ_DATA_PATH" "mq:mq"
         else
             set_directory_permissions "$MQ_DATA_PATH"
         fi
+        # 确保data目录下的文件有正确的权限
+        execute_command "find \"$MQ_DATA_PATH/\" -type f -exec chmod 664 {} \;" || true
         
         # 确保conf目录存在且权限正确
         execute_command "mkdir -p "$MQ_CONF_PATH""
@@ -1573,7 +1636,12 @@ create_systemd_service() {
         
         # 使用自定义启动脚本（自动检测MQ类型）
         local service_exec_start="$INSTALL_DIR/bin/start.sh -d $INSTALL_DIR"
-        local service_exec_stop="$INSTALL_DIR/bin/stop.sh -d $INSTALL_DIR --log-level $LOG_LEVEL"
+        local service_exec_stop
+        if [[ "$FORCE_REINSTALL" == true ]]; then
+            service_exec_stop="$INSTALL_DIR/bin/stop.sh -d $INSTALL_DIR --log-level $LOG_LEVEL --force"
+        else
+            service_exec_stop="$INSTALL_DIR/bin/stop.sh -d $INSTALL_DIR --log-level $LOG_LEVEL"
+        fi
         
         # 创建systemd服务文件内容
         local SERVICE_FILE_CONTENT="[Unit]
@@ -1638,9 +1706,6 @@ main() {
     # 解析命令行参数
     parse_arguments "$@"
     
-    # 初始化公共变量
-    initialize_common_variables
-    
     # 设置端口变量，确保它们在使用前被定义
     BROKER_PORT=${BROKER_PORT:-$DEFAULT_BROKER_PORT}
     JETTY_PORT=${JETTY_PORT:-$DEFAULT_JETTY_PORT}
@@ -1652,6 +1717,11 @@ main() {
     # 检查是否为卸载模式
     if [[ "$UNINSTALL_MODE" == true ]]; then
         log_info "执行卸载模式"
+        # 当使用 -f 参数进行卸载时，强制删除数据目录
+        if [[ "$FORCE_REINSTALL" == true ]]; then
+            REMOVE_DATA=true
+            log_info "强制卸载模式启用，将删除数据目录"
+        fi
         if [[ -z "$INSTALL_DIR" ]]; then
             INSTALL_DIR="$DEFAULT_INSTALL_DIR"
         fi
@@ -1667,6 +1737,9 @@ main() {
     fi
     log_info "检测到操作系统: $OS_TYPE"
     log_info "安装目录: $INSTALL_DIR"
+    
+    # 初始化公共变量（在INSTALL_DIR设置之后）
+    initialize_common_variables
     
     # 在检查已安装服务之前，先复制脚本以确保停止脚本可用
     if [[ -f "$SOURCE_DIR/start.sh" ]] || [[ -f "$SOURCE_DIR/stop.sh" ]]; then
@@ -1703,11 +1776,44 @@ main() {
         fi
     fi
     
+    # 检查已安装的版本
     check_installed
+    
+    # 根据安装目录中的现有文件确定MQ类型（如果尚未确定）
+    # 优先使用安装目录中实际存在的文件来确定类型
+    if [[ -x "$INSTALL_DIR/bin/artemis" ]]; then
+        # 如果已安装Artemis，使用Artemis类型
+        local detected_type="artemis"
+        local detected_name=$(get_mq_display_name "$detected_type")
+        if [[ "$MQ_TYPE" != "$detected_type" ]]; then
+            log_info "检测到已安装的$detected_name，将使用此版本进行安装"
+        fi
+        MQ_TYPE="$detected_type"
+    elif [[ -x "$INSTALL_DIR/bin/activemq" ]]; then
+        # 如果已安装Classic，使用Classic类型
+        local detected_type="classic"
+        local detected_name=$(get_mq_display_name "$detected_type")
+        if [[ "$MQ_TYPE" != "$detected_type" ]]; then
+            log_info "检测到已安装的$detected_name，将使用此版本进行安装"
+        fi
+        MQ_TYPE="$detected_type"
+    # 如果安装目录中没有可执行文件，使用默认类型或命令行参数指定的类型
+    else
+        # 如果没有检测到已安装的版本，使用命令行参数或默认值
+        MQ_TYPE="${MQ_TYPE:-artemis}"  # 默认使用artemis
+    fi
+    
+    # 更新显示名称
+    MQ_DISPLAY_NAME=$(get_mq_display_name "$MQ_TYPE")
+    
+    # 显示将要安装的版本信息
+    log_info "将要安装的版本: $MQ_DISPLAY_NAME $MQ_VERSION"
+    
     if ! check_java; then
         log_error "Java未安装或版本不满足，退出"
         exit 1
     fi
+
     
     if ! download_mq "$MQ_VERSION"; then
         log_error "下载失败，退出"

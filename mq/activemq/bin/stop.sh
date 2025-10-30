@@ -91,13 +91,13 @@ stop_mq() {
             PID=$(tr -d '\r\n' < "$pid_file" 2>/dev/null)
             if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
                 echo "检测到$mq_display_name运行 (PID: $PID)，正在停止"
-                "$mq_script" stop 2>/dev/null || sudo -n "$mq_script" stop 2>/dev/null || true
+                "$mq_script" stop >/dev/null 2>&1 || sudo -n "$mq_script" stop >/dev/null 2>&1 || true
                 sleep 5
             else
                 rm -f "$pid_file" 2>/dev/null || true
             fi
         else
-            "$mq_script" stop 2>/dev/null || sudo -n "$mq_script" stop 2>/dev/null || true
+            "$mq_script" stop >/dev/null 2>&1 || sudo -n "$mq_script" stop >/dev/null 2>&1 || true
             sleep 5
         fi
     fi

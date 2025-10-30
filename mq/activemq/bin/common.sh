@@ -109,30 +109,31 @@ detect_mq_type_by_path() {
     local install_dir="$1"
     local silent="${2:-false}"  # 添加静默参数
     
+    # 首先检查安装目录中是否存在可执行文件
     if [[ -x "$install_dir/bin/artemis" ]]; then
         [[ "$silent" != "true" ]] && log_debug "检测到Artemis MQ"
         echo "artemis"
+        return
     elif [[ -x "$install_dir/bin/activemq" ]]; then
         [[ "$silent" != "true" ]] && log_debug "检测到Classic MQ"
         echo "classic"
-    else
-        if [[ "$silent" != "true" ]]; then
-            log_warn "在 $install_dir/bin 中未找到 artemis 或 activemq 启动脚本，尝试通过进程检测MQ类型"
-        fi
-        # 尝试通过进程检测MQ类型
-        if pgrep -f "artemis.*run|org.apache.activemq.artemis|Artemis" > /dev/null 2>&1; then
-            [[ "$silent" != "true" ]] && log_debug "通过进程检测到Artemis MQ"
-            echo "artemis"
-        elif pgrep -f "activemq.jar|org.apache.activemq|ActiveMQ" > /dev/null 2>&1; then
-            [[ "$silent" != "true" ]] && log_debug "通过进程检测到Classic MQ"
-            echo "classic"
-        else
-            if [[ "$silent" != "true" ]]; then
-                log_warn "无法自动检测MQ类型，使用默认classic类型"
-            fi
-            echo "classic"
-        fi
+        return
     fi
+    
+    # 如果安装目录中没有可执行文件，尝试通过进程检测MQ类型
+    if pgrep -f "artemis.*run|org.apache.activemq.artemis|Artemis" > /dev/null 2>&1; then
+        [[ "$silent" != "true" ]] && log_debug "通过进程检测到Artemis MQ"
+        echo "artemis"
+        return
+    elif pgrep -f "activemq.jar|org.apache.activemq|ActiveMQ" > /dev/null 2>&1; then
+        [[ "$silent" != "true" ]] && log_debug "通过进程检测到Classic MQ"
+        echo "classic"
+        return
+    fi
+    
+    # 如果都没有检测到，返回默认类型
+    # 不记录警告日志，因为这是正常情况
+    echo "artemis"  # 默认使用artemis而不是classic
 }
 
 # 获取MQ名称的文本描述
