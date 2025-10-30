@@ -129,7 +129,7 @@ trap 'handle_error $LINENO "$BASH_COMMAND"' ERR
 cleanup_and_exit() {
     log_info "清理并退出..."
     if [ "$ACTION" != "stop" ] && [ "$ACTION" != "uninstall" ]; then
-        stop_processes || true
+        call_stop_script ${FORCE_STOP:+-f} || true
     fi
     exit "$1"
 }
@@ -708,12 +708,25 @@ main() {
             esac
             
             log_info "RocketMQ 安装和配置完成！"
+            
+            # 询问用户是否启动服务
+            read -p "是否现在启动 RocketMQ 服务? (y/N): " -n 1 -r
             echo
-            echo "配置文件已生成，使用以下命令启动服务："
-            echo "./start.sh -d $INSTALL_DIR -m $mode_choice"
-            if [ "$mode_choice" != "1" ]; then
-                echo "  如果使用模式 2 或 3，还需要指定 broker:"
-                echo "  ./start.sh -d $INSTALL_DIR -m $mode_choice -b $broker_choice"
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                # 根据选择的模式调用启动脚本
+                if [ "$mode_choice" = "1" ]; then
+                    call_start_script -m "$mode_choice"
+                else
+                    call_start_script -m "$mode_choice" -b "$broker_choice"
+                fi
+            else
+                echo
+                echo "配置文件已生成，使用以下命令启动服务："
+                echo "./start.sh -d $INSTALL_DIR -m $mode_choice"
+                if [ "$mode_choice" != "1" ]; then
+                    echo "  如果使用模式 2 或 3，还需要指定 broker:"
+                    echo "  ./start.sh -d $INSTALL_DIR -m $mode_choice -b $broker_choice"
+                fi
             fi
             echo
             echo "启动脚本位于: $INSTALL_DIR/bin/"
@@ -721,7 +734,7 @@ main() {
             ;;
         stop)
             log_info "停止 RocketMQ 服务"
-            stop_processes
+            call_stop_script ${FORCE_STOP:+-f}
             ;;
         uninstall)
             log_info "执行卸载操作"
