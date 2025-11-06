@@ -1,15 +1,17 @@
 #!/bin/bash
 
 # RocketMQ 启动脚本
-# 版本: 1.0
+# 版本: 1.1
 # 用途: 启动 RocketMQ 服务
 
 set -euo pipefail  # 严格错误处理模式
 
+# === 引入公共函数库 ===
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
 # === 配置参数 ===
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly DEFAULT_INSTALL_DIR="$HOME/rocketmq"
-readonly LOG_FILE="/tmp/rocketmq_start.log"
+# 使用common.sh中的默认值
 
 # === 全局变量 ===
 INSTALL_DIR="$DEFAULT_INSTALL_DIR"
@@ -110,58 +112,10 @@ parse_arguments() {
 }
 
 # === 日志函数 ===
-log() {
-    local level="$1"
-    shift
-    local message="$*"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "[$timestamp] [$level] $message" | tee -a "$LOG_FILE"
-}
-
-log_info() {
-    log "INFO" "$@"
-}
-
-log_warn() {
-    log "WARN" "$@"
-}
-
-log_error() {
-    log "ERROR" "$@"
-}
+# 使用common.sh中的日志函数
 
 # === 工具函数 ===
-get_os() {
-    uname -s | tr '[:upper:]' '[:lower:]'
-}
-
-get_ip() {
-    # Linux
-    if command -v hostname >/dev/null 2>&1 && [ "$(get_os)" != "darwin" ]; then
-        hostname -I | awk '{print $1}' 2>/dev/null
-    # macOS
-    elif [ "$(get_os)" = "darwin" ]; then
-        ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' | head -n1
-    # 通用方式
-    else
-        hostname -f 2>/dev/null || echo "127.0.0.1"
-    fi
-}
-
-validate_ip() {
-    local ip="$1"
-    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-        IFS='.' read -ra parts <<< "$ip"
-        for part in "${parts[@]}"; do
-            if (( part < 0 || part > 255 )); then
-                return 1
-            fi
-        done
-        return 0
-    else
-        return 1
-    fi
-}
+# 使用common.sh中的工具函数
 
 # === 配置修改函数 ===
 modify_config_value() {
@@ -182,44 +136,7 @@ modify_config_value() {
 }
 
 # === 环境设置函数 ===
-setup_jdk_env() {
-    local file="$1"
-    
-    # 检查文件是否存在
-    if [ ! -f "$file" ]; then
-        log_warn "文件不存在: $file"
-        return
-    fi
-    
-    # 检查是否已经设置了JAVA_HOME
-    if grep -q "JAVA_HOME" "$file"; then
-        log_info "文件 $file 已包含 JAVA_HOME 配置"
-        return
-    fi
-    
-    # 尝试查找可用的JDK
-    local java_home_found=false
-    if command -v update-alternatives &>/dev/null && update-alternatives --list java &>/dev/null; then
-        local jdk11_path=$(update-alternatives --list java | grep -E "(jdk-11|java-1.11)" | head -n1)
-        if [ -z "$jdk11_path" ]; then
-            jdk11_path=$(update-alternatives --list java | head -n1)  # 用第一个JDK
-        fi
-        if [ -n "$jdk11_path" ]; then
-            local calculated_java_home=$(dirname "$(dirname "$(readlink -f "$jdk11_path")")")
-            local sed_opt=""
-            if [ "$(get_os)" = "darwin" ]; then
-                sed_opt="''"
-            fi
-            sed -i "$sed_opt" '2iexport JAVA_HOME='"$calculated_java_home" "$file" 2>/dev/null || true
-            java_home_found=true
-            log_info "为 $file 设置 JAVA_HOME=$calculated_java_home"
-        fi
-    fi
-    
-    if [ "$java_home_found" = false ]; then
-        log_warn "未找到 JDK，使用系统默认 Java 环境"
-    fi
-}
+# 使用common.sh中的setup_jdk_env函数
 
 # === 服务启动函数 ===
 start_namesrv() {
@@ -233,10 +150,13 @@ start_namesrv() {
     fi
     
     # 设置环境变量
-    setup_jdk_env "$INSTALL_DIR/bin/mqnamesrv"
+    setup_jdk_env "$INSTALL_DIR/bin/mqnamesrv" "$OS"
     
     nohup "$INSTALL_DIR/bin/mqnamesrv" -n "$IP:$namesrv_port" > /dev/null 2>&1 &
     local pid=$!
+    
+    # 创建PID文件
+    create_pid_file "namesrv" $pid "$INSTALL_DIR"
     
     # 等待服务启动
     sleep 3
@@ -269,11 +189,14 @@ start_broker() {
     fi
     
     # 设置环境变量
-    setup_jdk_env "$INSTALL_DIR/bin/mqbroker"
-    setup_jdk_env "$INSTALL_DIR/bin/runbroker.sh"
+    setup_jdk_env "$INSTALL_DIR/bin/mqbroker" "$OS"
+    setup_jdk_env "$INSTALL_DIR/bin/runbroker.sh" "$OS"
     
     nohup sh "$INSTALL_DIR/bin/mqbroker" -c "$broker_conf" -n "$IP:9876" autoCreateTopicEnable="$auto_create_topic" > /dev/null 2>&1 &
     local pid=$!
+    
+    # 创建PID文件
+    create_pid_file "broker-$(basename "$broker_conf" .properties)" $pid "$INSTALL_DIR"
     
     # 等待服务启动
     sleep 5
@@ -307,6 +230,16 @@ start_2m_noslave_mode() {
         > "$broker_a_conf"
         > "$broker_b_conf"
     fi
+    
+    # 验证配置文件
+    validate_config "$broker_a_conf" || {
+        log_error "Broker A 配置文件验证失败"
+        exit 1
+    }
+    validate_config "$broker_b_conf" || {
+        log_error "Broker B 配置文件验证失败"
+        exit 1
+    }
     
     # 修改配置文件
     modify_config_value "listenPort" "10911" "$broker_a_conf"
@@ -350,6 +283,16 @@ start_m_s_mode() {
         > "$master_conf"
         > "$slave_conf"
     fi
+    
+    # 验证配置文件
+    validate_config "$master_conf" || {
+        log_error "Master Broker 配置文件验证失败"
+        exit 1
+    }
+    validate_config "$slave_conf" || {
+        log_error "Slave Broker 配置文件验证失败"
+        exit 1
+    }
     
     # 设置主broker配置
     modify_config_value "listenPort" "10911" "$master_conf"
@@ -420,6 +363,44 @@ main() {
     # 等待服务启动
     log_info "等待服务启动..."
     sleep 5
+    
+    # 进行健康检查
+    log_info "进行服务健康检查..."
+    local namesrv_addr="$IP:9876"
+    if check_namesrv_health "$namesrv_addr"; then
+        log_info "NameServer 服务健康检查通过"
+    else
+        log_warn "NameServer 服务健康检查失败"
+    fi
+    
+    # 检查broker服务健康状态
+    if [ "$MODE" = "1" ]; then
+        # 2m-noslave模式，检查两个broker
+        if check_broker_health "$IP:10911"; then
+            log_info "Broker A 服务健康检查通过"
+        else
+            log_warn "Broker A 服务健康检查失败"
+        fi
+        if check_broker_health "$IP:10912"; then
+            log_info "Broker B 服务健康检查通过"
+        else
+            log_warn "Broker B 服务健康检查失败"
+        fi
+    else
+        # 主从模式，检查master和slave
+        local broker_port=10911
+        local slave_port=10912
+        if check_broker_health "$IP:$broker_port"; then
+            log_info "Master Broker 服务健康检查通过"
+        else
+            log_warn "Master Broker 服务健康检查失败"
+        fi
+        if check_broker_health "$IP:$slave_port"; then
+            log_info "Slave Broker 服务健康检查通过"
+        else
+            log_warn "Slave Broker 服务健康检查失败"
+        fi
+    fi
     
     # 显示运行进程
     log_info "当前运行的 RocketMQ 进程:"

@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  seata-server:
+    image: seataio/seata-server:latest
+    hostname: seata-server
+    container_name: seata-server
+    ports:
+      - "8091:8091"
+    environment:
+      - STORE_MODE=file
+      - SEATA_IP=127.0.0.1  # 根据实际情况修改IP地址
+      - SEATA_PORT=8091
+    volumes:
+      - ./logs:/root/logs
+      - ./conf:/root/conf
+    networks:
+      - seata-net
+
+  # 如果需要数据库支持，可以启用下面的MySQL服务
+  # seata-mysql:
+  #   image: mysql:8.0
+  #   container_name: seata-mysql
+  #   ports:
+  #     - "3306:3306"
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: seata123
+  #     MYSQL_DATABASE: seata
+  #   volumes:
+  #     - ./mysql-data:/var/lib/mysql
+  #     - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+  #   networks:
+  #     - seata-net
+
+networks:
+  seata-net:
+    driver: bridge
+
+# volumes:
+#   mysql-data:

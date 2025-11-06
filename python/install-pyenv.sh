@@ -18,7 +18,13 @@ install_dependencies() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
     if ! command -v brew &> /dev/null; then
-      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      # 尝试使用镜像源或备选方法安装 Homebrew
+      log $YELLOW "正在安装 Homebrew..."
+      if ! /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
+        log $YELLOW "尝试使用镜像源安装 Homebrew..."
+        export HOMEBREW_BOTTLE_DOMAIN=https://mirrors.ustc.edu.cn/homebrew-bottles
+        /bin/bash -c "$(curl -fsSL https://gitee.com/cunkai/HomebrewCN/raw/master/Homebrew.sh)"
+      fi
     fi
   else
     # Linux
@@ -35,7 +41,26 @@ install_pyenv() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
         brew install pyenv 
     else
-        curl -sSL https://pyenv.run | bash    
+        # 尝试多种安装方式
+        log $YELLOW "正在安装 pyenv..."
+        
+        # 方法1: 直接从 GitHub 安装
+        if ! curl -sSL https://pyenv.run | bash; then
+            log $YELLOW "GitHub 安装失败，尝试从镜像源安装..."
+            
+            # 方法2: 使用镜像源或直接克隆
+            if [ -d "$HOME/.pyenv" ]; then
+                rm -rf "$HOME/.pyenv"
+            fi
+            
+            # 尝试从 GitHub 镜像克隆
+            if ! git clone https://ghproxy.com/github.com/pyenv/pyenv.git ~/.pyenv; then
+                if ! git clone https://gitee.com/mirrors/pyenv.git ~/.pyenv; then
+                    log $RED "无法从镜像源安装 pyenv"
+                    exit 1
+                fi
+            fi
+        fi
     fi
   fi
   
@@ -47,11 +72,17 @@ install_pyenv() {
   else
     echo 'export PYENV_ROOT="$HOME/.pyenv"' >> "$SHELL_CONFIG"
 	echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> $SHELL_CONFIG
+	echo 'eval "$(pyenv init --path)"' >> $SHELL_CONFIG
 	echo 'eval "$(pyenv init -)"' >> $SHELL_CONFIG
     log $GREEN "pyenv 配置已写入 $SHELL_CONFIG"
   fi
   log $YELLOW "验证安装..."
-  source "$SHELL_CONFIG"
+  # 重新加载 shell 配置
+  export PYENV_ROOT="$HOME/.pyenv"
+  export PATH="$PYENV_ROOT/bin:$PATH"
+  eval "$(pyenv init --path)"
+  eval "$(pyenv init -)"
+  
   if command -v pyenv > /dev/null 2>&1; then
     log $GREEN "pyenv 安装成功！版本: $(pyenv --version)"
   else

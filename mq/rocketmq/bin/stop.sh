@@ -1,15 +1,17 @@
 #!/bin/bash
 
 # RocketMQ 停止脚本
-# 版本: 1.0
+# 版本: 1.1
 # 用途: 停止 RocketMQ 服务
 
 set -euo pipefail  # 严格错误处理模式
 
+# === 引入公共函数库 ===
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
 # === 配置参数 ===
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly DEFAULT_INSTALL_DIR="$HOME/rocketmq"
-readonly LOG_FILE="/tmp/rocketmq_stop.log"
+# 使用common.sh中的默认值
 
 # === 全局变量 ===
 INSTALL_DIR="$DEFAULT_INSTALL_DIR"
@@ -64,25 +66,7 @@ parse_arguments() {
 }
 
 # === 日志函数 ===
-log() {
-    local level="$1"
-    shift
-    local message="$*"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "[$timestamp] [$level] $message" | tee -a "$LOG_FILE"
-}
-
-log_info() {
-    log "INFO" "$@"
-}
-
-log_warn() {
-    log "WARN" "$@"
-}
-
-log_error() {
-    log "ERROR" "$@"
-}
+# 使用common.sh中的日志函数
 
 # === 服务控制函数 ===
 stop_rocketmq_processes() {
@@ -133,27 +117,16 @@ stop_rocketmq_processes() {
         pgrep -f "mqbroker" | xargs -r kill -9 2>/dev/null || true
     fi
     
+    # 清理PID文件
+    local pid_dir="$INSTALL_DIR/run"
+    if [ -d "$pid_dir" ]; then
+        rm -f "$pid_dir/"*.pid
+    fi
+    
     log_info "进程停止完成"
 }
 
-check_running_processes() {
-    local namesrv_running=$(pgrep -f "mqnamesrv")
-    local broker_running=$(pgrep -f "mqbroker")
-    
-    if [ -n "$namesrv_running" ] || [ -n "$broker_running" ]; then
-        log_info "检测到 RocketMQ 进程正在运行"
-        if [ -n "$namesrv_running" ]; then
-            echo "NameServer 进程: $namesrv_running"
-        fi
-        if [ -n "$broker_running" ]; then
-            echo "Broker 进程: $broker_running"
-        fi
-        return 0
-    else
-        log_info "未检测到运行中的 RocketMQ 进程"
-        return 1
-    fi
-}
+# 使用common.sh中的check_running_processes函数
 
 # === 主函数 ===
 main() {

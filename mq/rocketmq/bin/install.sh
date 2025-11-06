@@ -1,19 +1,17 @@
 #!/bin/bash
 
 # RocketMQ 安装脚本
-# 版本: 2.2
+# 版本: 2.4
 # 用途: 安装和配置 RocketMQ 集群
 
 set -euo pipefail  # 严格错误处理模式
 
+# === 引入公共函数库 ===
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
 # === 配置参数 ===
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly DEFAULT_VERSION="5.3.3"
-readonly DEFAULT_DOWNLOAD_URL="https://dist.apache.org/repos/dist/release/rocketmq/${DEFAULT_VERSION}/rocketmq-all-${DEFAULT_VERSION}-bin-release.zip"
-readonly DOWNLOAD_DIR="/tmp"
-readonly TEMP_EXTRACT_DIR="/tmp"
-readonly DEFAULT_INSTALL_DIR="$HOME/rocketmq"
-readonly LOG_FILE="/tmp/rocketmq_install.log"
+# 使用common.sh中的默认值
 
 # === 全局变量 ===
 ROCKETMQ_HOME=""
@@ -23,6 +21,8 @@ IP=""
 OS=""
 FORCE_STOP=false
 ACTION="install"  # install, uninstall, stop
+DOWNLOAD_URL="$DEFAULT_DOWNLOAD_URL"
+LOG_FILE="/tmp/rocketmq_install.log"
 
 # === 帮助信息 ===
 show_help() {
@@ -31,17 +31,16 @@ show_help() {
 
 选项:
     -d, --dir DIR     指定安装目录 (默认: $DEFAULT_INSTALL_DIR)
-    -a, --action ACT  指定操作: install(默认), uninstall, stop
-    -f, --force       停止服务时强制终止进程
+    -v, --version V   指定RocketMQ版本 (默认: $DEFAULT_VERSION)
+    --uninstall       卸载 RocketMQ
     -h, --help        显示此帮助信息
 
 示例:
     $0                                    # 安装到默认目录
     $0 -d /opt/rocketmq                   # 安装到 /opt/rocketmq
     $0 --dir /usr/local/rocketmq          # 安装到 /usr/local/rocketmq
-    $0 -a uninstall                       # 卸载 RocketMQ
-    $0 -a stop                          # 停止 RocketMQ 服务
-    $0 -a stop -f                       # 强制停止 RocketMQ 服务
+    $0 -v 5.1.4                          # 安装指定版本
+    $0 --uninstall                        # 卸载 RocketMQ
 EOF
 }
 
@@ -59,27 +58,19 @@ parse_arguments() {
                     exit 1
                 fi
                 ;;
-            -a|--action)
+            -v|--version)
                 if [[ -n "${2:-}" ]]; then
-                    case $2 in
-                        install|uninstall|stop)
-                            ACTION="$2"
-                            shift 2
-                            ;;
-                        *)
-                            log_error "错误: 无效的操作 '$2'，支持的操作: install, uninstall, stop"
-                            show_help
-                            exit 1
-                            ;;
-                    esac
+                    DEFAULT_VERSION="$2"
+                    DOWNLOAD_URL="https://dist.apache.org/repos/dist/release/rocketmq/${DEFAULT_VERSION}/rocketmq-all-${DEFAULT_VERSION}-bin-release.zip"
+                    shift 2
                 else
-                    log_error "错误: -a|--action 参数需要提供操作类型"
+                    log_error "错误: -v|--version 参数需要提供版本号"
                     show_help
                     exit 1
                 fi
                 ;;
-            -f|--force)
-                FORCE_STOP=true
+            --uninstall)
+                ACTION="uninstall"
                 shift
                 ;;
             -h|--help)
@@ -96,25 +87,7 @@ parse_arguments() {
 }
 
 # === 日志函数 ===
-log() {
-    local level="$1"
-    shift
-    local message="$*"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "[$timestamp] [$level] $message" | tee -a "$LOG_FILE"
-}
-
-log_info() {
-    log "INFO" "$@"
-}
-
-log_warn() {
-    log "WARN" "$@"
-}
-
-log_error() {
-    log "ERROR" "$@"
-}
+# 使用common.sh中的日志函数
 
 # === 错误处理 ===
 handle_error() {
@@ -128,7 +101,7 @@ trap 'handle_error $LINENO "$BASH_COMMAND"' ERR
 
 cleanup_and_exit() {
     log_info "清理并退出..."
-    if [ "$ACTION" != "stop" ] && [ "$ACTION" != "uninstall" ]; then
+    if [ "$ACTION" != "uninstall" ]; then
         call_stop_script ${FORCE_STOP:+-f} || true
     fi
     exit "$1"
@@ -166,58 +139,11 @@ check_dependencies() {
 }
 
 # === 工具函数 ===
-get_os() {
-    uname -s | tr '[:upper:]' '[:lower:]'
-}
-
-get_ip() {
-    # 尝试不同的IP获取方式
-    local ip=""
-    
-    # 尝试使用外部脚本
-    if [ -f "../linux/ip.sh" ]; then
-        ip=$(../linux/ip.sh 2>/dev/null) || true
-    fi
-    
-    # 如果外部脚本失败或不存在，使用内置方式
-    if [ -z "$ip" ]; then
-        # Linux
-        if command -v hostname >/dev/null 2>&1 && [ "$(get_os)" != "darwin" ]; then
-            ip=$(hostname -I | awk '{print $1}' 2>/dev/null) || true
-        fi
-        
-        # macOS
-        if [ -z "$ip" ] && [ "$(get_os)" = "darwin" ]; then
-            ip=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' | head -n1)
-        fi
-        
-        # 通用方式
-        if [ -z "$ip" ]; then
-            ip=$(hostname -f 2>/dev/null || echo "127.0.0.1")
-        fi
-    fi
-    
-    echo "$ip"
-}
-
-validate_ip() {
-    local ip="$1"
-    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-        IFS='.' read -ra parts <<< "$ip"
-        for part in "${parts[@]}"; do
-            if (( part < 0 || part > 255 )); then
-                return 1
-            fi
-        done
-        return 0
-    else
-        return 1
-    fi
-}
+# 使用common.sh中的工具函数
 
 # === 下载和验证函数 ===
 download_file() {
-    local url="$1"
+    local url="${1:-$DEFAULT_DOWNLOAD_URL}"
     local dest="$2"
     
     log_info "正在下载: $url"
@@ -296,7 +222,7 @@ check_zip_integrity() {
 
 # === 安装和配置 ===
 install_rocketmq() {
-    local download_url="${1:-$DEFAULT_DOWNLOAD_URL}"
+    local download_url="${1:-$DOWNLOAD_URL}"
     local zip_file=$(basename "$download_url")
     local extract_dir=$(basename "${download_url%.*}")
     
@@ -392,71 +318,7 @@ call_start_script() {
     fi
 }
 
-stop_processes() {
-    log_info "停止 NameServer 和 Broker 进程"
-    
-    if [ "$FORCE_STOP" = true ]; then
-        log_info "强制停止模式启用"
-        
-        # 强制终止所有相关进程
-        local namesrv_pids=$(pgrep -f "mqnamesrv")
-        if [ -n "$namesrv_pids" ]; then
-            log_info "强制停止 NameServer 进程: $namesrv_pids"
-            kill -9 $namesrv_pids 2>/dev/null || true
-        else
-            log_info "未找到运行中的 NameServer 进程"
-        fi
-        
-        local broker_pids=$(pgrep -f "mqbroker")
-        if [ -n "$broker_pids" ]; then
-            log_info "强制停止 Broker 进程: $broker_pids"
-            kill -9 $broker_pids 2>/dev/null || true
-        else
-            log_info "未找到运行中的 Broker 进程"
-        fi
-    else
-        # 使用常规停止方法
-        local namesrv_pids=$(pgrep -f "mqnamesrv")
-        if [ -n "$namesrv_pids" ]; then
-            log_info "停止 NameServer 进程: $namesrv_pids"
-            kill $namesrv_pids 2>/dev/null || true
-        else
-            log_info "未找到运行中的 NameServer 进程"
-        fi
-        
-        local broker_pids=$(pgrep -f "mqbroker")
-        if [ -n "$broker_pids" ]; then
-            log_info "停止 Broker 进程: $broker_pids"
-            kill $broker_pids 2>/dev/null || true
-        else
-            log_info "未找到运行中的 Broker 进程"
-        fi
-        
-        # 等待进程终止
-        sleep 2
-        
-        # 如果仍有进程运行，则强制终止
-        pgrep -f "mqnamesrv" | xargs -r kill -9 2>/dev/null || true
-        pgrep -f "mqbroker" | xargs -r kill -9 2>/dev/null || true
-    fi
-    
-    log_info "进程停止完成"
-}
-
-check_running_processes() {
-    local namesrv_running=$(pgrep -f "mqnamesrv")
-    local broker_running=$(pgrep -f "mqbroker")
-    
-    if [ -n "$namesrv_running" ] || [ -n "$broker_running" ]; then
-        log_warn "检测到 RocketMQ 进程已在运行"
-        echo "NameServer 进程: $namesrv_running" | grep -v "NameServer 进程: $"
-        echo "Broker 进程: $broker_running" | grep -v "Broker 进程: $"
-        return 0
-    else
-        log_info "未检测到运行中的 RocketMQ 进程"
-        return 1
-    fi
-}
+# 使用common.sh中的check_running_processes函数
 
 # === 卸载函数 ===
 uninstall_rocketmq() {
@@ -493,42 +355,7 @@ uninstall_rocketmq() {
 }
 
 # === 环境设置函数 ===
-setup_jdk_env() {
-    local file="$1"
-    
-    # 检查文件是否存在
-    if [ ! -f "$file" ]; then
-        log_warn "文件不存在: $file"
-        return
-    fi
-    
-    # 检查是否已经设置了JAVA_HOME
-    if grep -q "JAVA_HOME" "$file"; then
-        log_info "文件 $file 已包含 JAVA_HOME 配置"
-        return
-    fi
-    
-    # 尝试查找可用的JDK 11
-    local java_home_found=false
-    if command -v update-alternatives &>/dev/null && update-alternatives --list java &>/dev/null; then
-        local jdk11_path=$(update-alternatives --list java | grep "jdk-11" | head -n1)
-        if [ -n "$jdk11_path" ]; then
-            local calculated_java_home=$(dirname "$(dirname "$(readlink -f "$jdk11_path")")")
-            if [[ "$OS" == "darwin" ]]; then
-                sed -i.bak '2i\
-export JAVA_HOME='"$calculated_java_home" "$file"
-            else
-                sed -i '2iexport JAVA_HOME='"$calculated_java_home" "$file"
-            fi
-            java_home_found=true
-            log_info "为 $file 设置 JAVA_HOME=$calculated_java_home"
-        fi
-    fi
-    
-    if [ "$java_home_found" = false ]; then
-        log_warn "未找到 JDK 11，使用系统默认 Java 环境"
-    fi
-}
+# 使用common.sh中的setup_jdk_env函数
 
 # === 集群配置函数 ===
 setup_2m_noslave_mode() {
@@ -651,7 +478,7 @@ main() {
             fi
             
             # 安装 RocketMQ
-            install_rocketmq "$DEFAULT_DOWNLOAD_URL"
+            install_rocketmq "$DOWNLOAD_URL"
             setup_config
             
             # 选择部署模式
@@ -709,32 +536,18 @@ main() {
             
             log_info "RocketMQ 安装和配置完成！"
             
-            # 询问用户是否启动服务
-            read -p "是否现在启动 RocketMQ 服务? (y/N): " -n 1 -r
-            echo
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                # 根据选择的模式调用启动脚本
-                if [ "$mode_choice" = "1" ]; then
-                    call_start_script -m "$mode_choice"
-                else
-                    call_start_script -m "$mode_choice" -b "$broker_choice"
-                fi
+            # 自动启动RocketMQ服务
+            log_info "正在启动 RocketMQ 服务..."
+            # 根据选择的模式调用启动脚本
+            if [ "$mode_choice" = "1" ]; then
+                call_start_script -m "$mode_choice"
             else
-                echo
-                echo "配置文件已生成，使用以下命令启动服务："
-                echo "./start.sh -d $INSTALL_DIR -m $mode_choice"
-                if [ "$mode_choice" != "1" ]; then
-                    echo "  如果使用模式 2 或 3，还需要指定 broker:"
-                    echo "  ./start.sh -d $INSTALL_DIR -m $mode_choice -b $broker_choice"
-                fi
+                call_start_script -m "$mode_choice" -b "$broker_choice"
             fi
+            
             echo
             echo "启动脚本位于: $INSTALL_DIR/bin/"
             echo "配置文件位于: $CONF_DIR/"
-            ;;
-        stop)
-            log_info "停止 RocketMQ 服务"
-            call_stop_script ${FORCE_STOP:+-f}
             ;;
         uninstall)
             log_info "执行卸载操作"
