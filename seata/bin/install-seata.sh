@@ -4,6 +4,8 @@
 # 兼容主流 Linux 和 macOS 系统
 # 支持指定安装目录、卸载、自动启动服务和下载目录
 
+# 默认启用错误退出，但在调试模式下禁用
+DEBUG_MODE=false
 set -e  # 退出立即如果命令退出状态为非零
 
 # 导入公共函数库
@@ -18,7 +20,7 @@ fi
 # 公共变量
 DEFAULT_INSTALL_DIR="$HOME/seata"
 DEFAULT_DOWNLOAD_DIR="$HOME/Downloads"
-DEFAULT_VERSION=""  # 空值表示自动检测最新版本
+DEFAULT_VERSION="2.5.0"  # 固定版本号避免重复定义
 INSTALL_DIR="$DEFAULT_INSTALL_DIR"
 DOWNLOAD_DIR="$DEFAULT_DOWNLOAD_DIR"
 VERSION="$DEFAULT_VERSION"
@@ -26,15 +28,23 @@ UNINSTALL=false
 INSTALL_SERVICE=false
 FORCE_INSTALL=false
 CURRENT_USER=$(whoami)
-DEFAULT_VERSION="2.5.0" 
-VERSION=${DEFAULT_VERSION}
 SUDO_CMD="sudo"
 USE_SUDO=false
 OS=""
 
 # 下载URL
-SEATA_URL="https://www.apache.org/dyn/closer.lua/incubator/seata/${DEFAULT_VERSION}/apache-seata-${DEFAULT_VERSION}-incubating-bin.tar.gz?action=download"
+SEATA_URL="https://archive.apache.org/dist/incubator/seata/${DEFAULT_VERSION}/apache-seata-${DEFAULT_VERSION}-incubating-bin.tar.gz"
 BACKUP_URL="https://github.com/seata/seata/releases/download/v${DEFAULT_VERSION}/seata-server-${DEFAULT_VERSION}.tar.gz"
+# 国内镜像URL
+MIRROR_URL="https://mirrors.tuna.tsinghua.edu.cn/apache/incubator/seata/${DEFAULT_VERSION}/apache-seata-${DEFAULT_VERSION}-incubating-bin.tar.gz"
+
+# 有错误时也输出调试信息
+if [[ "$DEBUG_MODE" == true ]]; then
+    set +e  # 在调试模式下禁用立即退出
+    print_info "调试模式已启用，禁用set -e选项"
+else
+    set -e  # 在非调试模式下启用立即退出
+fi
 
 # 颜色输出
 RED='\033[0;31m'
@@ -44,15 +54,15 @@ NC='\033[0m' # 无颜色
 
 # 带颜色的输出函数
 print_info() {
-    echo -e "${GREEN}[信息]${NC} $1"
+    echo -e "${GREEN}[信息]${NC} $1" >&2
 }
 
 print_warn() {
-    echo -e "${YELLOW}[警告]${NC} $1"
+    echo -e "${YELLOW}[警告]${NC} $1" >&2
 }
 
 print_error() {
-    echo -e "${RED}[错误]${NC} $1"
+    echo -e "${RED}[错误]${NC} $1" >&2
 }
 
 # 显示使用帮助
@@ -69,6 +79,7 @@ Seata 自动安装脚本。
     -u, --uninstall         卸载 Seata
     -s, --service           安装自启动服务 (默认: false)
     -f                      强制安装 (如果目录已存在则覆盖)
+    -x, --debug             调试模式 (不使用 set -e，显示详细输出)
     -h, --help              显示此帮助消息
 
 示例:
@@ -78,6 +89,7 @@ Seata 自动安装脚本。
     $0 -d /opt/seata -s                  # 安装到 /opt/seata 并安装服务
     $0 -w /tmp/downloads                 # 使用自定义下载目录
     $0 -v 1.7.1 -f                       # 安装指定版本并强制覆盖
+    $0 -x                                  # 以调试模式运行
 EOF
 }
 
@@ -86,6 +98,7 @@ detect_os() {
     local os_type
     os_type=$(get_os_type 2>/dev/null)
     if [[ $? -ne 0 ]]; then
+        print_error "无法检测操作系统类型"
         exit 1
     fi
     OS="$os_type"
@@ -167,14 +180,16 @@ download_seata() {
     if [ "$VERSION" != "$DEFAULT_VERSION" ]; then
         # 替换URL中的DEFAULT_VERSION为VERSION
         url="${url//DEFAULT_VERSION/$VERSION}"
+        # 也替换可能的其他版本占位符
+        url="${url//$DEFAULT_VERSION/$VERSION}"
     fi
     
     # 从URL中获取tar文件名
-    local tar_file=$(basename "$url" | sed 's/action=download//g' | sed 's/\&.*//g')
+    local tar_file=$(basename "$url" | sed 's/action=download//g' | sed 's/\&.*//g' | sed 's/\?action=download//g')
     path="$DOWNLOAD_DIR/$tar_file"
     
     # 确保下载目录存在
-    [ ! -d $DOWNLOAD_DIR ] && mkdir -p "$DOWNLOAD_DIR"
+    [ ! -d "$DOWNLOAD_DIR" ] && mkdir -p "$DOWNLOAD_DIR"
     
     print_info "下载目录: $DOWNLOAD_DIR"
     print_info "从以下地址下载 Seata: $url"
@@ -189,28 +204,32 @@ download_seata() {
         fi
     fi
     
-    # 尝试多线程并行下载（如果 aria2c 可用）
+    # 尝试多线程并行下载（如果 aria2c 可用）- 优先使用性能最高的工具
     if command -v aria2c &> /dev/null; then
-        print_info "使用 aria2c 进行多线程并行下载"
-        aria2c -x 4 -s 4 -c -d "$DOWNLOAD_DIR" -o "$tar_file" "$url" && return 0
+        print_info "使用 aria2c 进行多线程并行下载 (4线程)"
+        aria2c -x 8 -s 8 -c --max-connection-per-server=8 --split=8 --continue=true -d "$DOWNLOAD_DIR" -o "$tar_file" "$url" && return 0
+        print_warn "aria2c 下载失败，尝试其他下载方式"
     # 如果 axel 可用
     elif command -v axel &> /dev/null; then
-        print_info "使用 axel 进行多线程并行下载"
-        axel -n 4 -o "$path" "$url" && return 0
+        print_info "使用 axel 进行多线程并行下载 (8线程)"
+        axel -n 8 -o "$DOWNLOAD_DIR/$tar_file" "$url" && return 0
+        print_warn "axel 下载失败，尝试其他下载方式"
+    # 使用 wget 断点续传
+    elif command -v wget &> /dev/null; then
+        print_info "使用 wget 断点续传下载"
+        # 使用 -c 进行断点续传，添加更多重试和超时设置
+        wget -c --tries=5 --timeout=30 --continue -O "$DOWNLOAD_DIR/$tar_file" "$url" && return 0
+        print_warn "wget 下载失败，尝试其他下载方式"
     # 使用 curl 断点续传
     elif command -v curl &> /dev/null; then
         print_info "使用 curl 断点续传下载"
         # 如果文件已存在部分，使用 -C - 进行断点续传
-        if [[ -f "$path" ]]; then
-            curl -L --fail --continue-at - -o "$path" "$url" && return 0
+        if [[ -f "$DOWNLOAD_DIR/$tar_file" ]]; then
+            curl -L --fail --continue-at - --connect-timeout 10 --max-time 3600 -o "$DOWNLOAD_DIR/$tar_file" "$url" && return 0
         else
-            curl -L --fail -o "$path" "$url" && return 0
+            curl -L --fail --connect-timeout 10 --max-time 3600 -o "$DOWNLOAD_DIR/$tar_file" "$url" && return 0
         fi
-    # 使用 wget 断点续传
-    elif command -v wget &> /dev/null; then
-        print_info "使用 wget 断点续传下载"
-        # 使用 -c 进行断点续传
-        wget -c -O "$path" "$url" && return 0
+        print_warn "curl 下载失败"
     else
         print_error "无可用下载工具 (aria2c, axel, curl, wget)"
         return 1
@@ -253,10 +272,23 @@ install_seata() {
     if ! tar -xzf "$path" -C "$install_dir" --strip-components=1; then
         print_error "解压失败，重新下载安装包"
         rm -f "$path"
-        download_seata
-        if ! tar -xzf "$path" -C "$install_dir" --strip-components=1; then
-            print_error "多次尝试后解压仍然失败"
-            exit 1
+        if download_seata "$SEATA_URL"; then
+            if ! tar -xzf "$path" -C "$install_dir" --strip-components=1; then
+                print_error "多次尝试后解压仍然失败"
+                exit 1
+            fi
+        else
+            # 如果重新下载也失败，尝试备用链接
+            print_warn "主下载链接失败，尝试备用链接"
+            if download_seata "$BACKUP_URL"; then
+                if ! tar -xzf "$path" -C "$install_dir" --strip-components=1; then
+                    print_error "备用链接下载的文件解压也失败"
+                    exit 1
+                fi
+            else
+                print_error "所有下载链接都失败，无法下载 Seata"
+                exit 1
+            fi
         fi
     fi
     
@@ -460,6 +492,13 @@ while [[ $# -gt 0 ]]; do
             FORCE_INSTALL=true
             shift
             ;;
+        -x|--debug)
+            DEBUG_MODE=true
+            # 在调试模式下禁用set -e
+            set +e
+            print_info "调试模式已启用，禁用set -e选项"
+            shift
+            ;;
         -h|--help)
             print_usage
             exit 0
@@ -511,8 +550,23 @@ main() {
         check_install_dir_exists "$INSTALL_DIR"
         
         # 下载并安装 Seata
-        download_seata "$SEATA_URL"
-        install_seata "$INSTALL_DIR"
+        if download_seata "$SEATA_URL"; then
+            install_seata "$INSTALL_DIR"
+        else
+            # 尝试使用备用URL
+            print_warn "主下载链接失败，尝试备用链接"
+            if download_seata "$BACKUP_URL"; then
+                install_seata "$INSTALL_DIR"
+            else
+                print_error "所有下载链接都失败，无法下载 Seata"
+                # 在调试模式下，我们可能希望继续执行而不是立即退出
+                if [[ "$DEBUG_MODE" == true ]]; then
+                    print_warn "调试模式：继续执行而不退出"
+                else
+                    exit 1
+                fi
+            fi
+        fi
         
         # 如有请求则创建服务
         if [[ "$INSTALL_SERVICE" == true ]]; then
@@ -539,4 +593,16 @@ main() {
 }
 
 # 运行主函数
-main "$@"
+# 保存原始退出行为，在脚本结束时根据调试模式决定是否启用set -e
+if [[ "$DEBUG_MODE" == true ]]; then
+    set +e  # 调试模式下保持禁用
+    main "$@"
+    exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        print_warn "脚本在调试模式下完成，退出码: $exit_code"
+    fi
+    exit $exit_code
+else
+    set -e  # 非调试模式下启用
+    main "$@"
+fi
