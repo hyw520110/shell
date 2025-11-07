@@ -54,8 +54,6 @@ check_and_start_docker() {
         print_info "Docker服务未运行，正在尝试启动Docker..."
         
         # 尝试在不同系统上启动Docker
-        local os_type=$(detect_os)
-        
         if command -v systemctl &> /dev/null; then
             # Linux系统，尝试使用systemctl
             if systemctl is-active --quiet docker; then
@@ -68,7 +66,7 @@ check_and_start_docker() {
         elif command -v brew &> /dev/null; then
             # macOS系统，使用brew services
             print_info "正在启动Docker服务..."
-            open --background -a Docker 2>/dev/null || print_warn "请手动启动Docker应用"
+            brew services start docker 2>/dev/null || print_warn "请手动启动Docker应用"
         elif command -v service &> /dev/null; then
             # 传统Linux系统，使用service命令
             if service docker status 2>/dev/null | grep -q running; then
