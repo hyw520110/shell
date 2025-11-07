@@ -182,6 +182,8 @@ download_seata() {
         url="${url//DEFAULT_VERSION/$VERSION}"
         # 也替换可能的其他版本占位符
         url="${url//$DEFAULT_VERSION/$VERSION}"
+        # 同时替换镜像URL中的版本号
+        MIRROR_URL="${MIRROR_URL//$DEFAULT_VERSION/$VERSION}"
     fi
     
     # 从URL中获取tar文件名
@@ -206,20 +208,35 @@ download_seata() {
     
     # 尝试多线程并行下载（如果 aria2c 可用）- 优先使用性能最高的工具
     if command -v aria2c &> /dev/null; then
-        print_info "使用 aria2c 进行多线程并行下载 (4线程)"
+        print_info "使用 aria2c 进行多线程并行下载 (8线程)"
         aria2c -x 8 -s 8 -c --max-connection-per-server=8 --split=8 --continue=true -d "$DOWNLOAD_DIR" -o "$tar_file" "$url" && return 0
-        print_warn "aria2c 下载失败，尝试其他下载方式"
+        print_warn "aria2c 主URL下载失败，尝试镜像源"
+        # 尝试镜像源
+        if [[ "$url" != "$MIRROR_URL" ]]; then
+            aria2c -x 8 -s 8 -c --max-connection-per-server=8 --split=8 --continue=true -d "$DOWNLOAD_DIR" -o "$tar_file" "$MIRROR_URL" && return 0
+        fi
+        print_warn "aria2c 镜像源下载也失败，尝试其他下载方式"
     # 如果 axel 可用
     elif command -v axel &> /dev/null; then
         print_info "使用 axel 进行多线程并行下载 (8线程)"
         axel -n 8 -o "$DOWNLOAD_DIR/$tar_file" "$url" && return 0
-        print_warn "axel 下载失败，尝试其他下载方式"
+        print_warn "axel 主URL下载失败，尝试镜像源"
+        # 尝试镜像源
+        if [[ "$url" != "$MIRROR_URL" ]]; then
+            axel -n 8 -o "$DOWNLOAD_DIR/$tar_file" "$MIRROR_URL" && return 0
+        fi
+        print_warn "axel 镜像源下载也失败，尝试其他下载方式"
     # 使用 wget 断点续传
     elif command -v wget &> /dev/null; then
         print_info "使用 wget 断点续传下载"
         # 使用 -c 进行断点续传，添加更多重试和超时设置
         wget -c --tries=5 --timeout=30 --continue -O "$DOWNLOAD_DIR/$tar_file" "$url" && return 0
-        print_warn "wget 下载失败，尝试其他下载方式"
+        print_warn "wget 主URL下载失败，尝试镜像源"
+        # 尝试镜像源
+        if [[ "$url" != "$MIRROR_URL" ]]; then
+            wget -c --tries=5 --timeout=30 --continue -O "$DOWNLOAD_DIR/$tar_file" "$MIRROR_URL" && return 0
+        fi
+        print_warn "wget 镜像源下载也失败，尝试其他下载方式"
     # 使用 curl 断点续传
     elif command -v curl &> /dev/null; then
         print_info "使用 curl 断点续传下载"
@@ -229,7 +246,16 @@ download_seata() {
         else
             curl -L --fail --connect-timeout 10 --max-time 3600 -o "$DOWNLOAD_DIR/$tar_file" "$url" && return 0
         fi
-        print_warn "curl 下载失败"
+        print_warn "curl 主URL下载失败，尝试镜像源"
+        # 尝试镜像源
+        if [[ "$url" != "$MIRROR_URL" ]]; then
+            if [[ -f "$DOWNLOAD_DIR/$tar_file" ]]; then
+                curl -L --fail --continue-at - --connect-timeout 10 --max-time 3600 -o "$DOWNLOAD_DIR/$tar_file" "$MIRROR_URL" && return 0
+            else
+                curl -L --fail --connect-timeout 10 --max-time 3600 -o "$DOWNLOAD_DIR/$tar_file" "$MIRROR_URL" && return 0
+            fi
+        fi
+        print_warn "curl 镜像源下载也失败"
     else
         print_error "无可用下载工具 (aria2c, axel, curl, wget)"
         return 1
@@ -247,6 +273,12 @@ download_seata() {
     if [ ! -f "$path" ] && [[ "$url" != "$BACKUP_URL" ]]; then
         print_warn "主下载链接失败，尝试备用链接 $BACKUP_URL"
         download_seata "$BACKUP_URL"
+    fi
+    
+    # 如还是下载失败则判断是否不是MIRROR_URL，如果不是则使用MIRROR_URL
+    if [ ! -f "$path" ] && [[ "$url" != "$MIRROR_URL" ]]; then
+        print_warn "主下载链接失败，尝试镜像源 $MIRROR_URL"
+        download_seata "$MIRROR_URL"
     fi
     
     # 验证文件完整性
