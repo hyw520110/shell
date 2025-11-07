@@ -1,0 +1,113 @@
+                        _
+                       (_)
+  _ __   __ _ _ __ ___  _ _ __   __ _ ___  ___ _ ____   _____ _ __
+ | '_ \ / _` | '_ ` _ \| | '_ \ / _` / __|/ _ \ '__\ \ / / _ \ '__|
+ | | | | (_| | | | | | | | | | | (_| \__ \  __/ |   \ V /  __/ |
+ |_| |_|\__,_|_| |_| |_|_|_| |_|\__, |___/\___|_|    \_/ \___|_|
+                                 __/ |
+                                |___/
+13:45:29.018  INFO --- [                     main] [server.NamingserverApplication] [         logStarting]  [] : Starting NamingserverApplication v2.5.0 using Java 17.0.2 on dev-PC with PID 3132396 (/home/dev/seata-server/seata-namingserver/target/seata-namingserver.jar started by dev in /home/dev/work/shell/seata/bin)
+13:45:29.034  INFO --- [                     main] [server.NamingserverApplication] [ogStartupProfileInfo]  [] : No active profile set, falling back to 1 default profile: "default"
+13:45:30.541  INFO --- [                     main] [mbedded.tomcat.TomcatWebServer] [          initialize]  [] : Tomcat initialized with port(s): 8081 (http)
+13:45:30.554  INFO --- [                     main] [oyote.http11.Http11NioProtocol] [                 log]  [] : Initializing ProtocolHandler ["http-nio-8081"]
+13:45:30.558  INFO --- [                     main] [.catalina.core.StandardService] [                 log]  [] : Starting service [Tomcat]
+13:45:30.559  INFO --- [                     main] [e.catalina.core.StandardEngine] [                 log]  [] : Starting Servlet engine: [Apache Tomcat/9.0.106]
+13:45:30.646  INFO --- [                     main] [rBase.[Tomcat].[localhost].[/]] [                 log]  [] : Initializing Spring embedded WebApplicationContext
+13:45:30.646  INFO --- [                     main] [letWebServerApplicationContext] [ebApplicationContext]  [] : Root WebApplicationContext: initialization completed in 1492 ms
+13:45:31.133  INFO --- [                     main] [y.CustomUserDetailsServiceImpl] [                init]  [] : No password was configured. A random password has been generated for security purposes. You may either:
+1. Use the auto-generated password: [b28adf79]
+2. Set a custom password in the configuration.
+13:45:31.815  INFO --- [                     main] [oyote.http11.Http11NioProtocol] [                 log]  [] : Starting ProtocolHandler ["http-nio-8081"]
+13:45:31.837  INFO --- [                     main] [mbedded.tomcat.TomcatWebServer] [               start]  [] : Tomcat started on port(s): 8081 (http) with context path ''
+13:45:31.851  INFO --- [                     main] [server.NamingserverApplication] [          logStarted]  [] : Started NamingserverApplication in 4.012 seconds (JVM running for 4.733)
+13:45:31.858  INFO --- [                     main] [server.NamingserverApplication] [                 run]  [] : Seata Console can be accessed at http://localhost:8081
+                        _
+                       (_)
+  _ __   __ _ _ __ ___  _ _ __   __ _ ___  ___ _ ____   _____ _ __
+ | '_ \ / _` | '_ ` _ \| | '_ \ / _` / __|/ _ \ '__\ \ / / _ \ '__|
+ | | | | (_| | | | | | | | | | | (_| \__ \  __/ |   \ V /  __/ |
+ |_| |_|\__,_|_| |_| |_|_|_| |_|\__, |___/\___|_|    \_/ \___|_|
+                                 __/ |
+                                |___/
+14:06:26.936  INFO --- [                     main] [server.NamingserverApplication] [         logStarting]  [] : Starting NamingserverApplication v2.5.0 using Java 17.0.2 on dev-PC with PID 3139726 (/home/dev/seata/seata-namingserver/target/seata-namingserver.jar started by dev in /home/dev/work/shell/seata/bin)
+14:06:26.941  INFO --- [                     main] [server.NamingserverApplication] [ogStartupProfileInfo]  [] : No active profile set, falling back to 1 default profile: "default"
+14:06:28.305  INFO --- [                     main] [mbedded.tomcat.TomcatWebServer] [          initialize]  [] : Tomcat initialized with port(s): 8081 (http)
+14:06:28.319  INFO --- [                     main] [oyote.http11.Http11NioProtocol] [                 log]  [] : Initializing ProtocolHandler ["http-nio-8081"]
+14:06:28.321  INFO --- [                     main] [.catalina.core.StandardService] [                 log]  [] : Starting service [Tomcat]
+14:06:28.321  INFO --- [                     main] [e.catalina.core.StandardEngine] [                 log]  [] : Starting Servlet engine: [Apache Tomcat/9.0.106]
+14:06:28.405  INFO --- [                     main] [rBase.[Tomcat].[localhost].[/]] [                 log]  [] : Initializing Spring embedded WebApplicationContext
+14:06:28.406  INFO --- [                     main] [letWebServerApplicationContext] [ebApplicationContext]  [] : Root WebApplicationContext: initialization completed in 1366 ms
+14:06:28.842  INFO --- [                     main] [y.CustomUserDetailsServiceImpl] [                init]  [] : No password was configured. A random password has been generated for security purposes. You may either:
+1. Use the auto-generated password: [9ffc019c]
+2. Set a custom password in the configuration.
+14:06:29.510  INFO --- [                     main] [oyote.http11.Http11NioProtocol] [                 log]  [] : Starting ProtocolHandler ["http-nio-8081"]
+14:06:29.519  WARN --- [                     main] [letWebServerApplicationContext] [             refresh]  [] : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'; nested exception is org.springframework.boot.web.server.WebServerException: Unable to start embedded Tomcat server
+14:06:29.526  INFO --- [                     main] [oyote.http11.Http11NioProtocol] [                 log]  [] : Pausing ProtocolHandler ["http-nio-8081"]
+14:06:29.528  INFO --- [                     main] [.catalina.core.StandardService] [                 log]  [] : Stopping service [Tomcat]
+14:06:29.533  WARN --- [                     main] [a.loader.WebappClassLoaderBase] [                 log]  [] : The web application [ROOT] appears to have started a thread named [heartBeatCheckExcuter1] but has failed to stop it. This is very likely to create a memory leak. Stack trace of thread:
+ java.base@17.0.2/jdk.internal.misc.Unsafe.park(Native Method)
+ java.base@17.0.2/java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:252)
+ java.base@17.0.2/java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.awaitNanos(AbstractQueuedSynchronizer.java:1672)
+ java.base@17.0.2/java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1182)
+ java.base@17.0.2/java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:899)
+ java.base@17.0.2/java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1062)
+ java.base@17.0.2/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1122)
+ java.base@17.0.2/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+ java.base@17.0.2/java.lang.Thread.run(Thread.java:833)
+14:06:29.535  INFO --- [                     main] [oyote.http11.Http11NioProtocol] [                 log]  [] : Stopping ProtocolHandler ["http-nio-8081"]
+14:06:29.536  INFO --- [                     main] [oyote.http11.Http11NioProtocol] [                 log]  [] : Destroying ProtocolHandler ["http-nio-8081"]
+14:06:29.548  INFO --- [                     main] [valuationReportLoggingListener] [          logMessage]  [] : 
+
+Error starting ApplicationContext. To display the conditions report re-run your application with 'debug' enabled.
+14:06:29.568 ERROR --- [                     main] [amework.boot.SpringApplication] [       reportFailure]  [] : Application run failed
+org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'; nested exception is org.springframework.boot.web.server.WebServerException: Unable to start embedded Tomcat server
+	at org.springframework.context.support.DefaultLifecycleProcessor.doStart(DefaultLifecycleProcessor.java:186)
+	at org.springframework.context.support.DefaultLifecycleProcessor.access$200(DefaultLifecycleProcessor.java:58)
+	at org.springframework.context.support.DefaultLifecycleProcessor$LifecycleGroup.start(DefaultLifecycleProcessor.java:365)
+	at java.base/java.lang.Iterable.forEach(Iterable.java:75)
+	at org.springframework.context.support.DefaultLifecycleProcessor.startBeans(DefaultLifecycleProcessor.java:160)
+	at org.springframework.context.support.DefaultLifecycleProcessor.onRefresh(DefaultLifecycleProcessor.java:128)
+	at org.springframework.context.support.AbstractApplicationContext.finishRefresh(AbstractApplicationContext.java:949)
+	at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:594)
+	at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:147)
+	at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:732)
+	at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:409)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:308)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1300)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1289)
+	at org.apache.seata.namingserver.NamingserverApplication.main(NamingserverApplication.java:35)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at org.springframework.boot.loader.MainMethodRunner.run(MainMethodRunner.java:49)
+	at org.springframework.boot.loader.Launcher.launch(Launcher.java:108)
+	at org.springframework.boot.loader.Launcher.launch(Launcher.java:58)
+	at org.springframework.boot.loader.PropertiesLauncher.main(PropertiesLauncher.java:467)
+Caused by: org.springframework.boot.web.server.WebServerException: Unable to start embedded Tomcat server
+	at org.springframework.boot.web.embedded.tomcat.TomcatWebServer.start(TomcatWebServer.java:229)
+	at org.springframework.boot.web.servlet.context.WebServerStartStopLifecycle.start(WebServerStartStopLifecycle.java:43)
+	at org.springframework.context.support.DefaultLifecycleProcessor.doStart(DefaultLifecycleProcessor.java:183)
+	... 22 common frames omitted
+Caused by: java.lang.IllegalArgumentException: standardService.connector.startFailed
+	at org.apache.catalina.core.StandardService.addConnector(StandardService.java:222)
+	at org.springframework.boot.web.embedded.tomcat.TomcatWebServer.addPreviouslyRemovedConnectors(TomcatWebServer.java:282)
+	at org.springframework.boot.web.embedded.tomcat.TomcatWebServer.start(TomcatWebServer.java:213)
+	... 24 common frames omitted
+Caused by: org.apache.catalina.LifecycleException: Protocol handler start failed
+	at org.apache.catalina.connector.Connector.startInternal(Connector.java:1103)
+	at org.apache.catalina.util.LifecycleBase.start(LifecycleBase.java:164)
+	at org.apache.catalina.core.StandardService.addConnector(StandardService.java:219)
+	... 26 common frames omitted
+Caused by: java.net.BindException: 地址已在使用
+	at java.base/sun.nio.ch.Net.bind0(Native Method)
+	at java.base/sun.nio.ch.Net.bind(Net.java:555)
+	at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:337)
+	at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:294)
+	at org.apache.tomcat.util.net.NioEndpoint.initServerSocket(NioEndpoint.java:298)
+	at org.apache.tomcat.util.net.NioEndpoint.bind(NioEndpoint.java:253)
+	at org.apache.tomcat.util.net.AbstractEndpoint.bindWithCleanup(AbstractEndpoint.java:1465)
+	at org.apache.tomcat.util.net.AbstractEndpoint.start(AbstractEndpoint.java:1548)
+	at org.apache.coyote.AbstractProtocol.start(AbstractProtocol.java:674)
+	at org.apache.catalina.connector.Connector.startInternal(Connector.java:1100)
+	... 28 common frames omitted

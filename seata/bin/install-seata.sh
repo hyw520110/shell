@@ -32,11 +32,17 @@ SUDO_CMD="sudo"
 USE_SUDO=false
 OS=""
 
-# 下载URL
-SEATA_URL="https://archive.apache.org/dist/incubator/seata/${DEFAULT_VERSION}/apache-seata-${DEFAULT_VERSION}-incubating-bin.tar.gz"
-BACKUP_URL="https://github.com/seata/seata/releases/download/v${DEFAULT_VERSION}/seata-server-${DEFAULT_VERSION}.tar.gz"
-# 国内镜像URL
-MIRROR_URL="https://mirrors.tuna.tsinghua.edu.cn/apache/incubator/seata/${DEFAULT_VERSION}/apache-seata-${DEFAULT_VERSION}-incubating-bin.tar.gz"
+# 下载URL - 按优先级合并的URL列表
+DOWNLOAD_URLS=(
+    "https://mirrors.tuna.tsinghua.edu.cn/apache/incubator/seata/${DEFAULT_VERSION}/apache-seata-${DEFAULT_VERSION}-incubating-bin.tar.gz"  # 国内镜像URL
+    "https://archive.apache.org/dist/incubator/seata/${DEFAULT_VERSION}/apache-seata-${DEFAULT_VERSION}-incubating-bin.tar.gz"  # 官方URL
+    "https://github.com/seata/seata/releases/download/v${DEFAULT_VERSION}/seata-server-${DEFAULT_VERSION}.tar.gz"  # 备用URL
+)
+SEATA_SERVER_SH="seata-server.sh"
+START_SCRIPT_PATH="start.sh"
+STOP_SCRIPT_PATH="stop.sh"
+# 下载文件路径
+GZ_FILE_PATH=""
 
 # 有错误时也输出调试信息
 if [[ "$DEBUG_MODE" == true ]]; then
@@ -75,7 +81,7 @@ Seata 自动安装脚本。
 选项:
     -d, --dir PATH          安装目录 (默认: $DEFAULT_INSTALL_DIR)
     -w, --download-dir PATH 下载目录 (默认: $DEFAULT_DOWNLOAD_DIR)
-    -v, --version VERSION   安装版本 (默认: 最新稳定版)
+    -v, --version VERSION   安装版本 (默认: $DEFAULT_VERSION)
     -u, --uninstall         卸载 Seata
     -s, --service           安装自启动服务 (默认: false)
     -f                      强制安装 (如果目录已存在则覆盖)
@@ -113,43 +119,28 @@ check_sudo() {
     fi
 }
 
-# 需要时请求权限提升
-sudoexec() {
-    local target_dir="$1"
-    
-    # 检查是否可以写入目录
-    if [[ ! -w "$(dirname "$target_dir")" ]]; then
-        if [[ -n "$SUDO_CMD" ]]; then
-            print_info "为目录请求权限提升: $target_dir"
-            $SUDO_CMD -v || {
-                print_error "获取 root 权限失败"
-                exit 1
-            }
-            USE_SUDO=true
-        else
-            print_error "目录无写入权限: $target_dir 且 sudo 不可用"
-            exit 1
-        fi
-    else
-        USE_SUDO=false
-    fi
-}
-
 # 执行命令函数，内部使用USE_SUDO变量判断是否需要提权执行
-execute_command() {
+exec() {
     local cmd="$1"
     shift
     local args=("$@")
-    
+    local cmd_string="$cmd ${args[*]}"  # 保存原始命令用于显示
+    # 检查是否需要使用sudo
     if [[ "$USE_SUDO" == "true" ]]; then
-        $SUDO_CMD "$cmd" "${args[@]}"
+        "$SUDO_CMD" "$cmd" "${args[@]}"
     else
-        "$cmd" "${args[@]}"
+        "$cmd" "${args[@]}" || {
+            # 如果命令执行失败，尝试使用sudo执行并设置USE_SUDO为true
+            if [[ -n "$SUDO_CMD" ]]; then
+                print_warn "命令执行失败，尝试使用sudo执行: $cmd_string"
+                "$SUDO_CMD" "$cmd" "${args[@]}"
+                USE_SUDO=true
+            else
+                return 1  # 如果没有sudo命令可用，直接返回错误
+            fi
+        }
     fi
 }
-
-
-
 
 # 验证归档文件完整性
 verify_archive() {
@@ -181,28 +172,27 @@ download_seata() {
         # 替换URL中的DEFAULT_VERSION为VERSION
         url="${url//DEFAULT_VERSION/$VERSION}"
         # 也替换可能的其他版本占位符
-        url="${url//$DEFAULT_VERSION/$VERSION}"
+        url="${url//${DEFAULT_VERSION}/$VERSION}"
     fi
-    
     # 从URL中获取tar文件名
-    local tar_file=$(basename "$url" | sed 's/action=download//g' | sed 's/\&.*//g' | sed 's/\?action=download//g')
-    path="$DOWNLOAD_DIR/$tar_file"
+    local tar_file=$(basename "$url" | sed 's/action=download//g' | sed 's/\&.*//g' | sed 's/\?//g')
+   GZ_FILE_PATH="$DOWNLOAD_DIR/$tar_file"
     
     # 确保下载目录存在
     [ ! -d "$DOWNLOAD_DIR" ] && mkdir -p "$DOWNLOAD_DIR"
     
-    print_info "下载目录: $DOWNLOAD_DIR"
-    print_info "从以下地址下载 Seata: $url"
-    
     # 检查文件是否已存在（仅当指定了版本时）
-    if [ -f "$path" ]; then
-        print_info "指定版本的 Seata 安装包已存在: $path"
+    if [ -f "$GZ_FILE_PATH" ]; then
+        print_info "指定版本的 Seata 安装包已存在: $GZ_FILE_PATH"
         # 尝试解压以验证文件完整性
-        if verify_archive "$path"; then
+        if verify_archive "$GZ_FILE_PATH"; then
             print_info "安装包验证成功，跳过下载"
             return 0
         fi
     fi
+    
+    print_info "下载 Seata: $url"
+    print_info "下载目录: $DOWNLOAD_DIR"
     
     # 尝试多线程并行下载（如果 aria2c 可用）- 优先使用性能最高的工具
     if command -v aria2c &> /dev/null; then
@@ -235,83 +225,80 @@ download_seata() {
         return 1
     fi
     
-    # 判断指定版本不是默认版本且下载文件不存在则下载默认版本  
-    if [ "$VERSION" != "$DEFAULT_VERSION" ] && [ ! -f "$path" ]; then
-        # 重新构建使用默认版本的URL
-        local default_url="${SEATA_URL//VERSION/$DEFAULT_VERSION}"
-        print_warn "指定版本下载失败，尝试下载默认版本 $DEFAULT_VERSION"
-        download_seata "$default_url"
-    fi
-    
-    # 如还是下载失败则判断是否不是BACKUP_URL，如果不是则使用BACKUP_URL
-    if [ ! -f "$path" ] && [[ "$url" != "$BACKUP_URL" ]]; then
-        print_warn "主下载链接失败，尝试备用链接 $BACKUP_URL"
-        download_seata "$BACKUP_URL"
-    fi
-    
     # 验证文件完整性
-    if ! verify_archive "$path"; then
+    if ! verify_archive "$GZ_FILE_PATH"; then
         print_error "下载的文件验证失败，可能是不完整的文件"
-        rm -f "$path"
+        rm -f "$GZ_FILE_PATH"
+        return 1
+    fi
+    print_info "Seata 下载成功: $GZ_FILE_PATH"
+    return 0
+}
+
+# 解压并安装 Seata
+install_seata() {
+    if [[ -d "$INSTALL_DIR" ]]; then
+        if [[ "$FORCE_INSTALL" == true ]]; then
+            print_info "强制安装模式：安装目录 $INSTALL_DIR 已存在，将被覆盖"
+        else
+            read -p "安装目录 $INSTALL_DIR 已存在,是否继续安装？[Y/n] " -n 1 -r REPLY
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]] && [[ -n $REPLY ]]; then
+                print_info "安装已取消"
+                exit 0
+            fi
+        fi
+    else
+    	exec mkdir -p "$INSTALL_DIR"
+    fi
+    
+    print_info "安装 Seata 到: $INSTALL_DIR"
+    # 解压下载的归档文件
+    # 首先解压到临时目录以检查目录结构
+    TEMP_DIR=$(mktemp -d)
+    
+    if ! tar -xzf "$GZ_FILE_PATH" -C "$TEMP_DIR"; then
+        print_error "解压失败，重新下载安装包"
         exit 1
     fi
     
-    print_info "Seata 下载成功: $path"
-}
- 
-# 解压并安装 Seata
-install_seata() {
-    local install_dir="$1"
+    # 检查解压后的目录结构
+    EXTRACTED_DIR=$(find "$TEMP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
     
-    print_info "安装 Seata 到: $install_dir"
-    
-    # 如果目录不存在则创建
-    execute_command mkdir -p "$install_dir"
-    
-    # 解压下载的归档文件 (使用 global 'path' variable from download_seata function)
-    if ! tar -xzf "$path" -C "$install_dir" --strip-components=1; then
-        print_error "解压失败，重新下载安装包"
-        rm -f "$path"
-        if download_seata "$SEATA_URL"; then
-            if ! tar -xzf "$path" -C "$install_dir" --strip-components=1; then
-                print_error "多次尝试后解压仍然失败"
-                exit 1
-            fi
-        else
-            # 如果重新下载也失败，尝试备用链接
-            print_warn "主下载链接失败，尝试备用链接"
-            if download_seata "$BACKUP_URL"; then
-                if ! tar -xzf "$path" -C "$install_dir" --strip-components=1; then
-                    print_error "备用链接下载的文件解压也失败"
-                    exit 1
-                fi
-            else
-                print_error "所有下载链接都失败，无法下载 Seata"
-                exit 1
-            fi
-        fi
+    if [ -z "$EXTRACTED_DIR" ]; then
+        print_error "解压后没有找到有效目录"
+        rm -rf "$TEMP_DIR"
+        exit 1
     fi
     
+    # 检查解压目录中的内容是否是一个单独的目录（通常是seata-server-版本号格式）
+    INNER_DIR=$(find "$EXTRACTED_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+    
+    if [ -n "$INNER_DIR" ] && [ "$(find "$EXTRACTED_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 1 ]; then
+        # 如果解压后只包含一个目录，将其内容直接移动到安装目录
+        mv "$INNER_DIR"/* "$INSTALL_DIR"/ 2>/dev/null || {
+            # 如果移动失败，可能是由于目录为空或权限问题，复制整个目录
+            cp -r "$INNER_DIR" "$INSTALL_DIR"
+        }
+    else
+        # 如果解压后包含多个文件/目录，直接移动解压目录的内容
+        mv "$EXTRACTED_DIR"/* "$INSTALL_DIR"/
+    fi
+    
+    # 清理临时目录
+    rm -rf "$TEMP_DIR"
     # 获取项目根目录（相对于安装脚本）
     PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-    
-    # 复制自定义脚本到安装目录
     print_info "复制文件..."
-    execute_command rsync -av "$SCRIPT_DIR/" "$install_dir/"
+    exec rsync -av "$SCRIPT_DIR/" "$INSTALL_DIR/"
     # 设置适当的权限
-    execute_command chown -R "$CURRENT_USER:$(id -gn)" "$install_dir"
-    execute_command chmod +x "$install_dir/bin/*.sh"
-    
-    print_info "Seata 成功安装到: $install_dir"
-    print_info "使用以下命令管理 Seata 服务:"
-    print_info "  启动服务: $install_dir/bin/start.sh"
-    print_info "  停止服务: $install_dir/bin/stop.sh"
-    print_info "  查看状态: $install_dir/bin/start.sh -s"
+    exec chown -R "$CURRENT_USER:$(id -gn)" "$INSTALL_DIR"
+    exec chmod +x "$INSTALL_DIR/"*.sh
 }
 
 # 为自动启动创建系统服务
 create_service() {
-    local install_dir="$1"
+    local INSTALL_DIR="$1"
     
     print_info "为 Seata 创建自动启动服务..."
     
@@ -327,13 +314,7 @@ create_service() {
             }
         fi
         
-        # 检查是否自定义了start.sh脚本，如果存在则优先使用
-        START_SCRIPT_PATH="$install_dir/bin/start.sh"
-        if [[ ! -f "$START_SCRIPT_PATH" ]]; then
-            START_SCRIPT_PATH="$install_dir/bin/seata-server.sh"
-        fi
-        
-        # Create the service file using execute_command
+        # Create the service file using exec
         cat > /tmp/seata.service << EOF
 [Unit]
 Description=Seata Server
@@ -343,7 +324,7 @@ After=network.target
 Type=forking
 User=$CURRENT_USER
 ExecStart=$START_SCRIPT_PATH
-ExecReload=/bin/kill -s HUP \$MAINPID
+ExecReload=/bin/kill -s HUP $MAINPID
 KillMode=process
 Restart=on-failure
 RestartSec=42s
@@ -351,10 +332,10 @@ RestartSec=42s
 [Install]
 WantedBy=multi-user.target
 EOF
-        execute_command cp /tmp/seata.service "$SERVICE_FILE"
-        rm -f /tmp/seata.service
+        exec cp /tmp/seata.service "$SERVICE_FILE"
+        exec rm -f /tmp/seata.service
         
-        execute_command systemctl daemon-reload
+        exec systemctl daemon-reload
         print_info "Seata 服务已创建。启用命令: sudo systemctl enable seata"
         print_info "启动命令: sudo systemctl start seata"
         
@@ -370,13 +351,7 @@ EOF
             }
         fi
         
-        # 检查是否自定义了start.sh脚本，如果存在则优先使用
-        START_SCRIPT_PATH="$install_dir/bin/start.sh"
-        if [[ ! -f "$START_SCRIPT_PATH" ]]; then
-            START_SCRIPT_PATH="$install_dir/bin/seata-server.sh"
-        fi
-        
-        # Create the plist file using execute_command
+        # Create the plist file using exec
         cat > /tmp/io.seata.server.plist << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -393,16 +368,16 @@ EOF
     <key>KeepAlive</key>
     <true/>
     <key>WorkingDirectory</key>
-    <string>$install_dir</string>
+    <string>$INSTALL_DIR</string>
     <key>StandardOutPath</key>
-    <string>$install_dir/logs/stdout.log</string>
+    <string>$INSTALL_DIR/logs/stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>$install_dir/logs/stderr.log</string>
+    <string>$INSTALL_DIR/logs/stderr.log</string>
 </dict>
 </plist>
 EOF
-        execute_command cp /tmp/io.seata.server.plist "$LAUNCHD_FILE"
-        rm -f /tmp/io.seata.server.plist
+        exec cp /tmp/io.seata.server.plist "$LAUNCHD_FILE"
+        exec rm -f /tmp/io.seata.server.plist
         
         print_info "Seata 服务已创建。加载命令: sudo launchctl load $LAUNCHD_FILE"
         print_info "启动命令: sudo launchctl start io.seata.server"
@@ -411,57 +386,41 @@ EOF
 
 # 卸载 Seata
 uninstall_seata() {
-    local install_dir="$1"
+    print_info "卸载 Seata服务..."
     
-    print_info "从以下位置卸载 Seata: $install_dir"
-    
-    if [[ -d "$install_dir" ]]; then
-        # 如果有自定义停止脚本，优先使用它停止服务
-        STOP_SCRIPT_PATH="$install_dir/bin/stop.sh"
-        if [[ -f "$STOP_SCRIPT_PATH" ]]; then
-            print_info "使用自定义停止脚本停止 Seata 服务..."
-            execute_command "$STOP_SCRIPT_PATH" -f
-        else
-            # 如果服务正在运行则停止
-            if [[ "$OS" == "Linux" ]]; then
-                if systemctl is-active --quiet seata; then
-                    print_info "正在停止 Seata 服务..."
-                    execute_command systemctl stop seata
-                fi
-            elif [[ "$OS" == "macOS" ]]; then
-                if sudo launchctl list | grep -q io.seata.server; then
-                    print_info "正在停止 Seata 服务..."
-                    execute_command launchctl stop io.seata.server
-                fi
-            fi
+    # 停止系统服务（如果存在）
+    if [[ "$OS" == "Linux" ]]; then
+        if systemctl is-enabled --quiet seata; then
+            print_info "正在禁用 Seata 服务..."
+            exec systemctl disable seata
         fi
         
-        # 停止系统服务（如果存在）
-        if [[ "$OS" == "Linux" ]]; then
-            if systemctl is-enabled --quiet seata; then
-                print_info "正在禁用 Seata 服务..."
-                execute_command systemctl disable seata
-            fi
-            # 移除服务文件
-            if [[ -f "/etc/systemd/system/seata.service" ]]; then
-                print_info "正在移除 Seata 服务文件..."
-                execute_command rm -f /etc/systemd/system/seata.service
-                execute_command systemctl daemon-reload
-            fi
-        elif [[ "$OS" == "macOS" ]]; then
-            # 移除服务文件
-            if [[ -f "/Library/LaunchDaemons/io.seata.server.plist" ]]; then
-                print_info "正在移除 Seata 服务文件..."
-                execute_command rm -f /Library/LaunchDaemons/io.seata.server.plist
-            fi
+        # 移除服务文件
+        if [[ -f "/etc/systemd/system/seata.service" ]]; then
+            print_info "正在移除 Seata 服务文件..."
+            exec rm -f /etc/systemd/system/seata.service
+            exec systemctl daemon-reload
         fi
-        
-        # 移除安装目录
-        execute_command rm -rf "$install_dir"
-        
+    elif [[ "$OS" == "macOS" ]]; then
+        # 移除服务文件
+        if [[ -f "/Library/LaunchDaemons/io.seata.server.plist" ]]; then
+            print_info "正在移除 Seata 服务文件..."
+            exec rm -f /Library/LaunchDaemons/io.seata.server.plist
+        fi
+    fi
+    
+    # 停止Seata服务
+    if [[ -f "$STOP_SCRIPT_PATH" ]]; then
+        print_info "使用自定义停止脚本停止 Seata 服务..."
+        exec "$STOP_SCRIPT_PATH" -f
+    fi
+    
+    # 移除安装目录
+    if [ -d "$INSTALL_DIR" ]; then
+        exec rm -rf "$INSTALL_DIR"
         print_info "Seata 卸载成功"
     else
-        print_warn "安装目录不存在: $install_dir"
+        print_warn "安装目录不存在: $INSTALL_DIR"
     fi
 }
 
@@ -511,89 +470,72 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 检查安装目录是否已存在
-check_install_dir_exists() {
-    local install_dir="$1"
-    
-    if [[ -d "$install_dir" ]]; then
-        if [[ "$FORCE_INSTALL" == true ]]; then
-            print_info "强制安装模式：安装目录 $install_dir 已存在，将被覆盖"
-            return 0
-        else
-            print_warn "安装目录 $install_dir 已存在"
-            read -p "是否继续安装？[Y/n] " -n 1 -r REPLY
-            echo
-            if [[ ! $REPLY =~ ^[Yy]$ ]] && [[ -n $REPLY ]]; then
-                print_info "安装已取消"
-                exit 0
-            fi
-            return 0
-        fi
-    fi
-    
-    return 1
-}
- 
-
 # 主执行函数
 main() {
     detect_os
     check_sudo
     
     if [[ "$UNINSTALL" == true ]]; then
-        sudoexec "$INSTALL_DIR"
-        uninstall_seata "$INSTALL_DIR"
+        uninstall_seata 
+        exit 0
+    fi
+    
+    for url in "${DOWNLOAD_URLS[@]}"; do
+        # 下载指定版本
+        local download_url="${url//DEFAULT_VERSION/$VERSION}"
+        download_url="${download_url//${DEFAULT_VERSION}/$VERSION}"
+        if download_seata "$download_url"; then
+            break
+        fi
+    done
+    
+    if [[ -z "$GZ_FILE_PATH" || ! -f "$GZ_FILE_PATH" ]]; then
+        print_error "下载文件不存在: $GZ_FILE_PATH"
+        exit 1
+    fi
+    
+    install_seata
+    
+    # 如有请求则创建服务
+    if [[ "$INSTALL_SERVICE" == true ]]; then
+        create_service "$INSTALL_DIR"
+    fi
+    START_SCRIPT_PATH="$INSTALL_DIR/$START_SCRIPT_PATH"
+    STOP_SCRIPT_PATH="$INSTALL_DIR/$STOP_SCRIPT_PATH"
+    print_info "Seata 安装到: $INSTALL_DIR"
+    print_info "使用以下命令管理 Seata 服务:"
+    print_info "  启动服务: $START_SCRIPT_PATH"
+    print_info "  停止服务: $STOP_SCRIPT_PATH"
+    print_info "  查看状态: $START_SCRIPT_PATH -s"
+    
+    # 自动启动服务
+    print_info "正在自动启动 Seata 服务..."
+    
+    if [[ -f "$START_SCRIPT_PATH" ]]; then
+        exec "$START_SCRIPT_PATH"
     else
-        sudoexec "$INSTALL_DIR"
-        
-        # 检查安装目录是否已存在
-        check_install_dir_exists "$INSTALL_DIR"
-        
-        # 下载并安装 Seata
-        if download_seata "$SEATA_URL"; then
-            install_seata "$INSTALL_DIR"
+        print_info "请手动启动服务: $(find  $INSTALL_DIR -name $SEATA_SERVER_SH)"
+    fi
+    
+    # 检查并启动 seata-namingserver（如果存在）
+    NAMING_SERVER_SCRIPT="$INSTALL_DIR/seata-namingserver/bin/seata-namingserver.sh"
+    if [[ -f "$NAMING_SERVER_SCRIPT" ]]; then
+        print_info "检测到 seata-namingserver，正在启动命名服务..."
+        if [[ -x "$NAMING_SERVER_SCRIPT" ]]; then
+            exec "$NAMING_SERVER_SCRIPT"
+            print_info "seata-namingserver 已启动"
         else
-            # 尝试使用备用URL
-            print_warn "主下载链接失败，尝试备用链接"
-            if download_seata "$BACKUP_URL"; then
-                install_seata "$INSTALL_DIR"
-            else
-                print_error "所有下载链接都失败，无法下载 Seata"
-                # 在调试模式下，我们可能希望继续执行而不是立即退出
-                if [[ "$DEBUG_MODE" == true ]]; then
-                    print_warn "调试模式：继续执行而不退出"
-                else
-                    exit 1
-                fi
-            fi
+            print_warn "seata-namingserver 启动脚本无执行权限，正在设置权限..."
+            exec chmod +x "$NAMING_SERVER_SCRIPT"
+            exec "$NAMING_SERVER_SCRIPT"
+            print_info "seata-namingserver 已启动"
         fi
-        
-        # 如有请求则创建服务
-        if [[ "$INSTALL_SERVICE" == true ]]; then
-            create_service "$INSTALL_DIR"
-        fi
-        
-        print_info "安装成功完成!"
-        print_info "Seata 安装到: $INSTALL_DIR"
-        print_info "使用以下命令管理 Seata 服务:"
-        print_info "  启动服务: $INSTALL_DIR/bin/start.sh"
-        print_info "  停止服务: $INSTALL_DIR/bin/stop.sh"
-        print_info "  查看状态: $INSTALL_DIR/bin/start.sh -s"
-        
-        # 自动启动服务
-        print_info "正在自动启动 Seata 服务..."
-        START_SCRIPT_PATH="$INSTALL_DIR/bin/start.sh"
-        if [[ -f "$START_SCRIPT_PATH" ]]; then
-            execute_command "$START_SCRIPT_PATH"
-        else
-            print_warn "启动脚本未找到: $START_SCRIPT_PATH"
-            print_info "请手动启动服务: $INSTALL_DIR/bin/seata-server.sh"
-        fi
+    else
+        print_warn "seata-namingserver 启动脚本未找到，跳过启动"
     fi
 }
 
 # 运行主函数
-# 保存原始退出行为，在脚本结束时根据调试模式决定是否启用set -e
 if [[ "$DEBUG_MODE" == true ]]; then
     set +e  # 调试模式下保持禁用
     main "$@"

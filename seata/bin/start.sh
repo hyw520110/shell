@@ -3,14 +3,14 @@
 # Seata服务启动脚本
 # 兼容主流Linux和macOS系统
 # 支持Docker和主机模式
+# Also handles seata-namingserver startup
 
 set -e
 
 # 导入公共函数库
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
-if [ -f "$LIB_DIR/common.sh" ]; then
-    source "$LIB_DIR/common.sh"
+if [ -f "$SCRIPT_DIR/common.sh" ]; then
+    source "$SCRIPT_DIR/common.sh"
 else
     echo "错误: 找不到公共函数库 $LIB_DIR/common.sh"
     exit 1
@@ -46,6 +46,66 @@ is_seata_running() {
     fi
     
     return 1
+}
+
+# 检查seata-namingserver是否已在运行 (主机模式)
+is_seata_namingserver_running() {
+    # 在主机模式下检查命名服务器进程
+    if pgrep -f "seata-namingserver" > /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# 检查并输出Seata命名服务器状态
+check_seata_namingserver_status() {
+    echo "正在检查Seata命名服务器状态..."
+    
+    if is_seata_namingserver_running; then
+        echo "Seata命名服务器正在运行"
+        # 显示相关Java进程
+        pgrep -fl "seata-namingserver"
+    else
+        echo "Seata命名服务器未运行"
+    fi
+}
+
+# 启动Seata命名服务器 (主机模式)
+start_seata_namingserver() {
+    echo "正在启动Seata命名服务器..."
+    
+    # 获取当前脚本所在的Seata安装目录
+    SEATA_HOME="$SCRIPT_DIR/.."
+    NAMING_SERVER_DIR="$SEATA_HOME/seata-namingserver"
+    
+    # 检查命名服务器目录是否存在
+    if [ ! -d "$NAMING_SERVER_DIR" ]; then
+        echo "警告: Seata命名服务器目录不存在: $NAMING_SERVER_DIR"
+        return 1
+    fi
+    
+    # 检查Java是否已安装
+    if ! command -v java &> /dev/null; then
+        echo "错误: 未找到Java运行环境，请先安装Java"
+        exit 1
+    fi
+    
+    # 获取Seata命名服务器可执行脚本路径
+    NAMING_SERVER_SCRIPT="$NAMING_SERVER_DIR/bin/seata-namingserver.sh"
+    
+    if [ ! -f "$NAMING_SERVER_SCRIPT" ]; then
+        echo "错误: 未找到Seata命名服务器启动脚本: $NAMING_SERVER_SCRIPT"
+        exit 1
+    fi
+    
+    # 设置执行权限
+    chmod +x "$NAMING_SERVER_SCRIPT" 2>/dev/null || true
+    
+    # 启动命名服务器
+    "$NAMING_SERVER_SCRIPT"
+    
+    echo "Seata命名服务器已启动"
 }
 
 # 检查并输出Seata服务状态及进程信息
@@ -100,6 +160,10 @@ check_seata_status() {
             echo "未找到Docker相关进程"
         fi
     fi
+    
+    echo ""
+    echo "正在查找Seata命名服务器主机进程..."
+    check_seata_namingserver_status
 }
 
 # 启动Seata服务
@@ -370,6 +434,71 @@ start_seata_host() {
         echo "错误: Seata服务启动失败"
         exit 1
     fi
+    
+    # 启动Seata命名服务器
+    start_seata_namingserver_host
+}
+
+# 在主机模式下启动Seata命名服务器
+start_seata_namingserver_host() {
+    echo "正在以主机模式启动Seata命名服务器..."
+    
+    # 获取当前脚本所在的Seata安装目录
+    SEATA_HOME="$SCRIPT_DIR/.."
+    NAMING_SERVER_DIR="$SEATA_HOME/seata-namingserver"
+    
+    # 检查命名服务器目录是否存在
+    if [ ! -d "$NAMING_SERVER_DIR" ]; then
+        echo "警告: Seata命名服务器目录不存在: $NAMING_SERVER_DIR"
+        return 1
+    fi
+    
+    # 检查Java是否已安装
+    if ! command -v java &> /dev/null; then
+        echo "错误: 未找到Java运行环境，请先安装Java"
+        exit 1
+    fi
+
+    # 获取Seata命名服务器JAR文件路径
+    NAMING_SERVER_JAR=""
+    if [ -f "$NAMING_SERVER_DIR/target/seata-namingserver.jar" ]; then
+        NAMING_SERVER_JAR="$NAMING_SERVER_DIR/target/seata-namingserver.jar"
+    elif [ -f "$NAMING_SERVER_DIR/seata-namingserver.jar" ]; then
+        NAMING_SERVER_JAR="$NAMING_SERVER_DIR/seata-namingserver.jar"
+    elif [ -f "$NAMING_SERVER_DIR/lib/seata-namingserver.jar" ]; then
+        NAMING_SERVER_JAR="$NAMING_SERVER_DIR/lib/seata-namingserver.jar"
+    else
+        echo "错误: 未找到Seata命名服务器JAR文件在以下位置:"
+        echo "  - $NAMING_SERVER_DIR/target/seata-namingserver.jar"
+        echo "  - $NAMING_SERVER_DIR/seata-namingserver.jar"
+        echo "  - $NAMING_SERVER_DIR/lib/seata-namingserver.jar"
+        return 1
+    fi
+    
+    echo "使用Seata命名服务器JAR: $NAMING_SERVER_JAR"
+    
+    # 启动Seata命名服务器
+    # 使用与seata-namingserver.sh类似的参数
+    JAVA_OPT="-server -Xmx1g -Xms1g -Xmn512m -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=256m -Xloggc:gc.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCTimeStamps -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=10M -XX:+PrintHeapAtGC -XX:+UseStringDeduplication -Dfile.encoding=utf-8 -Dlogging.config=$NAMING_SERVER_DIR/conf/logback-spring.xml -Dspring.config.additional-location=$NAMING_SERVER_DIR/conf/ -Dspring.config.location=$NAMING_SERVER_DIR/conf/application.yml"
+    
+    # 设置Java命令
+    JAVACMD="java"
+    
+    # 创建日志目录
+    mkdir -p "$NAMING_SERVER_DIR/logs"
+    
+    # 启动Seata命名服务器
+    nohup $JAVACMD $JAVA_OPT -jar "$NAMING_SERVER_JAR" >> "$NAMING_SERVER_DIR/logs/seata-namingserver.log" 2>&1 &
+    
+    # 获取进程ID
+    NAMING_PID=$!
+    
+    if [ $NAMING_PID -gt 0 ]; then
+        echo "Seata命名服务器已以主机模式启动，进程ID: $NAMING_PID"
+        echo "日志文件: $NAMING_SERVER_DIR/logs/seata-namingserver.log"
+    else
+        echo "警告: Seata命名服务器启动失败"
+    fi
 }
 
 # 主程序逻辑
@@ -389,6 +518,10 @@ if [ "$CHECK_STATUS" = true ]; then
         else
             echo "Seata服务未在主机模式下运行"
         fi
+        
+        # 检查Seata命名服务器状态
+        echo ""
+        check_seata_namingserver_status
         
         # 同时检查Docker状态
         if check_and_start_docker && [ -f "$PROJECT_DIR/docker-compose.yml" ]; then
