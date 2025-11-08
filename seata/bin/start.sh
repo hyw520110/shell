@@ -5,14 +5,14 @@
 # 支持Docker和主机模式
 # Also handles seata-namingserver startup
 
-set -e
+set -euo pipefail  # 启用严格模式
 
 # 导入公共函数库
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/common.sh" ]; then
     source "$SCRIPT_DIR/common.sh"
 else
-    echo "错误: 找不到公共函数库 $LIB_DIR/common.sh"
+    echo -e "\033[0;31m[错误]\033[0m 找不到公共函数库 $SCRIPT_DIR/common.sh" >&2
     exit 1
 fi
 
@@ -29,20 +29,13 @@ is_seata_running() {
     cd "$PROJECT_DIR"
     
     if [ ! -f "docker-compose.yml" ]; then
-        echo "错误: 未找到docker-compose.yml文件"
+        print_error "未找到docker-compose.yml文件"
         exit 1
     fi
     
-    if command -v docker-compose &> /dev/null; then
-        # 使用docker-compose检查服务状态
-        if docker-compose ps 2>/dev/null | grep -q "seata-server.*Up"; then
-            return 0
-        fi
-    else
-        # 使用docker compose检查服务状态
-        if docker compose ps 2>/dev/null | grep -q "seata-server.*Up"; then
-            return 0
-        fi
+    # 使用新的通用函数检查容器状态
+    if is_container_running "seata-server"; then
+        return 0
     fi
     
     return 1
@@ -73,6 +66,9 @@ check_seata_namingserver_status() {
 
 # 启动Seata命名服务器 (主机模式)
 start_seata_namingserver() {
+    if [ "$START_NAMINGSERVER" = false ]; then
+        return 0
+    fi    
     echo "正在启动Seata命名服务器..."
     
     # 获取当前脚本所在的Seata安装目录
@@ -81,7 +77,6 @@ start_seata_namingserver() {
     
     # 检查命名服务器目录是否存在
     if [ ! -d "$NAMING_SERVER_DIR" ]; then
-        echo "警告: Seata命名服务器目录不存在: $NAMING_SERVER_DIR"
         return 1
     fi
     
@@ -228,6 +223,7 @@ show_help() {
 # 解析命令行参数
 FORCE_RESTART=false
 CHECK_STATUS=false
+START_NAMINGSERVER=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -237,6 +233,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -s|--status)
             CHECK_STATUS=true
+            shift
+            ;;
+        --with-namingserver)
+            START_NAMINGSERVER=true
             shift
             ;;
         --mode)
@@ -335,20 +335,13 @@ is_seata_running_docker() {
     cd "$PROJECT_DIR"
     
     if [ ! -f "docker-compose.yml" ]; then
-        echo "错误: 未找到docker-compose.yml文件"
+        print_error "未找到docker-compose.yml文件"
         exit 1
     fi
     
-    if command -v docker-compose &> /dev/null; then
-        # 使用docker-compose检查服务状态
-        if docker-compose ps 2>/dev/null | grep -q "seata-server.*Up"; then
-            return 0
-        fi
-    else
-        # 使用docker compose检查服务状态
-        if docker compose ps 2>/dev/null | grep -q "seata-server.*Up"; then
-            return 0
-        fi
+    # 使用新的通用函数检查容器状态
+    if is_container_running "seata-server"; then
+        return 0
     fi
     
     return 1
@@ -441,6 +434,9 @@ start_seata_host() {
 
 # 在主机模式下启动Seata命名服务器
 start_seata_namingserver_host() {
+    if [ "$START_NAMINGSERVER" = false ]; then
+        return 0
+    fi
     echo "正在以主机模式启动Seata命名服务器..."
     
     # 获取当前脚本所在的Seata安装目录
@@ -576,5 +572,17 @@ else
         else
             start_seata_host
         fi
+    fi
+fi
+
+# 如果请求启动 naming server，则启动它
+if [ "$START_NAMINGSERVER" = true ]; then
+    echo "正在启动 Seata 命名服务器..."
+    if should_use_docker; then
+        # Docker 模式下，命名服务器作为 docker-compose.yml 的一部分启动
+        echo "在 Docker 模式下，命名服务器应作为 docker-compose 的一部分启动"
+    else
+        # 主机模式下，启动命名服务器
+        start_seata_namingserver_host
     fi
 fi

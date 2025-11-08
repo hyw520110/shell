@@ -12,19 +12,63 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # 无颜色
 
-# 带颜色的输出函数
-print_info() {
-    echo -e "${GREEN}[信息]${NC} $1"
+# 日志级别
+LOG_LEVEL_DEBUG=0
+LOG_LEVEL_INFO=1
+LOG_LEVEL_WARN=2
+LOG_LEVEL_ERROR=3
+
+# 默认日志级别
+DEFAULT_LOG_LEVEL=$LOG_LEVEL_INFO
+
+# 获取日志级别（从环境变量或默认值）
+get_log_level() {
+    case "${LOG_LEVEL:-INFO}" in
+        "DEBUG") echo $LOG_LEVEL_DEBUG ;;
+        "INFO")  echo $LOG_LEVEL_INFO ;;
+        "WARN")  echo $LOG_LEVEL_WARN ;;
+        "ERROR") echo $LOG_LEVEL_ERROR ;;
+        *)       echo $DEFAULT_LOG_LEVEL ;;
+    esac
 }
 
-print_warn() {
-    echo -e "${YELLOW}[警告]${NC} $1"
+# 检查日志级别是否应该输出
+should_log() {
+    local message_level=$1
+    local current_level=$(get_log_level)
+    if [ $message_level -ge $current_level ]; then
+        return 0  # 应该输出
+    else
+        return 1  # 不应该输出
+    fi
 }
 
-print_error() {
-    echo -e "${RED}[错误]${NC} $1"
+# 带颜色和级别的日志输出函数
+log_debug() {
+    if should_log $LOG_LEVEL_DEBUG; then
+        echo -e "${BLUE}[调试]${NC} $1" >&2
+    fi
+}
+
+log_info() {
+    if should_log $LOG_LEVEL_INFO; then
+        echo -e "${GREEN}[信息]${NC} $1" >&2
+    fi
+}
+
+log_warn() {
+    if should_log $LOG_LEVEL_WARN; then
+        echo -e "${YELLOW}[警告]${NC} $1" >&2
+    fi
+}
+
+log_error() {
+    if should_log $LOG_LEVEL_ERROR; then
+        echo -e "${RED}[错误]${NC} $1" >&2
+    fi
 }
 
 # 检测操作系统是否为 macOS 或 Linux
@@ -121,4 +165,81 @@ check_and_start_docker() {
     fi
     
     return 0
+}
+
+# 检查Docker是否已启动
+is_docker_running() {
+    if docker info > /dev/null 2>&1; then
+        return 0  # Docker is running
+    else
+        return 1  # Docker is not running
+    fi
+}
+
+# 检查是否存在指定的Docker镜像
+has_docker_image() {
+    local image_name="$1"
+    if [ -z "$image_name" ]; then
+        print_error "镜像名称不能为空"
+        return 1
+    fi
+    
+    if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${image_name}$"; then
+        return 0  # 镜像存在
+    elif docker images --format "{{.Repository}}" | grep -q "^${image_name}$"; then
+        # 检查是否有标签为 latest 的镜像
+        if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${image_name}:latest$"; then
+            return 0  # 镜像存在
+        fi
+    fi
+    
+    return 1  # 镜像不存在
+}
+
+# 检查容器是否存在
+has_container() {
+    local container_name="$1"
+    if [ -z "$container_name" ]; then
+        print_error "容器名称不能为空"
+        return 1
+    fi
+    
+    if docker ps -a --format "{{.Names}}" | grep -q "^${container_name}$"; then
+        return 0  # 容器存在
+    fi
+    
+    return 1  # 容器不存在
+}
+
+# 检查容器是否正在运行
+is_container_running() {
+    local container_name="$1"
+    if [ -z "$container_name" ]; then
+        print_error "容器名称不能为空"
+        return 1
+    fi
+    
+    if docker ps --format "{{.Names}}" | grep -q "^${container_name}$"; then
+        return 0  # 容器正在运行
+    fi
+    
+    return 1  # 容器未运行
+}
+
+# 获取容器状态
+get_container_status() {
+    local container_name="$1"
+    if [ -z "$container_name" ]; then
+        print_error "容器名称不能为空"
+        return 1
+    fi
+    
+    local status=$(docker ps -a --filter "name=$container_name" --format "{{.Status}}" | head -n 1)
+    if [ -n "$status" ]; then
+        echo "$status"
+        return 0
+    else
+        echo "Not Found"
+        return 1
+    fi
 }

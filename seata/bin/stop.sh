@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/common.sh" ]; then
     source "$SCRIPT_DIR/common.sh"
 else
-    echo "错误: 找不到公共函数库 $SCRIPT_DIR/common.sh" >&2
+    log_error "找不到公共函数库 $SCRIPT_DIR/common.sh"
     exit 1
 fi
 FORCE_STOP=false
@@ -33,9 +33,9 @@ show_help() {
 # 执行Docker Compose命令（带错误处理）
 run_docker_compose() {
     local cmd="$1"
-    echo "执行: $DOCKER_COMPOSE_CMD $cmd"
+    log_info "执行: $DOCKER_COMPOSE_CMD $cmd"
     if ! $DOCKER_COMPOSE_CMD $cmd; then
-        echo "错误: Docker Compose命令失败: $DOCKER_COMPOSE_CMD $cmd" >&2
+        log_error "Docker Compose命令失败: $DOCKER_COMPOSE_CMD $cmd"
         return 1
     fi
     return 0
@@ -44,97 +44,104 @@ run_docker_compose() {
 # 停止Docker模式下的Seata服务（优雅停止）
 stop_seata_docker() {
     # 检查是否有Seata相关的Docker容器正在运行
-    local RUNNING_CONTAINERS=$($DOCKER_COMPOSE_CMD ps -q 2>/dev/null)
-    if [ -z "$RUNNING_CONTAINERS" ]; then
+    if ! is_container_running "seata-server" && ! is_container_running "mysql-server"; then
+        log_info "没有正在运行的Seata相关容器"
         return 0
-    fi
-    # 显示正在运行的容器
-    echo "当前正在运行的Seata服务容器:"
-    $DOCKER_COMPOSE_CMD ps
-    echo "正在优雅停止Docker模式下的Seata服务..."
-    # 优雅停止服务
-    if ! run_docker_compose "down"; then
-        echo "警告: 优雅停止失败..."
-    fi
-    # 检查是否仍有容器在运行
-    RUNNING_CONTAINERS=$($DOCKER_COMPOSE_CMD ps -q 2>/dev/null)
-    if [ ! -n "$RUNNING_CONTAINERS" ]; then
-        return 0
-    fi
-    if [ "$FORCE_STOP" == "false" ]; then
-	    echo "仍有容器在运行，如需强制停止，请使用 -f 参数"
-        return 1
-    fi
-    echo "正在强制停止Docker模式下的Seata服务..."
-    # 强制停止服务
-    if ! run_docker_compose "down -v --remove-orphans"; then
-        echo "警告: 基础停止失败，尝试强制终止剩余容器..."
     fi
     
-    # 检查并强制终止剩余容器
-    RUNNING_CONTAINERS=$($DOCKER_COMPOSE_CMD ps -q 2>/dev/null)
-    if [ -n "$RUNNING_CONTAINERS" ]; then
-        echo "发现 $RUNNING_CONTAINERS 个未停止的容器，强制终止..."
-        docker stop $RUNNING_CONTAINERS >/dev/null 2>&1 || true
-        docker rm $RUNNING_CONTAINERS >/dev/null 2>&1 || true
+    # 显示正在运行的容器
+    log_info "当前正在运行的Seata服务容器:"
+    $DOCKER_COMPOSE_CMD ps
+    
+    log_info "正在优雅停止Docker模式下的Seata服务..."
+    # 优雅停止服务
+    if ! run_docker_compose "down"; then
+        log_warn "优雅停止失败..."
     fi
-    echo "Docker模式下的Seata服务已停止"
+    
+    # 检查是否仍有seata-server容器在运行
+    if is_container_running "seata-server"; then
+        if [ "$FORCE_STOP" == "false" ]; then
+            log_error "仍有容器在运行，如需强制停止，请使用 -f 参数"
+            return 1
+        fi
+        
+        log_info "正在强制停止Docker模式下的Seata服务..."
+        # 强制停止服务
+        if ! run_docker_compose "down -v --remove-orphans"; then
+            log_warn "基础停止失败，尝试强制终止剩余容器..."
+        fi
+        
+        # 检查并强制终止剩余容器
+        if is_container_running "seata-server"; then
+            log_info "强制终止seata-server容器..."
+            docker stop seata-server >/dev/null 2>&1 || true
+            docker rm seata-server >/dev/null 2>&1 || true
+        fi
+        if is_container_running "mysql-server"; then
+            log_info "强制终止mysql-server容器..."
+            docker stop mysql-server >/dev/null 2>&1 || true
+            docker rm mysql-server >/dev/null 2>&1 || true
+        fi
+    fi
+    
+    log_info "Docker模式下的Seata服务已停止"
 }
 
 
 # 停止主机模式下的Seata服务
 stop_seata_host() {
-    echo "正在停止主机模式下的Seata服务..."
+    log_info "正在停止主机模式下的Seata服务..."
     
     # 查找并终止Seata相关的Java进程
     local  SEATA_PROCESSES=$(pgrep -f "java.*seata-server" 2>/dev/null || true)
     
     if [ -n "$SEATA_PROCESSES" ]; then
-        echo "找到以下Seata进程: $SEATA_PROCESSES"
+        log_info "找到以下Seata进程: $SEATA_PROCESSES"
         for pid in $SEATA_PROCESSES; do
-            echo "  正在终止进程 $pid"
+            log_info "  正在终止进程 $pid"
             kill "$pid" >/dev/null 2>&1 || true
         done
-        echo "主机模式下的Seata服务已停止"
+        log_info "主机模式下的Seata服务已停止"
     else
-        echo "未找到主机模式下运行的Seata服务"
+        log_info "未找到主机模式下运行的Seata服务"
     fi
     if [ "$FORCE_STOP"  == "false" ]; then
-    	echo "主机模式下的Seata命名服务器停止失败"
+    	log_error "主机模式下的Seata服务停止失败"
         return 1
     fi
-    echo "正在强制停止主机模式下的Seata服务..."
+    log_info "正在强制停止主机模式下的Seata服务..."
     
     if [ -n "$SEATA_PROCESSES" ]; then
-        echo "找到以下Seata进程: $SEATA_PROCESSES"
+        log_info "找到以下Seata进程: $SEATA_PROCESSES"
         for pid in $SEATA_PROCESSES; do
-            echo "  强制终止进程 $pid"
+            log_info "  强制终止进程 $pid"
             kill -9 "$pid" >/dev/null 2>&1 || true
         done
-        echo "主机模式下的Seata服务已强制停止"
+        log_info "主机模式下的Seata服务已强制停止"
     else
-        echo "未找到主机模式下运行的Seata服务"
+        log_info "未找到主机模式下运行的Seata服务"
     fi
 }
 
 # 停止主机模式下的Seata命名服务器
 stop_seata_namingserver_host() {
-    echo "正在停止主机模式下的Seata命名服务器..."
+    log_info "正在停止主机模式下的Seata命名服务器..."
     
     # 查找并终止Seata命名服务器相关的Java进程
     local NAMING_PROCESSES=$(pgrep -f "java.*seata-namingserver" 2>/dev/null || true)
     
     if [ -n "$NAMING_PROCESSES" ]; then
-        echo "找到以下Seata命名服务器进程: $NAMING_PROCESSES"
+        log_info "找到以下Seata命名服务器进程: $NAMING_PROCESSES"
         for pid in $NAMING_PROCESSES; do
-            echo "  正在终止进程 $pid"
+            log_info "  正在终止进程 $pid"
             kill "$pid" >/dev/null 2>&1 || true
         done
-        echo "主机模式下的Seata命名服务器已停止"
+        log_info "主机模式下的Seata命名服务器已停止"
     else
         return 0
     fi
-     
+      
     
     NAMING_PROCESSES=$(pgrep -f "java.*seata-namingserver" 2>/dev/null || true)
     
@@ -142,16 +149,16 @@ stop_seata_namingserver_host() {
 	    return 0
     fi
     if [ "$FORCE_STOP"  == "false" ]; then
-    	echo "主机模式下的Seata命名服务器停止失败"
+    	log_error "主机模式下的Seata命名服务器停止失败"
         return 1
     fi
-    echo "正在强制停止主机模式下的Seata命名服务器..."
-    echo "找到以下Seata命名服务器进程: $NAMING_PROCESSES"
+    log_info "正在强制停止主机模式下的Seata命名服务器..."
+    log_info "找到以下Seata命名服务器进程: $NAMING_PROCESSES"
     for pid in $NAMING_PROCESSES; do
-        echo "  强制终止进程 $pid"
+        log_info "  强制终止进程 $pid"
         kill -9 "$pid" >/dev/null 2>&1 || true
     done
-    echo "主机模式下的Seata命名服务器已强制停止"
+    log_info "主机模式下的Seata命名服务器已强制停止"
     return 0
 }
 
@@ -170,20 +177,23 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo "错误: 不支持的参数 '$1'" >&2
+            log_error "不支持的参数 '$1'"
             show_help
             exit 1
             ;;
     esac
 done
 
-
-# 优雅停止Docker模式下的服务
-if check_docker_compose; then
-    stop_seata_docker
+# 检测Docker进程是否启动
+if ! docker ps > /dev/null 2>&1; then
+    log_warn "Docker 进程未运行，跳过 Docker 模式停止操作"
+else
+    # 优雅停止Docker模式下的服务
+    if check_docker_compose; then
+        stop_seata_docker
+    fi
 fi
 
 # 停止主机模式下的服务
 stop_seata_host
 stop_seata_namingserver_host
-
