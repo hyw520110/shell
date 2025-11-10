@@ -7,7 +7,8 @@ set -e
 
 # 获取脚本所在目录的绝对路径
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
+# 获取项目目录的绝对路径
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 # 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -23,7 +24,15 @@ LOG_LEVEL_ERROR=3
 
 # 默认日志级别
 DEFAULT_LOG_LEVEL=$LOG_LEVEL_INFO
+SEATA_SERVER_SH="seata-server.sh"
+START_SCRIPT_PATH="start.sh"
+STOP_SCRIPT_PATH="stop.sh"
+SEATA_NAMINGSERVER_SH="seata-namingserver.sh"
 
+HOST="0.0.0.0"
+PORT=8091
+STORE_MODE="file"
+LOG_FILE="$HOME/logs/seata-server.log"
 # 获取日志级别（从环境变量或默认值）
 get_log_level() {
     case "${LOG_LEVEL:-INFO}" in
@@ -78,15 +87,39 @@ get_os_type() {
     elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         echo "Linux"
     else
-        print_error "不支持的操作系统: $OSTYPE"
+        log_error "不支持的操作系统: $OSTYPE"
         return 1
     fi
 }
 
+# 检查Docker是否已启动 - 增强版，兼容Linux和macOS
+is_docker_running() {
+    # 方法1: 使用docker info命令检测
+    if docker info > /dev/null 2>&1; then
+        return 0  # Docker is running
+    fi
+
+    # 方法2: 检查Docker进程是否存在
+    local os_type=$(get_os_type)
+    if [[ "$os_type" == "Linux" ]]; then
+        # Linux系统，检查docker服务进程
+        if pgrep docker > /dev/null 2>&1 || systemctl is-active --quiet docker 2>/dev/null; then
+            return 0
+        fi
+    elif [[ "$os_type" == "macOS" ]]; then
+        # macOS系统，检查Docker应用进程
+        if pgrep "Docker" > /dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
+    return 1  
+}
+ 
 # 检查 docker-compose 是否已安装
 check_docker_compose() {
     if ! command -v docker-compose &> /dev/null && ! command -v docker compose &> /dev/null; then
-        print_error "未找到docker-compose或docker compose命令"
+        log_error "未找到docker-compose或docker compose命令"
         return 1
     fi
     return 0
@@ -94,30 +127,30 @@ check_docker_compose() {
 
 # 检查Docker是否运行，如果没有则尝试启动
 check_and_start_docker() {
-    if ! docker info > /dev/null 2>&1; then
-        print_info "Docker服务未运行，正在尝试启动Docker..."
+    if ! is_docker_running; then
+        log_info "Docker服务未运行，正在尝试启动Docker..."
         
         # 尝试在不同系统上启动Docker
         if command -v systemctl &> /dev/null; then
             # Linux系统，尝试使用systemctl
             if systemctl is-active --quiet docker; then
-                print_info "Docker服务已存在但未响应，尝试重启..."
+                log_info "Docker服务已存在但未响应，尝试重启..."
                 sudo systemctl restart docker
             else
-                print_info "正在启动Docker服务..."
+                log_info "正在启动Docker服务..."
                 sudo systemctl start docker
             fi
         elif command -v brew &> /dev/null; then
             # macOS系统，使用brew services
-            print_info "正在启动Docker服务..."
+            log_info "正在启动Docker服务..."
             brew services start docker 2>/dev/null || print_warn "请手动启动Docker应用"
         elif command -v service &> /dev/null; then
             # 传统Linux系统，使用service命令
             if service docker status 2>/dev/null | grep -q running; then
-                print_info "Docker服务已存在但未响应，尝试重启..."
+                log_info "Docker服务已存在但未响应，尝试重启..."
                 sudo service docker restart
             else
-                print_info "正在启动Docker服务..."
+                log_info "正在启动Docker服务..."
                 sudo service docker start
             fi
         else
@@ -132,7 +165,7 @@ check_and_start_docker() {
             local docker_found=false
             for path in "${possible_docker_paths[@]}"; do
                 if [ -x "$path" ]; then
-                    print_info "找到Docker可执行文件: $path"
+                    log_info "找到Docker可执行文件: $path"
                     print_warn "请手动启动Docker服务或应用程序"
                     docker_found=true
                     break
@@ -140,18 +173,18 @@ check_and_start_docker() {
             done
             
             if [ "$docker_found" = false ]; then
-                print_error "无法找到Docker，请确认已安装Docker并手动启动"
+                log_error "无法找到Docker，请确认已安装Docker并手动启动"
                 return 1
             fi
         fi
         
         # 等待Docker启动
-        print_info "等待Docker服务启动..."
+        log_info "等待Docker服务启动..."
         local timeout=30
         local count=0
         while [ $count -lt $timeout ]; do
             if docker info > /dev/null 2>&1; then
-                print_info "Docker服务已启动"
+                log_info "Docker服务已启动"
                 return 0
             fi
             sleep 1
@@ -159,7 +192,7 @@ check_and_start_docker() {
         done
         
         if [ $count -eq $timeout ]; then
-            print_error "Docker服务启动超时，请手动启动Docker后再运行此脚本"
+            log_error "Docker服务启动超时，请手动启动Docker后再运行此脚本"
             return 1
         fi
     fi
@@ -167,20 +200,12 @@ check_and_start_docker() {
     return 0
 }
 
-# 检查Docker是否已启动
-is_docker_running() {
-    if docker info > /dev/null 2>&1; then
-        return 0  # Docker is running
-    else
-        return 1  # Docker is not running
-    fi
-}
 
 # 检查是否存在指定的Docker镜像
 has_docker_image() {
     local image_name="$1"
     if [ -z "$image_name" ]; then
-        print_error "镜像名称不能为空"
+        log_error "镜像名称不能为空"
         return 1
     fi
     
@@ -200,7 +225,7 @@ has_docker_image() {
 has_container() {
     local container_name="$1"
     if [ -z "$container_name" ]; then
-        print_error "容器名称不能为空"
+        log_error "容器名称不能为空"
         return 1
     fi
     
@@ -215,8 +240,7 @@ has_container() {
 is_container_running() {
     local container_name="$1"
     if [ -z "$container_name" ]; then
-        print_error "容器名称不能为空"
-        return 1
+       container_name=$(grep "container_name" $PROJECT_DIR/docker-compose.yml|awk -F': ' '{print $2}')
     fi
     
     if docker ps --format "{{.Names}}" | grep -q "^${container_name}$"; then
@@ -230,7 +254,7 @@ is_container_running() {
 get_container_status() {
     local container_name="$1"
     if [ -z "$container_name" ]; then
-        print_error "容器名称不能为空"
+        log_error "容器名称不能为空"
         return 1
     fi
     
@@ -241,5 +265,42 @@ get_container_status() {
     else
         echo "Not Found"
         return 1
+    fi
+}
+
+# 检查指定名称的进程是否在主机上运行
+is_process_running() {
+    local process_name="${1:-}"
+    if [ -z "$process_name" ]; then
+       process_name="$PROJECT_DIR"
+    fi
+
+    if command -v pgrep &> /dev/null; then
+    	PROCESSES=pgrep -f "$process_name" > /dev/null 2>&1
+    	if [ -n "$PROCESSES" ]; then
+    		return "$PROCESSES"
+	    fi
+    else
+	 	PROCESSES=$(ps aux | grep -i $process_name | grep -v grep)
+        if [ -n "$PROCESSES" ]; then
+            return "$PROCESSES"
+        fi	
+    fi
+    return ""
+}
+
+# 检查指定PID的进程是否在主机上运行
+is_pid_running() {
+    local pid="$1"
+    if [ -z "$pid" ] || ! [[ "$pid" =~ ^[0-9]+$ ]]; then
+        log_error "PID不能为空且必须为数字"
+        return 1
+    fi
+
+    # 检查指定PID的进程是否存在
+    if kill -0 "$pid" 2>/dev/null; then
+        return 0  # 进程正在运行
+    else
+        return 1  # 进程未运行
     fi
 }

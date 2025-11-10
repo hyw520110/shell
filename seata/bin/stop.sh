@@ -91,20 +91,20 @@ stop_seata_docker() {
 
 # 停止主机模式下的Seata服务
 stop_seata_host() {
-    log_info "正在停止主机模式下的Seata服务..."
+    log_debug "正在停止主机模式下的Seata服务..."
     
     # 查找并终止Seata相关的Java进程
-    local  SEATA_PROCESSES=$(pgrep -f "java.*seata-server" 2>/dev/null || true)
+    local  SEATA_PROCESSES=$(is_process_running)
     
     if [ -n "$SEATA_PROCESSES" ]; then
-        log_info "找到以下Seata进程: $SEATA_PROCESSES"
+        log_debug "找到以下Seata进程: $SEATA_PROCESSES"
         for pid in $SEATA_PROCESSES; do
             log_info "  正在终止进程 $pid"
             kill "$pid" >/dev/null 2>&1 || true
         done
         log_info "主机模式下的Seata服务已停止"
     else
-        log_info "未找到主机模式下运行的Seata服务"
+        log_debug "未找到主机模式下运行的Seata服务"
     fi
     if [ "$FORCE_STOP"  == "false" ]; then
     	log_error "主机模式下的Seata服务停止失败"
