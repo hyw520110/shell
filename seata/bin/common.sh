@@ -58,25 +58,25 @@ should_log() {
 # 带颜色和级别的日志输出函数
 log_debug() {
     if should_log $LOG_LEVEL_DEBUG; then
-        echo -e "${BLUE}[调试]${NC} $1" >&2
+        echo -e "${BLUE}[调试]$1${NC}" >&2
     fi
 }
 
 log_info() {
     if should_log $LOG_LEVEL_INFO; then
-        echo -e "${GREEN}[信息]${NC} $1" >&2
+        echo -e "${GREEN}[信息] $1${NC}" >&2
     fi
 }
 
 log_warn() {
     if should_log $LOG_LEVEL_WARN; then
-        echo -e "${YELLOW}[警告]${NC} $1" >&2
+        echo -e "${YELLOW}[警告] $1${NC}" >&2
     fi
 }
 
 log_error() {
     if should_log $LOG_LEVEL_ERROR; then
-        echo -e "${RED}[错误]${NC} $1" >&2
+        echo -e "${RED}[错误] $1${NC}" >&2
     fi
 }
 
@@ -268,25 +268,38 @@ get_container_status() {
     fi
 }
 
-# 检查指定名称的进程是否在主机上运行
+# 检查指定名称或端口的进程是否在运行，运行的话返回进程信息
 is_process_running() {
     local process_name="${1:-}"
     if [ -z "$process_name" ]; then
        process_name="$PROJECT_DIR"
     fi
 
+    # 首先尝试使用pgrep查找进程
     if command -v pgrep &> /dev/null; then
-    	PROCESSES=pgrep -f "$process_name" > /dev/null 2>&1
-    	if [ -n "$PROCESSES" ]; then
-    		return "$PROCESSES"
-	    fi
-    else
-	 	PROCESSES=$(ps aux | grep -i $process_name | grep -v grep)
-        if [ -n "$PROCESSES" ]; then
-            return "$PROCESSES"
-        fi	
+        local pids=$(pgrep -f "$process_name" 2>/dev/null)
+        if [ -n "$pids" ]; then
+            echo "$pids"
+            return 0
+        fi
     fi
-    return ""
+    
+    # 如果没有pgrep或没有找到，使用ps命令查找
+    local pids=$(ps aux | grep -i "$process_name" | grep -v grep | awk '{print $2}')
+    if [ -n "$pids" ]; then
+        echo "$pids"
+        return 0
+    fi
+    
+    # 最后尝试通过端口查找Seata进程
+    local pid=$(lsof -i:$PORT 2>/dev/null | awk 'NR>1 {print $2}' | head -n 1)
+    if [ -n "$pid" ]; then
+        echo "$pid"
+        return 0
+    fi
+    
+    # 没有找到相关进程，返回错误
+    return 1
 }
 
 # 检查指定PID的进程是否在主机上运行

@@ -305,11 +305,11 @@ start_seata_host() {
     mkdir -p "$(dirname $LOG_FILE)"
     # 启动Seata服务
     nohup $SEATA_HOME/bin/$SEATA_SERVER_SH -p $PORT -h $HOST -m $STORE_MODE >> "$LOG_FILE" 2>&1 &
+    sleep 3
+    # 通过端口获取进程ID
+    SEATA_PID=$(is_process_running)
     
-    # 获取进程ID
-    SEATA_PID=$!
-    
-    if [ $SEATA_PID -gt 0 ]; then
+    if [ -n "$SEATA_PID" ]; then
         log_info "Seata服务已启动，进程ID: $SEATA_PID"
         log_info "访问地址: http://$HOST:$PORT"
         log_info "默认事务群组: default_tx_group"

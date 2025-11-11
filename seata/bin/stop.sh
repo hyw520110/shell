@@ -92,44 +92,43 @@ stop_seata_docker() {
 # 停止主机模式下的Seata服务
 stop_seata_host() {
     log_debug "正在停止主机模式下的Seata服务..."
-    
-    # 查找并终止Seata相关的Java进程
-    local  SEATA_PROCESSES=$(is_process_running)
-    
-    if [ -n "$SEATA_PROCESSES" ]; then
-        log_debug "找到以下Seata进程: $SEATA_PROCESSES"
-        for pid in $SEATA_PROCESSES; do
-            log_info "  正在终止进程 $pid"
-            kill "$pid" >/dev/null 2>&1 || true
-        done
-        log_info "主机模式下的Seata服务已停止"
-    else
-        log_debug "未找到主机模式下运行的Seata服务"
+    # 查找并终止Seata相关的Java
+    local SEATA_PROCESSES=$(is_process_running)
+    if [ ! -n "$SEATA_PROCESSES" ]; then
+	     log_info "未找到主机模式下运行的Seata服务"
+	     return 0
     fi
-    if [ "$FORCE_STOP"  == "false" ]; then
-    	log_error "主机模式下的Seata服务停止失败"
+    log_info "Seata进程: $SEATA_PROCESSES"
+    for pid in $SEATA_PROCESSES; do
+        log_info "  正在终止进程 $pid"
+        kill "$pid" >/dev/null 2>&1 || true
+    done
+    SEATA_PROCESSES=$(is_process_running)
+     # 如果启用了强制停止并且仍有进程在运行，则强制终止
+    if [ "$FORCE_STOP" == "true" ]; then
+        if [ -n "$SEATA_PROCESSES" ]; then
+            log_info "正在强制停止主机模式下的Seata服务..."
+            for pid in $SEATA_PROCESSES; do
+                log_info "  强制终止进程 $pid"
+                kill -9 "$pid" >/dev/null 2>&1 || true
+            done
+            log_info "主机模式下的Seata服务已强制停止"
+        else
+            log_info "未找到主机模式下运行的Seata服务"
+        fi
+    fi
+  	if [ -n "$SEATA_PROCESSES" ]; then
+        log_error "主机模式下的Seata服务停止失败"
         return 1
     fi
-    log_info "正在强制停止主机模式下的Seata服务..."
-    
-    if [ -n "$SEATA_PROCESSES" ]; then
-        log_info "找到以下Seata进程: $SEATA_PROCESSES"
-        for pid in $SEATA_PROCESSES; do
-            log_info "  强制终止进程 $pid"
-            kill -9 "$pid" >/dev/null 2>&1 || true
-        done
-        log_info "主机模式下的Seata服务已强制停止"
-    else
-        log_info "未找到主机模式下运行的Seata服务"
-    fi
+    return 0
 }
 
 # 停止主机模式下的Seata命名服务器
 stop_seata_namingserver_host() {
-    log_info "正在停止主机模式下的Seata命名服务器..."
-    
+    log_debug "正在停止主机模式下的Seata命名服务器..."
     # 查找并终止Seata命名服务器相关的Java进程
-    local NAMING_PROCESSES=$(pgrep -f "java.*seata-namingserver" 2>/dev/null || true)
+    local NAMING_PROCESSES=$(is_process_running "seata-namingserver")
     
     if [ -n "$NAMING_PROCESSES" ]; then
         log_info "找到以下Seata命名服务器进程: $NAMING_PROCESSES"
@@ -141,24 +140,6 @@ stop_seata_namingserver_host() {
     else
         return 0
     fi
-      
-    
-    NAMING_PROCESSES=$(pgrep -f "java.*seata-namingserver" 2>/dev/null || true)
-    
-    if [ ! -n "$NAMING_PROCESSES" ]; then
-	    return 0
-    fi
-    if [ "$FORCE_STOP"  == "false" ]; then
-    	log_error "主机模式下的Seata命名服务器停止失败"
-        return 1
-    fi
-    log_info "正在强制停止主机模式下的Seata命名服务器..."
-    log_info "找到以下Seata命名服务器进程: $NAMING_PROCESSES"
-    for pid in $NAMING_PROCESSES; do
-        log_info "  强制终止进程 $pid"
-        kill -9 "$pid" >/dev/null 2>&1 || true
-    done
-    log_info "主机模式下的Seata命名服务器已强制停止"
     return 0
 }
 
@@ -185,9 +166,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 检测Docker进程是否启动
-if ! docker ps > /dev/null 2>&1; then
-    log_warn "Docker 进程未运行，跳过 Docker 模式停止操作"
-else
+if is_docker_running; then
     # 优雅停止Docker模式下的服务
     if check_docker_compose; then
         stop_seata_docker
