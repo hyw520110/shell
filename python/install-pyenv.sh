@@ -23,15 +23,28 @@ install_dependencies() {
       if ! /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
         log $YELLOW "尝试使用镜像源安装 Homebrew..."
         export HOMEBREW_BOTTLE_DOMAIN=https://mirrors.ustc.edu.cn/homebrew-bottles
-        /bin/bash -c "$(curl -fsSL https://gitee.com/cunkai/HomebrewCN/raw/master/Homebrew.sh)"
+        if ! /bin/bash -c "$(curl -fsSL https://gitee.com/cunkai/HomebrewCN/raw/master/Homebrew.sh)"; then
+          log $RED "无法安装 Homebrew，请手动安装后重试"
+          exit 1
+        fi
       fi
     fi
   else
     # Linux
-    sudo apt update || { log $RED "APT 更新失败"; exit 1; }
-    sudo apt install -y make build-essential libssl-dev zlib1g-dev \
-      libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
-      libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev || { log $RED "APT 安装依赖失败"; exit 1; }
+    if command -v apt &> /dev/null; then
+      sudo apt update || { log $RED "APT 更新失败"; exit 1; }
+      sudo apt install -y make build-essential libssl-dev zlib1g-dev \
+        libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
+        libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev || { log $RED "APT 安装依赖失败"; exit 1; }
+    elif command -v yum &> /dev/null; then
+      sudo yum install -y gcc make openssl-devel zlib-devel bzip2-devel readline-devel sqlite-devel \
+        wget curl llvm-devel ncurses-devel xz-devel tk-devel libxml2-devel libxmlsec1-devel libffi-devel liblzma-devel || { log $RED "YUM 安装依赖失败"; exit 1; }
+    elif command -v dnf &> /dev/null; then
+      sudo dnf install -y gcc make openssl-devel zlib-devel bzip2-devel readline-devel sqlite-devel \
+        wget curl llvm-devel ncurses-devel xz-devel tk-devel libxml2-devel libxmlsec1-devel libffi-devel liblzma-devel || { log $RED "DNF 安装依赖失败"; exit 1; }
+    else
+      log $YELLOW "无法识别的包管理器，请手动安装依赖"
+    fi
   fi
   log $GREEN "依赖安装完成"
 }
@@ -39,33 +52,54 @@ install_dependencies() {
 install_pyenv() {
   if ! command -v pyenv > /dev/null 2>&1; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        brew install pyenv
+        log $YELLOW "检测到 macOS 系统，使用 Homebrew 安装 pyenv..."
+        if ! command -v brew > /dev/null 2>&1; then
+            log $RED "未找到 Homebrew，请先安装 Homebrew"
+            exit 1
+        fi
+        brew install pyenv || { log $RED "Homebrew 安装 pyenv 失败"; exit 1; }
     else
+        # 检查并清理可能存在的不完整安装
+        if [ -d "$HOME/.pyenv" ]; then
+            log $YELLOW "发现现有的 .pyenv 目录，备份并清理..."
+            mv ~/.pyenv ~/.pyenv_backup_$(date +%s)
+        fi
+
         # 尝试多种安装方式
         log $YELLOW "正在安装 pyenv..."
+        successful_install=false
 
         # 方法1: 直接从 GitHub 安装 with increased timeout and retry
-        if ! curl -sSL --connect-timeout 30 --max-time 300 https://pyenv.run | bash; then
-            log $YELLOW "GitHub 安装失败，尝试从镜像源安装..."
+        log $YELLOW "尝试方法1: 使用 curl 安装脚本..."
+        if curl -sSL --connect-timeout 30 --max-time 300 https://pyenv.run | bash; then
+            log $GREEN "方法1 成功"
+            successful_install=true
+        else
+            log $YELLOW "方法1 失败，尝试方法2: 从镜像源克隆..."
+        fi
 
-            # 方法2: 使用镜像源或直接克隆
-            if [ -d "$HOME/.pyenv" ]; then
-                rm -rf "$HOME/.pyenv"
-            fi
-
+        # 如果方法1失败，尝试多种 git 克隆方式
+        if [ "$successful_install" = false ]; then
             # 尝试 from multiple mirrors with fallback
-            if ! git clone https://ghproxy.com/github.com/pyenv/pyenv.git ~/.pyenv; then
-                if ! git clone https://github.com/pyenv/pyenv.git ~/.pyenv; then
-                    if ! git clone https://gitee.com/mirrors/pyenv.git ~/.pyenv; then
-                        log $RED "无法从任何源安装 pyenv"
-                        exit 1
-                    fi
-                fi
+            if git clone https://ghproxy.com/github.com/pyenv/pyenv.git ~/.pyenv; then
+                log $GREEN "方法2a (ghproxy) 成功"
+                successful_install=true
+            elif git clone https://github.com/pyenv/pyenv.git ~/.pyenv; then
+                log $GREEN "方法2b (direct github) 成功"
+                successful_install=true
+            elif git clone https://gitee.com/mirrors/pyenv.git ~/.pyenv; then
+                log $GREEN "方法2c (gitee) 成功"
+                successful_install=true
+            else
+                log $RED "所有安装方法均失败"
+                exit 1
             fi
         fi
     fi
+  else
+    log $GREEN "pyenv 已安装，跳过安装步骤"
   fi
-  
+
   $SHELL -c 'echo $0' | grep -q zsh && SHELL_CONFIG="$HOME/.zshrc" || SHELL_CONFIG="$HOME/.bashrc"
   log $YELLOW "配置$SHELL_CONFIG..."
   # 检查是否已添加配置
@@ -73,9 +107,9 @@ install_pyenv() {
     log $YELLOW "pyenv 配置已存在，跳过添加。"
   else
     echo 'export PYENV_ROOT="$HOME/.pyenv"' >> "$SHELL_CONFIG"
-	echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> $SHELL_CONFIG
-	echo 'eval "$(pyenv init --path)"' >> $SHELL_CONFIG
-	echo 'eval "$(pyenv init -)"' >> $SHELL_CONFIG
+    echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> $SHELL_CONFIG
+    echo 'eval "$(pyenv init --path)"' >> $SHELL_CONFIG
+    echo 'eval "$(pyenv init -)"' >> $SHELL_CONFIG
     log $GREEN "pyenv 配置已写入 $SHELL_CONFIG"
   fi
   log $YELLOW "验证安装..."
@@ -84,9 +118,10 @@ install_pyenv() {
   export PATH="$PYENV_ROOT/bin:$PATH"
   eval "$(pyenv init --path)"
   eval "$(pyenv init -)"
-  
+
   if command -v pyenv > /dev/null 2>&1; then
     log $GREEN "pyenv 安装成功！版本: $(pyenv --version)"
+    log $YELLOW "建议运行 'source $SHELL_CONFIG' 或重新打开终端以使配置生效"
   else
     log $RED "pyenv 安装失败，请检查日志: "
     exit 1
