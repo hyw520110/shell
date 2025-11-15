@@ -28,7 +28,85 @@ FORCE_REINSTALL=false
 SETUP_SHELL_CONFIG=true
 USE_PYPI_MIRROR="$DEFAULT_PYPI_MIRROR"
 
-# === 辅助函数 ===
+show_usage() {
+    cat << 'EOF'
+用法: $0 [选项]
+
+为 Linux/macOS 安装和配置 uv (Python 包管理器)。
+
+选项:
+    -h, --help                  显示此帮助信息
+    -d, --dir PATH              安装目录 (默认: $DEFAULT_UV_DIR)
+    -m, --mirror URL            PyPI 镜像 URL (默认: $DEFAULT_PYPI_MIRROR)
+    --dry-run                   显示将要执行的操作但不实际更改
+    --force                     即使已安装也重新安装 uv
+    --no-shell-config          跳过 shell 配置
+    --install-python VERSION    安装和配置特定的 Python 版本
+
+示例:
+    $0                                  # 使用默认设置安装
+    $0 --mirror $ALIYUN_PYPI_MIRROR    # 使用阿里云镜像
+    $0 --dir /opt/uv --force           # 在 /opt/uv 中强制重新安装
+    $0 --dry-run --mirror $PYPI_ORG_MIRROR  # 使用 PyPI.org 进行试运行
+
+使用指南
+常用命令
+  初始化项目：uv init my_project
+  创建并同步带有依赖项的项目:
+    uv init project-name
+    cd project-name
+    uv add requests
+    uv sync
+  指定 Python 版本：uv init my_project --python 3.11
+  添加生产依赖：uv add requests
+  添加开发依赖：uv add pytest --dev
+  移除依赖：uv remove requests
+
+📦 依赖管理：
+  安装全局工具：uv tool install ruff
+  同步依赖：uv sync
+  升级依赖：uv sync --upgrade
+  升级特定包：uv sync --upgrade-package requests
+  查看已安装包：uv pip list
+  生成 requirements.txt：uv pip freeze > requirements.txt
+  安装 requirements.txt：uv pip install -r requirements.txt
+  运行 Python 代码:
+    uv run python script.py
+  使用特定 Python 版本:
+    uv run --python 3.11 -c "import sys; print(sys.version)"
+🌐 国内镜像说明：
+  默认使用清华源（https://pypi.tuna.tsinghua.edu.cn/simple），如需切换镜像：
+  1. 手动修改环境变量 UV_INDEX_URL
+  2. 或运行脚本时指定：UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ ./install_uv.sh
+
+🗑️ 清理缓存：
+  清理 uv 缓存：uv cache clean
+  清理 pip 缓存：uv pip cache purge
+
+高级配置
+  临时使用不同的PyPI索引：
+    UV_INDEX_URL=https://pypi.org/simple uv pip install package_name
+
+  配置uv缓存目录：
+    export UV_CACHE_DIR=""/path/to/cache""
+
+  使用特定Python解释器：
+    export UV_PYTHON=""/path/to/python""
+
+故障排除
+  如果安装后找不到uv：
+    - 尝试打开新终端
+    - 或者执行：source ~/.zshrc (或 ~/.bashrc)
+    - 检查 $UV_DIR 是否在PATH中
+
+  卸载uv：
+    - 删除二进制文件：rm $HOME/.local/bin/uv
+    - 如需要，从shell配置文件中删除PATH配置
+
+更多信息: https://github.com/astral-sh/uv
+EOF
+}
+
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $*"
 }
@@ -225,29 +303,6 @@ verify_installation() {
     fi
 }
 
-show_usage() {
-    cat << 'EOF'
-用法: $0 [选项]
-
-为 Linux/macOS 安装和配置 uv (Python 包管理器)。
-
-选项:
-    -h, --help                  显示此帮助信息
-    -d, --dir PATH              安装目录 (默认: $DEFAULT_UV_DIR)
-    -m, --mirror URL            PyPI 镜像 URL (默认: $DEFAULT_PYPI_MIRROR)
-    --dry-run                   显示将要执行的操作但不实际更改
-    --force                     即使已安装也重新安装 uv
-    --no-shell-config          跳过 shell 配置
-    --install-python VERSION    安装和配置特定的 Python 版本
-
-示例:
-    $0                                  # 使用默认设置安装
-    $0 --mirror $ALIYUN_PYPI_MIRROR    # 使用阿里云镜像
-    $0 --dir /opt/uv --force           # 在 /opt/uv 中强制重新安装
-    $0 --dry-run --mirror $PYPI_ORG_MIRROR  # 使用 PyPI.org 进行试运行
-
-EOF
-}
 
 parse_arguments() {
     while [[ $# -gt 0 ]]; do
@@ -353,90 +408,7 @@ main() {
     
     print_info "当前会话 uv 版本: $(uv --version)"
     
-    # 显示快速使用指南
-    cat << 'EOF'
-
-快速入门指南
-============
-
-  初始化新项目:
-    uv init my-project
-
-  创建并同步带有依赖项的项目:
-    uv init project-name
-    cd project-name
-    uv add requests
-    uv sync
-
-  从 requirements.txt 安装:
-    uv pip install -r requirements.txt
-
-  运行 Python 代码:
-    uv run python script.py
-
-  全局安装工具:
-    uv tool install ruff
-    uv tool install black
-
-  使用特定 Python 版本:
-    uv run --python 3.11 -c "import sys; print(sys.version)"
-
-  更多信息: https://github.com/astral-sh/uv
-
-高级配置
-=======
-
-  临时使用不同的PyPI索引：
-    UV_INDEX_URL=https://pypi.org/simple uv pip install package_name
-
-  配置uv缓存目录：
-    export UV_CACHE_DIR="/path/to/cache"
-
-  使用特定Python解释器：
-    export UV_PYTHON="/path/to/python"
-
-故障排除
-=======
-
-  如果安装后找不到uv：
-    - 尝试打开新终端
-    - 或者执行：source ~/.zshrc (或 ~/.bashrc)
-    - 检查 $UV_DIR 是否在PATH中
-
-  卸载uv：
-    - 删除二进制文件：rm $HOME/.local/bin/uv
-    - 如需要，从shell配置文件中删除PATH配置
-
-快速使用指南
-===========
-
-  初始化项目：uv init my_project
-  指定 Python 版本：uv init my_project --python 3.11
-  添加生产依赖：uv add requests
-  添加开发依赖：uv add pytest --dev
-  移除依赖：uv remove requests
-
-📦 依赖管理：
-  安装全局工具：uv tool install ruff
-  同步依赖：uv sync
-  升级依赖：uv sync --upgrade
-  升级特定包：uv sync --upgrade-package requests
-  查看已安装包：uv pip list
-  生成 requirements.txt：uv pip freeze > requirements.txt
-  安装 requirements.txt：uv pip install -r requirements.txt
-
-🌐 国内镜像说明：
-  默认使用清华源（https://pypi.tuna.tsinghua.edu.cn/simple），如需切换镜像：
-  1. 手动修改环境变量 UV_INDEX_URL
-  2. 或运行脚本时指定：UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ ./install_uv.sh
-
-🗑️ 清理缓存：
-  清理 uv 缓存：uv cache clean
-  清理 pip 缓存：uv pip cache purge
-EOF
 }
-
-# Only run main if script is executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
 fi
