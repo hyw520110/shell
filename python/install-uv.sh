@@ -27,6 +27,7 @@ DRY_RUN=false
 FORCE_REINSTALL=false
 SETUP_SHELL_CONFIG=true
 USE_PYPI_MIRROR="$DEFAULT_PYPI_MIRROR"
+UNINSTALL_MODE=false
 
 show_usage() {
     cat << 'EOF'
@@ -40,14 +41,16 @@ show_usage() {
     -m, --mirror URL            PyPI 镜像 URL (默认: $DEFAULT_PYPI_MIRROR)
     --dry-run                   显示将要执行的操作但不实际更改
     --force                     即使已安装也重新安装 uv
-    --no-shell-config          跳过 shell 配置
+    --no-shell-config           跳过 shell 配置
     --install-python VERSION    安装和配置特定的 Python 版本
+    --uninstall                 卸载 uv（删除二进制文件和 shell 配置）
 
 示例:
     $0                                  # 使用默认设置安装
     $0 --mirror $ALIYUN_PYPI_MIRROR    # 使用阿里云镜像
     $0 --dir /opt/uv --force           # 在 /opt/uv 中强制重新安装
     $0 --dry-run --mirror $PYPI_ORG_MIRROR  # 使用 PyPI.org 进行试运行
+    $0 --uninstall                     # 卸载 uv
 
 使用指南
 常用命令
@@ -57,6 +60,11 @@ show_usage() {
     cd project-name
     uv add requests
     uv sync
+  安装特定版本的 Python：uv python install 3.11
+  列出已安装的 Python 版本：uv python list
+  卸载特定版本的 Python：uv python uninstall 3.11.2
+  查找可用或已安装的 Python 版本：uv python find 3.11 （用于脚本或 IDE 集成）
+  显示 `uv` 自身使用的 Python 版本：uv python dir
   指定 Python 版本：uv init my_project --python 3.11
   添加生产依赖：uv add requests
   添加开发依赖：uv add pytest --dev
@@ -99,10 +107,6 @@ show_usage() {
     - 或者执行：source ~/.zshrc (或 ~/.bashrc)
     - 检查 $UV_DIR 是否在PATH中
 
-  卸载uv：
-    - 删除二进制文件：rm $HOME/.local/bin/uv
-    - 如需要，从shell配置文件中删除PATH配置
-
 更多信息: https://github.com/astral-sh/uv
 EOF
 }
@@ -121,6 +125,77 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $*" >&2
+}
+
+# sed 命令路径，用于处理配置文件
+SED_CMD="sed"
+
+# 尝试检测 sed 命令路径，优先使用 gsed（GNU sed）或 sed
+if command -v gsed >/dev/null 2>&1; then
+    SED_CMD="gsed"
+elif command -v sed >/dev/null 2>&1; then
+    SED_CMD="sed"
+else
+    print_error "找不到 sed 命令，这是必需的工具"
+    exit 1
+fi
+
+uninstall_uv() {
+    local uninstall_dir="$1"
+    local config_file
+
+    if [ "$DRY_RUN" = true ]; then
+        print_info "试运行模式: 模拟卸载 uv"
+        print_info "将删除: $uninstall_dir/uv"
+
+        config_file=$(get_shell_config_file)
+        print_info "将从 $config_file 中移除 uv 相关配置"
+        return 0
+    fi
+
+    # 检查 uv 是否存在
+    if [ ! -f "$uninstall_dir/uv" ]; then
+        print_warning "uv 二进制文件不存在于 $uninstall_dir"
+        print_info "可能已卸载或安装在其他位置"
+        return 0
+    fi
+
+    # 删除 uv 二进制文件
+    if rm "$uninstall_dir/uv"; then
+        print_success "已删除 uv 二进制文件: $uninstall_dir/uv"
+    else
+        print_error "删除 uv 二进制文件失败"
+        return 1
+    fi
+
+    # 从 shell 配置文件中移除 uv 相关配置
+    config_file=$(get_shell_config_file)
+    if [ -f "$config_file" ]; then
+        print_info "正在从 $config_file 中移除 uv 相关配置..."
+
+        # 备份配置文件
+        local backup_config="${config_file}.uv_backup"
+        cp "$config_file" "$backup_config"
+        print_info "已备份原配置文件到: $backup_config"
+
+        # 使用全局变量 SED_CMD 来处理配置文件
+        # 首先删除 uv 的 PATH 添加行（包括注释和导出语句）
+        if $SED_CMD -i.bak '/# 由 uv 安装脚本添加/d; /export PATH=".*\$PATH"/d; /# uv 的 PyPI 镜像/d; /export UV_INDEX_URL=/d' "$config_file"; then
+            print_success "已从 $config_file 中移除 uv 相关配置"
+        else
+            print_error "修改 $config_file 失败，正在恢复备份..."
+            mv "$backup_config" "$config_file" 2>/dev/null || print_error "恢复备份失败，请检查 $backup_config"
+            return 1
+        fi
+
+        # 删除备份文件
+        rm -f "$config_file.bak" 2>/dev/null
+    else
+        print_warning "$config_file 不存在，跳过配置文件修改"
+    fi
+
+    print_success "uv 卸载完成！"
+    print_info "提示: 如果当前终端中正在使用 uv，请重新打开终端或运行: source $config_file"
 }
 
 print_header() {
@@ -335,6 +410,10 @@ parse_arguments() {
                 INSTALL_PYTHON_VERSION="$2"
                 shift 2
                 ;;
+            --uninstall)
+                UNINSTALL_MODE=true
+                shift
+                ;;
             *)
                 print_error "未知选项: $1"
                 show_usage
@@ -345,11 +424,20 @@ parse_arguments() {
 }
 
 main() {
-    print_header "uv 安装脚本"
+    print_header "uv 安装/卸载脚本"
     print_info "操作系统: $(detect_os) $(detect_architecture)"
-    print_info "安装目录: $UV_DIR"
 
     parse_arguments "$@"
+
+    # 检查是否是卸载模式
+    if [ "$UNINSTALL_MODE" = true ]; then
+        print_info "卸载目录: $UV_DIR"
+        if [ "$DRY_RUN" = true ]; then
+            print_warning "试运行模式: 不会进行任何更改"
+        fi
+        uninstall_uv "$UV_DIR"
+        return 0
+    fi
 
     if [ "$DRY_RUN" = true ]; then
         print_warning "试运行模式: 不会进行任何更改"
@@ -378,9 +466,9 @@ main() {
     if [ "$SETUP_SHELL_CONFIG" = true ]; then
         local shell_config
         shell_config=$(get_shell_config_file)
-        
+
         print_info "Shell 配置文件: $shell_config"
-        
+
         add_to_path "$UV_DIR" "$shell_config"
         configure_uv_index_url "$USE_PYPI_MIRROR" "$shell_config"
     fi
@@ -400,14 +488,14 @@ main() {
 
     print_header "安装完成!"
     print_success "uv 现已安装和配置"
-    
+
     if [ "$SETUP_SHELL_CONFIG" = true ]; then
         print_info "要在新终端会话中使用 uv，请打开新终端或运行:"
         print_info "  source $shell_config"
     fi
-    
+
     print_info "当前会话 uv 版本: $(uv --version)"
-    
+
 }
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"

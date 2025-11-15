@@ -39,25 +39,27 @@ install_dependencies() {
 install_pyenv() {
   if ! command -v pyenv > /dev/null 2>&1; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        brew install pyenv 
+        brew install pyenv
     else
         # 尝试多种安装方式
         log $YELLOW "正在安装 pyenv..."
-        
-        # 方法1: 直接从 GitHub 安装
-        if ! curl -sSL https://pyenv.run | bash; then
+
+        # 方法1: 直接从 GitHub 安装 with increased timeout and retry
+        if ! curl -sSL --connect-timeout 30 --max-time 300 https://pyenv.run | bash; then
             log $YELLOW "GitHub 安装失败，尝试从镜像源安装..."
-            
+
             # 方法2: 使用镜像源或直接克隆
             if [ -d "$HOME/.pyenv" ]; then
                 rm -rf "$HOME/.pyenv"
             fi
-            
-            # 尝试从 GitHub 镜像克隆
+
+            # 尝试 from multiple mirrors with fallback
             if ! git clone https://ghproxy.com/github.com/pyenv/pyenv.git ~/.pyenv; then
-                if ! git clone https://gitee.com/mirrors/pyenv.git ~/.pyenv; then
-                    log $RED "无法从镜像源安装 pyenv"
-                    exit 1
+                if ! git clone https://github.com/pyenv/pyenv.git ~/.pyenv; then
+                    if ! git clone https://gitee.com/mirrors/pyenv.git ~/.pyenv; then
+                        log $RED "无法从任何源安装 pyenv"
+                        exit 1
+                    fi
                 fi
             fi
         fi
