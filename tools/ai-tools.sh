@@ -1000,9 +1000,16 @@ operate_tool() {
             return 1
             ;;
     esac
-    
+
     # 重新检查工具状态
     check_tools
+
+    # 对特定工具执行额外的初始化步骤
+    if [[ "$name" == "veCLI" && "$operation" == "install" ]]; then
+        echo -e "${CYAN}ℹ️ veCLI 安装完成！${NC}"
+        echo -e "${CYAN}💡 请运行 'vecli login' 命令完成火山引擎账户的认证${NC}"
+        echo -e "${CYAN}💡 详细使用方法请参考: https://www.volcengine.com/docs/83927/1826757${NC}"
+    fi
 }
 
 # 根据索引安装工具
@@ -1105,6 +1112,14 @@ create_default_config() {
 EOF
                 ;;
             "Gemini CLI")
+                cat > "$config_file" << 'EOF'
+{
+  "hasSeenIdeIntegrationNudge": true,
+  "mcpServers": {}
+}
+EOF
+                ;;
+            "veCLI")
                 cat > "$config_file" << 'EOF'
 {
   "hasSeenIdeIntegrationNudge": true,

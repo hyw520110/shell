@@ -643,12 +643,12 @@ analyze_merge_workload() {
     echo ""
     local scenario1_total=$((scenario1_new_commits + scenario1_conflicts * 3))
     local scenario2_total=$((scenario2_new_commits + scenario2_conflicts * 3))
-    
+
     if [ $scenario1_total -lt $scenario2_total ]; then
-        echo "🎯 推荐方案: 方案1 ($branch1 合并 $branch2)"
+        echo "🎯 推荐方案: 方案1 ($branch2 合并到 $branch1)"
         echo "   原因: 工作量较小（${scenario1_total}分 vs ${scenario2_total}分）"
     elif [ $scenario2_total -lt $scenario1_total ]; then
-        echo "🎯 推荐方案: 方案2 ($branch2 合并 $branch1)"
+        echo "🎯 推荐方案: 方案2 ($branch1 合并到 $branch2)"
         echo "   原因: 工作量较小（${scenario2_total}分 vs ${scenario1_total}分）"
     else
         echo "🎯 两种方案工作量相当（均为${scenario1_total}分），可根据项目流程选择"
