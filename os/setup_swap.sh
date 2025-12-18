@@ -210,6 +210,11 @@ main() {
     fi
 
     create_swap_file "$SWAP_FILE_PATH" "$SIZE_GB"
+    echo "当前交换状态(执行swapon -s或grep swap /etc/fstab):"
+    swapon -s
+	echo "设置优先级(数值越大优先级越高):sudo swapon -p 10 /swapfile"
+	echo "关闭所有交换空间执行：sudo swapoff -a"
+	echo "启用所有交换空间执行: sudo swapon -a"
 }
 
 main

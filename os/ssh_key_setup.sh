@@ -174,22 +174,22 @@ generate_ssh_key() {
     local key_type="$1"
     local key_path="$HOME/.ssh/id_$key_type"
     local pub_path="$HOME/.ssh/id_${key_type}.pub"
-    
+
     if [ ! -f "$pub_path" ]; then
         log_info "生成 $key_type 类型的SSH密钥对..."
-        ssh-keygen -t "$key_type" -N "" -f "$key_path" -C "ssh_setup@$(date +%Y%m%d)"
+        ssh-keygen -t "$key_type" -N "" -f "$key_path" -C "ssh_setup@$(date +%Y%m%d)" >/dev/null 2>&1
         if [ $? -ne 0 ]; then
             log_error "密钥生成失败"
             exit 1
         fi
     else
-        log_info "使用现有的 $key_type 密钥: $pub_path"
+        log_debug "使用现有的 $key_type 密钥: $pub_path"  # 改成log_debug避免影响变量赋值
     fi
-    
+
     # 设置正确的权限
     chmod 600 "$key_path"
     chmod 644 "$pub_path"
-    
+
     echo "$pub_path"
 }
 
@@ -374,20 +374,26 @@ fi
 log_info "使用密钥类型: $KEY_TYPE"
 pub_key_path=$(generate_ssh_key "$KEY_TYPE")
 
+# 验证公钥文件是否存在
+if [ ! -f "$pub_key_path" ]; then
+    log_error "公钥文件不存在: $pub_key_path"
+    exit 1
+fi
+
 # 尝试进行SSH公钥复制，使用指定端口
 log_info "正在设置 $target_user@$target_ip:$target_port 的免密登录..."
 if ssh-copy-id -i "$pub_key_path" -p "$target_port" "$target_user@$target_ip"; then
     log_info "成功设置 $target_ip:$target_port 的免密登录。"
-    
+
     # 添加主机到SSH配置文件
     add_to_ssh_config "$target_ip" "$target_user" "$target_port"
-    
+
     # 如果不需要自动连接，则退出
     if [ "$NO_CONNECT" = true ]; then
         log_info "密钥设置完成，不自动连接。"
         exit 0
     fi
-    
+
     # SSH连接到目标主机
     log_info "连接到 $target_user@$target_ip:$target_port..."
     ssh -p "$target_port" "$target_user@$target_ip"
