@@ -34,7 +34,7 @@ get_ip() {
 # 检查Docker是否可用
 check_docker_available() {
     if ! command -v docker > /dev/null 2>&1; then
-        echo -e "${YELLOW}Docker未安装，将使用主机模式启动${NC}"
+        #echo -e "${YELLOW}Docker未安装，将使用主机模式启动${NC}"
         return 1
     fi
     
@@ -49,14 +49,16 @@ check_docker_available() {
 
 # 查找nginx执行文件
 find_nginx_executable() {
+    # 优先使用当前安装目录的nginx
     local nginx_paths=(
+        "$BASE_DIR/sbin/nginx"
+        "$HOME/nginx/sbin/nginx"
         "/usr/sbin/nginx"
         "/usr/bin/nginx"
         "/usr/local/bin/nginx"
         "/usr/local/nginx/sbin/nginx"
         "/opt/nginx/sbin/nginx"
         "/usr/local/openresty/nginx/sbin/nginx"
-        "$HOME/nginx/sbin/nginx"
         "/opt/local/nginx/sbin/nginx"
         "/usr/local/opt/nginx/bin/nginx"  # macOS Homebrew
         "/snap/bin/nginx"  # Snap package
@@ -268,8 +270,8 @@ handle_ip_replace() {
                     done
                     echo -e "${GREEN}IP占位符替换完成${NC}"
                 fi
-            else
-                echo -e "${YELLOW}未找到包含IP占位符的配置文件${NC}"
+            #else
+                #echo -e "${YELLOW}未找到包含IP占位符的配置文件${NC}"
             fi
         fi
     else

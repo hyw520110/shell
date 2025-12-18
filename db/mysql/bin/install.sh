@@ -26,6 +26,9 @@ log_dir=""
 usr=""
 usr_group=""
 pass=""
+# 新增：用户指定的MySQL用户名和密码
+mysql_user=""
+mysql_password=""
 
 # 日志级别变量
 LOG_LEVEL_DEBUG=0
@@ -53,24 +56,27 @@ MySQL 安装脚本
 用法: $0 [选项]
 
 选项:
-  -h, --help            显示此帮助信息
-  --install-dir=DIR     指定MySQL安装目录 (默认: $HOME/mysql)
-  --version=VERSION     指定MySQL版本 (5 或 8, 默认: 8)
-  --log-level=LEVEL     指定日志级别 (debug, info, warn, error, 默认: info)
+  -h, --help                显示此帮助信息
+  --install-dir=DIR         指定MySQL安装目录 (默认: $HOME/mysql)
+  --version=VERSION         指定MySQL版本 (5 或 8, 默认: 8)
+  --log-level=LEVEL         指定日志级别 (debug, info, warn, error, 默认: info)
+  --mysql-user=USER         指定MySQL用户名 (默认: root)
+  --mysql-password=PASS     指定MySQL root密码 (不指定则随机生成)
 
 示例:
-  $0                                    # 安装MySQL 8到默认目录，日志级别为info
-  $0 --install-dir ~/mysql              # 安装MySQL 8到 ~/mysql 目录
-  $0 --install-dir ~/mysql --version 8  # 安装MySQL 8到 ~/mysql 目录
-  $0 --install-dir ~/mysql --version 5  # 安装MySQL 5到 ~/mysql 目录
-  $0 --log-level debug                  # 使用debug级别显示详细日志
-  sudo $0 --install-dir /opt/mysql     # 以root权限安装到系统目录
+  $0                                          # 安装MySQL 8到默认目录，使用默认用户名和随机密码
+  $0 --install-dir ~/mysql                    # 安装MySQL 8到 ~/mysql 目录
+  $0 --install-dir ~/mysql --version=8        # 安装MySQL 8到 ~/mysql 目录
+  $0 --mysql-user=admin --mysql-password=123456  # 指定用户名和密码
+  $0 --version=8 --log-level=debug            # 安装MySQL 8到默认目录，使用debug级别
+  sudo $0 --install-dir /opt/mysql            # 以root权限安装到系统目录
 
 注意:
   - 如果安装到用户目录 (~ 开头)，脚本不需要 root 权限
   - 如果安装到系统目录 (/opt, /usr 等)，需要 root 权限
   - 日志目录使用 /var/log/mysql (需要root权限) 或 ~/.mysql_log
   - 下载目录可通过 DOWNLOAD_DIR 环境变量指定，默认为 ~/Downloads
+  - 如果不指定密码，将自动生成8位随机密码
   - 日志级别说明:
     * debug: 显示所有日志信息，包括调试信息
     * info: 显示一般信息、警告和错误（默认）
@@ -779,42 +785,68 @@ EOF
 
 set_root_password_and_remote() {
 	local current_pass="$pass"
-	if [ -n "$current_pass" ];then
-	  read -t $INPUT_TIMEOUT -p "输入新密码(超时时间$INPUT_TIMEOUT 秒):" password
-	  # 如未输入密码，则生成8位不包含特殊字符的随机数作为默认密码date +%s%N | md5sum | head -c 8
-	  [ ! -n "$password" ] && password=$(cat /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 8) && echo -en "\n密码输入超时, 默认密码:\033[31m $password \033[0m \n"
+	local target_user="$mysql_user"
+	local target_password="$mysql_password"
+	
+	# 如果用户指定了密码，直接使用
+	if [ -n "$target_password" ]; then
+		info "使用预设密码设置MySQL用户 '$target_user'"
+		password="$target_password"
+	elif [ -n "$current_pass" ]; then
+		# 如果没有指定密码但有临时密码，提示用户输入
+		read -t $INPUT_TIMEOUT -p "为用户 '$target_user' 输入新密码(超时时间$INPUT_TIMEOUT 秒):" password
+		# 如未输入密码，则生成8位不包含特殊字符的随机数作为默认密码
+		[ ! -n "$password" ] && password=$(cat /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 8) && echo -en "\n密码输入超时, 生成默认密码:\033[31m $password \033[0m \n"
+	else
+		# 既没有指定密码也没有临时密码，生成随机密码
+		password=$(cat /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 8)
+		info "为用户 '$target_user' 生成随机密码: $password"
 	fi
+	
 	if [ -n "$password" ]; then
-    	$install_dir/bin/mysql -uroot -p${current_pass} --connect-expired-password --socket=$install_dir/mysql.sock <<EOF
-  ALTER USER 'root'@'localhost' IDENTIFIED BY '$password';
-  flush privileges;
-  exit
+		if [ -n "$current_pass" ]; then
+			# 使用临时密码修改
+			$install_dir/bin/mysql -uroot -p${current_pass} --connect-expired-password --socket=$install_dir/mysql.sock <<EOF
+ALTER USER '${target_user}'@'localhost' IDENTIFIED BY '$password';
+flush privileges;
+exit
 EOF
-	  current_pass=$password
-	  info "修改密码为:$current_pass"
+		else
+			# 直接设置新密码（适用于全新安装）
+			$install_dir/bin/mysql -uroot --socket=$install_dir/mysql.sock <<EOF
+ALTER USER '${target_user}'@'localhost' IDENTIFIED BY '$password';
+flush privileges;
+exit
+EOF
+		fi
+		current_pass=$password
+		info "用户 '$target_user' 密码已设置为: $password"
 	fi
-	if [ -n "$current_pass" ];then
-	    # 检查MySQL版本
-	    mysql_version=$($install_dir/bin/mysql -uroot -p${current_pass} --socket=$install_dir/mysql.sock -e 'select version();' 2>/dev/null | grep -Eo '^[0-9]+\.[0-9]+')
-	    major_version=$(echo $mysql_version | cut -d. -f1)
-	    debug "MySQL版本: $mysql_version, 主版本: $major_version"
-	    if [ "$major_version" = "8" ]; then
-	    	# MySQL 8 远程授权
-	    	debug "配置MySQL 8远程访问权限"
-	    	$install_dir/bin/mysql -uroot -p${current_pass} --socket=$install_dir/mysql.sock <<EOF
-CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY '$current_pass';
-ALTER USER 'root'@'%' IDENTIFIED BY '$current_pass';
-GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
+	
+	if [ -n "$current_pass" ]; then
+		# 检查MySQL版本
+		mysql_version=$($install_dir/bin/mysql -u${target_user} -p${current_pass} --socket=$install_dir/mysql.sock -e 'select version();' 2>/dev/null | grep -Eo '^[0-9]+\.[0-9]+')
+		major_version=$(echo $mysql_version | cut -d. -f1)
+		debug "MySQL版本: $mysql_version, 主版本: $major_version"
+		
+		# 配置远程访问权限
+		if [ "$major_version" = "8" ]; then
+			# MySQL 8 远程授权
+			debug "配置MySQL 8远程访问权限"
+			$install_dir/bin/mysql -u${target_user} -p${current_pass} --socket=$install_dir/mysql.sock <<EOF
+CREATE USER IF NOT EXISTS '${target_user}'@'%' IDENTIFIED BY '$current_pass';
+ALTER USER '${target_user}'@'%' IDENTIFIED BY '$current_pass';
+GRANT ALL PRIVILEGES ON *.* TO '${target_user}'@'%' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 exit
 EOF
-    	else
-      		# MySQL 5 远程授权
-      		debug "配置MySQL 5远程访问权限"
-      		$install_dir/bin/mysql -uroot -p${current_pass} --socket=$install_dir/mysql.sock <<EOF
+		else
+			# MySQL 5 远程授权
+			debug "配置MySQL 5远程访问权限"
+			$install_dir/bin/mysql -u${target_user} -p${current_pass} --socket=$install_dir/mysql.sock <<EOF
 use mysql;
-update user set host = '%' where user = 'root';
-grant all privileges on *.* to 'root'@'%' with grant option;
+update user set host = '%' where user = '${target_user}';
+grant all privileges on *.* to '${target_user}'@'%' with grant option;
 flush privileges;
 exit
 EOF
@@ -828,6 +860,8 @@ parse_arguments() {
   local temp_install_dir="$DEFAULT_INSTALL_DIR"
   local temp_version="$DEFAULT_VERSION"
   local temp_log_level="info"
+  local temp_mysql_user="root"
+  local temp_mysql_password=""
   
   # 处理参数
   while [[ $# -gt 0 ]]; do
@@ -837,6 +871,11 @@ parse_arguments() {
         exit 0
         ;;
       --install-dir)
+        if [[ -z "${2:-}" ]]; then
+          echo "错误: --install-dir 需要指定目录路径" >&2
+          show_help
+          exit 1
+        fi
         temp_install_dir="$2"
         shift 2
         ;;
@@ -844,21 +883,56 @@ parse_arguments() {
         temp_install_dir="${1#*=}"
         shift
         ;;
-      -v|--version|--version=*)
-        if [[ "$1" == *=* ]]; then
-          temp_version="${1#*=}"
-        else
-          temp_version="$2"
-          shift
+      --version)
+        if [[ -z "${2:-}" ]]; then
+          echo "错误: --version 需要指定版本号" >&2
+          show_help
+          exit 1
         fi
+        temp_version="$2"
+        shift 2
+        ;;
+      --version=*)
+        temp_version="${1#*=}"
         shift
         ;;
       --log-level)
+        if [[ -z "${2:-}" ]]; then
+          echo "错误: --log-level 需要指定日志级别" >&2
+          show_help
+          exit 1
+        fi
         temp_log_level="$2"
         shift 2
         ;;
       --log-level=*)
         temp_log_level="${1#*=}"
+        shift
+        ;;
+      --mysql-user)
+        if [[ -z "${2:-}" ]]; then
+          echo "错误: --mysql-user 需要指定用户名" >&2
+          show_help
+          exit 1
+        fi
+        temp_mysql_user="$2"
+        shift 2
+        ;;
+      --mysql-user=*)
+        temp_mysql_user="${1#*=}"
+        shift
+        ;;
+      --mysql-password)
+        if [[ -z "${2:-}" ]]; then
+          echo "错误: --mysql-password 需要指定密码" >&2
+          show_help
+          exit 1
+        fi
+        temp_mysql_password="$2"
+        shift 2
+        ;;
+      --mysql-password=*)
+        temp_mysql_password="${1#*=}"
         shift
         ;;
       -*)
@@ -867,17 +941,10 @@ parse_arguments() {
         exit 1
         ;;
       *)
-        # 向后兼容的位置参数
-        if [[ "$temp_install_dir" == "$DEFAULT_INSTALL_DIR" ]]; then
-          temp_install_dir="$1"
-        elif [[ -z "$temp_version" || "$temp_version" == "$DEFAULT_VERSION" ]]; then
-          temp_version="$1"
-        else
-          echo "错误: 过多的参数: $1" >&2
-          show_help
-          exit 1
-        fi
-        shift
+        echo "错误: 不支持的位置参数: $1" >&2
+        echo "请使用命名参数，例如: --install-dir=/path/to/mysql --version=8" >&2
+        show_help
+        exit 1
         ;;
     esac
   done
@@ -885,6 +952,12 @@ parse_arguments() {
   # 验证版本号
   if [[ ! "$temp_version" =~ ^(5|8)$ ]]; then
     echo "错误: 版本必须是 5 或 8，当前为: $temp_version" >&2
+    exit 1
+  fi
+
+  # 验证用户名
+  if [[ -z "$temp_mysql_user" ]]; then
+    echo "错误: MySQL用户名不能为空" >&2
     exit 1
   fi
 
@@ -912,6 +985,8 @@ parse_arguments() {
   install_dir="$temp_install_dir"
   data_dir="$install_dir/data"
   version="$temp_version"
+  mysql_user="$temp_mysql_user"
+  mysql_password="$temp_mysql_password"
   
   # 根据版本设置下载URL
   set_mysql_url
@@ -923,6 +998,12 @@ parse_arguments() {
   info "  安装目录: $install_dir"
   info "  数据目录: $data_dir"
   info "  MySQL版本: $version"
+  info "  MySQL用户名: $mysql_user"
+  if [[ -n "$mysql_password" ]]; then
+    info "  MySQL密码: [已设置]"
+  else
+    info "  MySQL密码: [将自动生成]"
+  fi
   info "  日志级别: $temp_log_level"
   info "  下载目录: $DOWNLOAD_DIR"
 }
