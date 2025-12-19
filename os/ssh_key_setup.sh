@@ -175,22 +175,37 @@ generate_ssh_key() {
     local key_path="$HOME/.ssh/id_$key_type"
     local pub_path="$HOME/.ssh/id_${key_type}.pub"
 
+    # 创建.ssh目录（如果不存在）
+    if [ ! -d "$HOME/.ssh" ]; then
+        mkdir -p "$HOME/.ssh"
+        chmod 700 "$HOME/.ssh"  # 确保.ssh目录权限正确
+        log_debug ".ssh目录已创建"
+    fi
+
     if [ ! -f "$pub_path" ]; then
         log_info "生成 $key_type 类型的SSH密钥对..."
-        ssh-keygen -t "$key_type" -N "" -f "$key_path" -C "ssh_setup@$(date +%Y%m%d)" >/dev/null 2>&1
-        if [ $? -ne 0 ]; then
+        if ssh-keygen -t "$key_type" -N "" -f "$key_path" -C "ssh_setup@$(date +%Y%m%d)" >/dev/null 2>&1; then
+            log_debug "成功生成新的 $key_type 密钥对"
+        else
             log_error "密钥生成失败"
             exit 1
         fi
     else
-        log_debug "使用现有的 $key_type 密钥: $pub_path"  # 改成log_debug避免影响变量赋值
+        log_debug "使用现有的 $key_type 密钥: $pub_path"
     fi
 
     # 设置正确的权限
-    chmod 600 "$key_path"
-    chmod 644 "$pub_path"
+    chmod 600 "$key_path" 2>/dev/null || true
+    chmod 644 "$pub_path" 2>/dev/null || true
 
-    echo "$pub_path"
+    # 验证公钥文件是否存在
+    if [ ! -f "$pub_path" ]; then
+        log_error "公钥文件不存在: $pub_path"
+        exit 1
+    fi
+
+    # 只输出公钥路径，确保没有其他信息混入
+    printf '%s\n' "$pub_path"
 }
 
 # 交互式获取目标主机、用户名和端口
@@ -379,6 +394,8 @@ if [ ! -f "$pub_key_path" ]; then
     log_error "公钥文件不存在: $pub_key_path"
     exit 1
 fi
+
+log_debug "使用的公钥文件: $pub_key_path"
 
 # 尝试进行SSH公钥复制，使用指定端口
 log_info "正在设置 $target_user@$target_ip:$target_port 的免密登录..."
