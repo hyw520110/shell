@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  banyandb:
+    image: banyandb/banyandb:latest
+    container_name: banyandb
+    restart: unless-stopped
+    ports:
+      - "17912:17912"
+      - "17913:17913"
+      - "17914:17914"
+      - "17915:17915"
+    volumes:
+      - ./data:/data
+      - ./logs:/logs
+      - ./conf:/etc/banyandb
+    environment:
+      - BANYANDB_DATA_DIR=/data
+      - BANYANDB_LOG_DIR=/logs
+      - BANYANDB_CONFIG_FILE=/etc/banyandb/banyandb.toml
+    command: ["--config=/etc/banyandb/banyandb.toml"]
+    networks:
+      - banyandb-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:17914/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  banyandb-network:
+    driver: bridge
