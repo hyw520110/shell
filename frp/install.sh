@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# 设置严格模式
+set -euo pipefail
+
 # 定义公共变量
 FRP_VERSION="0.63.0"
 FRP_DOWNLOAD_URL="https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_amd64.tar.gz"
@@ -13,7 +16,21 @@ FRPC_CONF_NAME="${FRPC_NAME}.toml"
 SERVICE_DIR="/usr/lib/systemd/system"
 FRPS_SERVICE_FILE="$SERVICE_DIR/${FRPS_NAME}.service"
 FRPC_SERVICE_FILE="$SERVICE_DIR/${FRPC_NAME}.service"
-LOG_FILE="$DEFAULT_INSTALL_DIR/$FRPC_NAME.log"
+LOG_FILE="$DEFAULT_INSTALL_DIR/frp.log"
+
+# 全局错误处理函数
+error_exit() {
+    echo "错误: $1" >&2
+    exit "${2:-1}"
+}
+
+# 全局日志函数
+log_message() {
+    local level=$1
+    local message=$2
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] [$level] $message" | tee -a "$LOG_FILE"
+}
 
 # 帮助信息函数
 show_help() {
@@ -259,11 +276,32 @@ check_dependencies() {
     if ! command -v wget &> /dev/null; then
         echo "wget 未安装，正在安装..."
         if [ "$USE_SUDO" = true ]; then
-            sudo yum install -y wget || sudo apt-get install -y wget
+            sudo yum install -y wget || sudo apt-get install -y wget || error_exit "无法安装wget"
         else
-            sudo yum install -y wget || sudo apt-get install -y wget
+            sudo yum install -y wget || sudo apt-get install -y wget || error_exit "无法安装wget"
         fi
     fi
+
+    if ! command -v openssl &> /dev/null; then
+        echo "openssl 未安装，正在安装..."
+        if [ "$USE_SUDO" = true ]; then
+            sudo yum install -y openssl || sudo apt-get install -y openssl || error_exit "无法安装openssl"
+        else
+            sudo yum install -y openssl || sudo apt-get install -y openssl || error_exit "无法安装openssl"
+        fi
+    fi
+}
+
+# 下载并验证文件
+download_and_verify() {
+    local download_url=$1
+    local temp_file=$(mktemp)
+
+    if ! wget -O "$temp_file" "$download_url"; then
+        error_exit "下载失败"
+    fi
+
+    echo "$temp_file"
 }
 
 # 复制或下载 frp 二进制文件
@@ -279,15 +317,13 @@ copy_or_download_frps() {
         echo "frps 已从 $source_dir 复制到 ${INSTALL_DIR}"
     else
         echo "正在下载 frps..."
+        local temp_archive=$(download_and_verify "${FRP_DOWNLOAD_URL}")
         if [ "$USE_SUDO" = true ]; then
-            wget -O - "${FRP_DOWNLOAD_URL}" | sudo tar -zx --strip-components=1 -C "${INSTALL_DIR}" "frp_${FRP_VERSION}_linux_amd64/${FRP_BIN_NAME}" "frp_${FRP_VERSION}_linux_amd64/${FRPS_CONF_NAME}"
+            sudo tar -xzf "$temp_archive" -C "${INSTALL_DIR}" --strip-components=1 "frp_${FRP_VERSION}_linux_amd64/frps" "frp_${FRP_VERSION}_linux_amd64/${FRPS_CONF_NAME}" || error_exit "解压失败"
         else
-            wget -O - "${FRP_DOWNLOAD_URL}" | tar -zx --strip-components=1 -C "${INSTALL_DIR}" "frp_${FRP_VERSION}_linux_amd64/${FRP_BIN_NAME}" "frp_${FRP_VERSION}_linux_amd64/${FRPS_CONF_NAME}"
+            tar -xzf "$temp_archive" -C "${INSTALL_DIR}" --strip-components=1 "frp_${FRP_VERSION}_linux_amd64/frps" "frp_${FRP_VERSION}_linux_amd64/${FRPS_CONF_NAME}" || error_exit "解压失败"
         fi
-        if [ $? -ne 0 ]; then
-            echo "下载并解压 frps 失败。"
-            exit 1
-        fi
+        rm -f "$temp_archive"
     fi
 }
 
@@ -303,15 +339,13 @@ copy_or_download_frpc() {
         echo "frpc 已从 $source_dir 复制到 ${INSTALL_DIR}"
     else
         echo "正在下载 frpc..."
+        local temp_archive=$(download_and_verify "${FRP_DOWNLOAD_URL}")
         if [ "$USE_SUDO" = true ]; then
-            wget -O - "${FRP_DOWNLOAD_URL}" | sudo tar -zx --strip-components=1 -C "${INSTALL_DIR}" "frp_${FRP_VERSION}_linux_amd64/${FRPC_NAME}" "frp_${FRP_VERSION}_linux_amd64/${FRPC_CONF_NAME}"
+            sudo tar -xzf "$temp_archive" -C "${INSTALL_DIR}" --strip-components=1 "frp_${FRP_VERSION}_linux_amd64/frpc" "frp_${FRP_VERSION}_linux_amd64/${FRPC_CONF_NAME}" || error_exit "解压失败"
         else
-            wget -O - "${FRP_DOWNLOAD_URL}" | tar -zx --strip-components=1 -C "${INSTALL_DIR}" "frp_${FRP_VERSION}_linux_amd64/${FRPC_NAME}" "frp_${FRP_VERSION}_linux_amd64/${FRPC_CONF_NAME}"
+            tar -xzf "$temp_archive" -C "${INSTALL_DIR}" --strip-components=1 "frp_${FRP_VERSION}_linux_amd64/frpc" "frp_${FRP_VERSION}_linux_amd64/${FRPC_CONF_NAME}" || error_exit "解压失败"
         fi
-        if [ $? -ne 0 ]; then
-            echo "下载并解压 frpc 失败。"
-            exit 1
-        fi
+        rm -f "$temp_archive"
     fi
 }
 
