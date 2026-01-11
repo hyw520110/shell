@@ -178,35 +178,54 @@ run_with_retry() {
 
 # 检查配置文件是否存在
 check_config_file() {
-    local config_file="ai-tools.conf"
-    if [[ -f "$config_file" ]]; then
-        return 0
-    else
-        # 检查其他可能的配置文件位置
-        local possible_paths=(
-            "./ai-tools.conf"
-            "$HOME/.config/ai-tools/ai-tools.conf"
-            "/etc/ai-tools.conf"
-        )
-        
-        for path in "${possible_paths[@]}"; do
-            if [[ -f "$path" ]]; then
-                config_file="$path"
-                return 0
-            fi
-        done
-        
-        # 如果没有找到配置文件，使用默认配置
-        warn_log "未找到配置文件 ai-tools.conf，使用默认配置"
-        return 1
-    fi
+    # 优先检查 ai-cli.conf，然后是 ai-tools.conf
+    local config_file=""
+    local possible_paths=(
+        "./ai-cli.conf"
+        "./ai-tools.conf"
+        "$HOME/.config/ai-tools/ai-cli.conf"
+        "$HOME/.config/ai-tools/ai-tools.conf"
+        "/etc/ai-cli.conf"
+        "/etc/ai-tools.conf"
+    )
+
+    for path in "${possible_paths[@]}"; do
+        if [[ -f "$path" ]]; then
+            config_file="$path"
+            info_log "找到配置文件: $path"
+            return 0
+        fi
+    done
+
+    # 如果没有找到配置文件，使用默认配置
+    warn_log "未找到配置文件 ai-cli.conf 或 ai-tools.conf，使用默认配置"
+    return 1
 }
 
 # 加载外部配置
 load_config() {
-    if check_config_file; then
-        source ai-tools.conf
-        info_log "配置文件加载成功"
+    # 重新实现配置文件查找和加载逻辑
+    local config_file=""
+    local possible_paths=(
+        "./ai-cli.conf"
+        "./ai-tools.conf"
+        "$HOME/.config/ai-tools/ai-cli.conf"
+        "$HOME/.config/ai-tools/ai-tools.conf"
+        "/etc/ai-cli.conf"
+        "/etc/ai-tools.conf"
+    )
+
+    for path in "${possible_paths[@]}"; do
+        if [[ -f "$path" ]]; then
+            config_file="$path"
+            info_log "找到配置文件: $path"
+            break
+        fi
+    done
+
+    if [[ -n "$config_file" ]]; then
+        source "$config_file"
+        info_log "配置文件 $config_file 加载成功"
         return 0
     else
         # 设置默认配置
@@ -399,20 +418,29 @@ validate_and_fix_chrome_config() {
 init_config() {
     # 加载外部配置
     load_config
-    
+
     # 将配置文件中的数组赋值给脚本变量
     TOOLS=("${tools[@]}")
-    
+
+    # 如果TOOLS数组为空，使用默认工具列表（包括opencode）
+    if [ ${#TOOLS[@]} -eq 0 ]; then
+        TOOLS=(
+            "qwen:Qwen CLI:qwen-cli:npm:$HOME/.config/qwen/settings.json"
+            "gemini:Gemini CLI:gemini:npm:$HOME/.config/gemini/settings.json"
+            "opencode:OpenCode AI:opencode-ai:npm:$HOME/.config/opencode/settings.json"
+        )
+    fi
+
     # 提取MCP服务器名称列表
     MCP_SERVERS_NAMES=()
     for server in "${mcp_servers[@]}"; do
         name=$(echo $server | cut -d: -f1)
         MCP_SERVERS_NAMES+=("$name")
     done
-    
+
     # 设置文档目录变量
     DOCS_DIR="${docs_dir:-./ai-docs}"
-    
+
     # 自动验证并修复Chrome配置路径
     validate_and_fix_chrome_config
 }
@@ -1009,6 +1037,10 @@ operate_tool() {
         echo -e "${CYAN}ℹ️ veCLI 安装完成！${NC}"
         echo -e "${CYAN}💡 请运行 'vecli login' 命令完成火山引擎账户的认证${NC}"
         echo -e "${CYAN}💡 详细使用方法请参考: https://www.volcengine.com/docs/83927/1826757${NC}"
+    elif [[ "$name" == "OpenCode AI" && "$operation" == "install" ]]; then
+        echo -e "${CYAN}ℹ️ OpenCode AI 安装完成！${NC}"
+        echo -e "${CYAN}💡 请运行 'opencode-ai --help' 命令查看使用方法${NC}"
+        echo -e "${CYAN}💡 详细使用方法请参考: https://github.com/opencode-ai/opencode-ai${NC}"
     fi
 }
 
@@ -1092,13 +1124,13 @@ safe_move_file() {
 create_default_config() {
     local config_file=$1
     local tool_name=$2
-    
+
     local config_dir=$(dirname "$config_file")
     if ! ensure_dir_exists "$config_dir"; then
         warn_log "无法创建配置目录: $config_dir"
         return 1
     fi
-    
+
     if ! file_exists "$config_file"; then
         info_log "配置文件不存在，创建默认配置: $config_file"
         case $tool_name in
@@ -1115,6 +1147,13 @@ EOF
                 cat > "$config_file" << 'EOF'
 {
   "hasSeenIdeIntegrationNudge": true,
+  "mcpServers": {}
+}
+EOF
+                ;;
+            "OpenCode AI")
+                cat > "$config_file" << 'EOF'
+{
   "mcpServers": {}
 }
 EOF
@@ -1259,6 +1298,13 @@ EOF
                             cat > "$config_file" << 'EOF'
 {
   "hasSeenIdeIntegrationNudge": true,
+  "mcpServers": {}
+}
+EOF
+                            ;;
+                        "OpenCode")
+                            cat > "$config_file" << 'EOF'
+{
   "mcpServers": {}
 }
 EOF

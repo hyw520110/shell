@@ -349,20 +349,26 @@ copy_or_download_frpc() {
     fi
 }
 
-# 生成8位随机字符串
-generate_random_string() {
-    tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 8
+# 更安全的随机字符串生成
+generate_secure_token() {
+    openssl rand -base64 32 | tr -d '/+' | cut -c1-16
+}
+
+# 避免在脚本输出中显示敏感信息
+mask_sensitive_info() {
+    local info=$1
+    echo "${info:0:4}$(printf '%*s' $((${#info}-4)) | tr ' ' '*')"
 }
 
 # 生成frps 配置文件
 generate_default_config() {
-    AUTH_TOKEN=$(generate_random_string)
-    echo "生成的 auth.token: ${AUTH_TOKEN}"
+    AUTH_TOKEN=$(generate_secure_token)
+    echo "生成的 auth.token: $(mask_sensitive_info "$AUTH_TOKEN")"  # 仅显示部分信息
 
     read -p "是否需要启用 dashboard？(Y/n) " DASHBOARD_CHOICE
     DASHBOARD_CHOICE=${DASHBOARD_CHOICE:-y}
     #bandwidth_limit=1MB
-    
+
     if [ "$USE_SUDO" = true ]; then
         echo 'bindAddr = "0.0.0.0"' | sudo tee "${INSTALL_DIR}/${FRPS_CONF_NAME}" > /dev/null
         echo 'bindPort=7000' | sudo tee -a "${INSTALL_DIR}/${FRPS_CONF_NAME}" > /dev/null
@@ -390,10 +396,10 @@ log.level="info"
 log.maxDays=30
 EOF
     fi
-    
+
     if [[ $DASHBOARD_CHOICE =~ ^[Yy]$ ]]; then
-        WEB_SERVER_PASSWORD=$(generate_random_string)
-        echo "生成的 webServer.password: ${WEB_SERVER_PASSWORD}"
+        WEB_SERVER_PASSWORD=$(generate_secure_token)
+        echo "生成的 webServer.password: $(mask_sensitive_info "$WEB_SERVER_PASSWORD")"  # 仅显示部分信息
         if [ "$USE_SUDO" = true ]; then
             echo "webServer.user=\"webuser\"" | sudo tee -a "${INSTALL_DIR}/${FRPS_CONF_NAME}" > /dev/null
             echo "webServer.password=\"${WEB_SERVER_PASSWORD}\"" | sudo tee -a "${INSTALL_DIR}/${FRPS_CONF_NAME}" > /dev/null
@@ -405,10 +411,12 @@ EOF
         fi
     fi
 
-  if [ $? -ne 0 ]; then
-      echo "生成${FRPS_CONF_NAME}配置文件失败。"
-      exit 1
-  fi
+    # 设置配置文件安全权限
+    chmod 600 "${INSTALL_DIR}/${FRPS_CONF_NAME}"
+
+    if [ $? -ne 0 ]; then
+        error_exit "生成${FRPS_CONF_NAME}配置文件失败。"
+    fi
 }
 # 获取当前IP地址
 function get_current_ip() {
@@ -438,22 +446,18 @@ generate_default_client_config() {
 
     # 获取当前主机的 IP 地址
     CURRENT_IP=$(hostname -I | awk '{print $1}')
-    TUNNEL_NAME="ssh$(echo ${CURRENT_IP} | tr '.' '-')"
+    TUNNEL_NAME="ssh$(echo ${CURRENT_IP} | tr '.' '-' | cut -c1-20)"
 
     # 从 sshd 配置文件中提取端口号
-    sshd_port=$(grep -oP 'Port \K\d+' /etc/ssh/sshd_config | head -n 1)
-    if [ -z "$SSHD_PORT" ]; then
+    sshd_port=$(grep -oP 'Port \K\d+' /etc/ssh/sshd_config 2>/dev/null | head -n 1)
+    if [ -z "$sshd_port" ]; then
         sshd_port=22
     fi
 
-    # 检测端口号是否已启动
-    if ! netstat -tuln | grep -q ":${sshd_port}"; then
-        echo "警告: 端口 ${sshd_port} 未启动，开启 sshd 服务。"
-    fi
     local_ip=$(get_current_ip)
     #transport.useEncryption=true
     #transport.useCompression=true
-    
+
     if [ "$USE_SUDO" = true ]; then
         echo "serverAddr=\"${SERVER_IP}\"" | sudo tee "${INSTALL_DIR}/${FRPC_CONF_NAME}" > /dev/null
         echo "serverPort=${SERVER_PORT}" | sudo tee -a "${INSTALL_DIR}/${FRPC_CONF_NAME}" > /dev/null
@@ -485,10 +489,12 @@ localPort=${sshd_port}
 remotePort=6000
 EOF
     fi
-    
+
+    # 设置配置文件安全权限
+    chmod 600 "${INSTALL_DIR}/${FRPC_CONF_NAME}"
+
     if [ $? -ne 0 ]; then
-        echo "生成${FRPC_CONF_NAME}配置文件失败。"
-        exit 1
+        error_exit "生成${FRPC_CONF_NAME}配置文件失败。"
     fi
 }
 
@@ -496,71 +502,82 @@ EOF
 create_systemd_service() {
     if systemctl list-unit-files | grep -q "${FRPS_NAME}.service"; then
         # 系统服务文件操作始终需要sudo权限
-        sudo systemctl disable "${FRPS_NAME}.service" 2>/dev/null
-        sudo rm -f "${FRPS_SERVICE_FILE}" 2>/dev/null
+        sudo systemctl disable "${FRPS_NAME}.service" 2>/dev/null || true
+        sudo rm -f "${FRPS_SERVICE_FILE}" 2>/dev/null || true
     fi
-    
+
     # 系统服务文件始终需要sudo权限写入
-    echo "[Unit]" | sudo tee "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "Description=frps daemon" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "After = network.target syslog.target" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "Wants = network.target" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "[Service]" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "Type=simple" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "ExecStart=${INSTALL_DIR}/startup.sh frps" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "ExecStop=${INSTALL_DIR}/stop.sh" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "WorkingDirectory=${INSTALL_DIR}" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "Restart=on-failure" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "[Install]" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    echo "WantedBy=multi-user.target" | sudo tee -a "${FRPS_SERVICE_FILE}" > /dev/null
-    
+    cat << EOF | sudo tee "${FRPS_SERVICE_FILE}" > /dev/null
+[Unit]
+Description=frps daemon
+After = network.target syslog.target
+Wants = network.target
+
+[Service]
+Type=simple
+ExecStart=${INSTALL_DIR}/startup.sh frps
+ExecStop=${INSTALL_DIR}/stop.sh
+WorkingDirectory=${INSTALL_DIR}
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
     if [ $? -ne 0 ]; then
-        echo "创建 Systemd 服务文件失败。"
-        exit 1
+        error_exit "创建 Systemd 服务文件失败。"
     fi
-    
+
     sudo systemctl daemon-reload
 }
 
 create_systemd_client_service() {
     if systemctl list-unit-files | grep -q "${FRPC_NAME}.service"; then
-        sudo systemctl disable "${FRPC_NAME}.service" 2>/dev/null
-        sudo rm -f "${FRPC_SERVICE_FILE}" 2>/dev/null
+        sudo systemctl disable "${FRPC_NAME}.service" 2>/dev/null || true
+        sudo rm -f "${FRPC_SERVICE_FILE}" 2>/dev/null || true
     fi
-    
+
     # 系统服务文件始终需要sudo权限写入
-    echo "[Unit]" | sudo tee "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "Description=frpc client" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "After = network.target syslog.target" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "Wants = network.target" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "[Service]" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "Type=simple" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "ExecStart=${INSTALL_DIR}/startup.sh frpc" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "ExecStop=${INSTALL_DIR}/stop.sh" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "WorkingDirectory=${INSTALL_DIR}" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "Restart=on-failure" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "[Install]" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    echo "WantedBy=multi-user.target" | sudo tee -a "${FRPC_SERVICE_FILE}" > /dev/null
-    
+    cat << EOF | sudo tee "${FRPC_SERVICE_FILE}" > /dev/null
+[Unit]
+Description=frpc client
+After = network.target syslog.target
+Wants = network.target
+
+[Service]
+Type=simple
+ExecStart=${INSTALL_DIR}/startup.sh frpc
+ExecStop=${INSTALL_DIR}/stop.sh
+WorkingDirectory=${INSTALL_DIR}
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
     if [ $? -ne 0 ]; then
-        echo "创建 Systemd 服务文件失败。"
-        exit 1
+        error_exit "创建 Systemd 服务文件失败。"
     fi
-    
+
     sudo systemctl daemon-reload
 }
 # 检测防火墙类型并自动开放端口（仅在防火墙服务处于 active 时操作）
 # 使用方法：setup_firewall_ports "7000/tcp" "7800/tcp" "22/tcp"
 setup_firewall_ports() {
-    echo "正在检测系统防火墙状态..."
+    local confirm_firewall=${CONFIRM_FIREWALL:-true}
+
+    if [ "$confirm_firewall" = false ]; then
+        log_message "INFO" "跳过防火墙配置"
+        return 0
+    fi
+
+    log_message "INFO" "正在检测系统防火墙状态..."
 
     # 检查是否传入了端口
     if [ $# -eq 0 ]; then
-        echo "未指定要开放的端口。"
+        log_message "INFO" "未指定要开放的端口。"
         return 1
     fi
 
@@ -568,62 +585,62 @@ setup_firewall_ports() {
 
     # 检测 firewalld
     if command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld; then
-        echo "检测到 firewalld 防火墙正在运行，正在检查并开放端口..."
+        log_message "INFO" "检测到 firewalld 防火墙正在运行，正在检查并开放端口..."
         for port in "${ports[@]}"; do
             if [ "$USE_SUDO" = true ]; then
-                if ! sudo firewall-cmd --permanent --query-port="$port"; then
-                    echo "正在添加端口 $port..."
-                    sudo firewall-cmd --permanent --add-port="$port"
+                if ! sudo firewall-cmd --permanent --query-port="$port" 2>/dev/null; then
+                    log_message "INFO" "正在添加端口 $port..."
+                    sudo firewall-cmd --permanent --add-port="$port" || true
                 else
-                    echo "端口 $port 已开放。"
+                    log_message "INFO" "端口 $port 已开放。"
                 fi
             else
-                if ! firewall-cmd --permanent --query-port="$port"; then
-                    echo "正在添加端口 $port..."
-                    firewall-cmd --permanent --add-port="$port"
+                if ! firewall-cmd --permanent --query-port="$port" 2>/dev/null; then
+                    log_message "INFO" "正在添加端口 $port..."
+                    firewall-cmd --permanent --add-port="$port" || true
                 else
-                    echo "端口 $port 已开放。"
+                    log_message "INFO" "端口 $port 已开放。"
                 fi
             fi
         done
         if [ "$USE_SUDO" = true ]; then
-            sudo firewall-cmd --reload
+            sudo firewall-cmd --reload || true
         else
-            firewall-cmd --reload
+            firewall-cmd --reload || true
         fi
-        echo "firewalld 防火墙端口设置完成。"
+        log_message "INFO" "firewalld 防火墙端口设置完成。"
 
     # 检测 ufw
     elif command -v ufw &> /dev/null && systemctl is-active --quiet ufw; then
-        echo "检测到 ufw 防火墙正在运行，正在检查并开放端口..."
+        log_message "INFO" "检测到 ufw 防火墙正在运行，正在检查并开放端口..."
         for port in "${ports[@]}"; do
             port_num=$(echo "$port" | cut -d'/' -f1)
             proto=$(echo "$port" | cut -d'/' -f2)
             if [ "$USE_SUDO" = true ]; then
-                if ! sudo ufw status verbose | grep -q "$port_num/$proto"; then
-                    echo "正在添加端口 $port..."
-                    sudo ufw allow "$port"
+                if ! sudo ufw status verbose 2>/dev/null | grep -q "$port_num/$proto"; then
+                    log_message "INFO" "正在添加端口 $port..."
+                    sudo ufw allow "$port" || true
                 else
-                    echo "端口 $port 已开放。"
+                    log_message "INFO" "端口 $port 已开放。"
                 fi
             else
-                if ! ufw status verbose | grep -q "$port_num/$proto"; then
-                    echo "正在添加端口 $port..."
-                    ufw allow "$port"
+                if ! ufw status verbose 2>/dev/null | grep -q "$port_num/$proto"; then
+                    log_message "INFO" "正在添加端口 $port..."
+                    ufw allow "$port" || true
                 else
-                    echo "端口 $port 已开放。"
+                    log_message "INFO" "端口 $port 已开放。"
                 fi
             fi
         done
         if [ "$USE_SUDO" = true ]; then
-            sudo ufw reload
+            sudo ufw reload || true
         else
-            ufw reload
+            ufw reload || true
         fi
-        echo "ufw 防火墙端口设置完成。"
+        log_message "INFO" "ufw 防火墙端口设置完成。"
 
     else
-        echo "防火墙服务未运行，跳过自动配置。"
+        log_message "INFO" "防火墙服务未运行，跳过自动配置。"
     fi
 }
 # 主逻辑
@@ -635,28 +652,31 @@ save_running_config() {
     local service_type=$1
     local source_dir=$2
     local config_file
-    
+
     if [ "$service_type" = "frps" ]; then
         config_file="${FRPS_CONF_NAME}"
     else
         config_file="${FRPC_CONF_NAME}"
     fi
-    
+
     # 检查源配置文件是否存在
     if [ -f "$source_dir/$config_file" ]; then
-        echo "发现运行进程的配置文件: $source_dir/$config_file"
-        
+        log_message "INFO" "发现运行进程的配置文件: $source_dir/$config_file"
+
         # 拷贝配置文件到新安装目录
         if [ "$USE_SUDO" = true ]; then
             sudo cp "$source_dir/$config_file" "$INSTALL_DIR/"
         else
             cp "$source_dir/$config_file" "$INSTALL_DIR/"
         fi
-        
-        echo "已将配置文件从 $source_dir 复制到 $INSTALL_DIR"
+
+        # 设置安全权限
+        chmod 600 "$INSTALL_DIR/$config_file"
+
+        log_message "INFO" "已将配置文件从 $source_dir 复制到 $INSTALL_DIR"
     else
-        echo "警告: 未找到 $service_type 的配置文件在 $source_dir"
-        echo "将使用默认配置创建新配置文件"
+        log_message "WARN" "警告: 未找到 $service_type 的配置文件在 $source_dir"
+        log_message "INFO" "将使用默认配置创建新配置文件"
     fi
 }
 
