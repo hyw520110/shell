@@ -26,7 +26,7 @@ LOG_LEVEL=$LOG_LEVEL_INFO
 # 系统相关变量
 OS=""
 CACHE_SUPPORTED=false
-CACHE_FILE="$HOME/.ai-tools-cache"
+CACHE_FILE="$HOME/.ai-cli-cache"
 
 # 工具相关变量
 TOOL_STATUS=()
@@ -35,11 +35,11 @@ INSTALLED_MCP_CONFIGS=()
 MCP_SERVERS_NAMES=()
 
 # 文档目录变量
-DOCS_DIR="${docs_dir:-./ai-docs}"
+DOCS_DIR="${docs_dir:-./ai-cli-docs}"
 
 # 临时文件路径
-readonly TEMP_CMD_LOG="/tmp/ai-tools-cmd.log"
-readonly TEMP_ERROR_LOG="$HOME/.ai-tools-error.log"
+readonly TEMP_CMD_LOG="/tmp/ai-cli.log"
+readonly TEMP_ERROR_LOG="$HOME/.ai-cli-error.log"
 
 # ==================== 日志和错误处理模块 ====================
 
@@ -178,15 +178,15 @@ run_with_retry() {
 
 # 检查配置文件是否存在
 check_config_file() {
-    local config_file="ai-tools.conf"
+    local config_file="ai-cli.conf"
     if [[ -f "$config_file" ]]; then
         return 0
     else
         # 检查其他可能的配置文件位置
         local possible_paths=(
-            "./ai-tools.conf"
-            "$HOME/.config/ai-tools/ai-tools.conf"
-            "/etc/ai-tools.conf"
+            "./ai-cli.conf"
+            "$HOME/.config/ai-cli/ai-cli.conf"
+            "/etc/ai-cli.conf"
         )
         
         for path in "${possible_paths[@]}"; do
@@ -197,7 +197,7 @@ check_config_file() {
         done
         
         # 如果没有找到配置文件，使用默认配置
-        warn_log "未找到配置文件 ai-tools.conf，使用默认配置"
+        warn_log "未找到配置文件 ai-cli.conf，使用默认配置"
         return 1
     fi
 }
@@ -205,14 +205,14 @@ check_config_file() {
 # 加载外部配置
 load_config() {
     if check_config_file; then
-        source ai-tools.conf
+        source ai-cli.conf
         info_log "配置文件加载成功"
         return 0
     else
         # 设置默认配置
         tools=()
         mcp_servers=()
-        docs_dir="./ai-docs"
+        docs_dir="./ai-cli-docs"
         warn_log "使用默认配置"
         return 1
     fi
@@ -411,7 +411,7 @@ init_config() {
     done
     
     # 设置文档目录变量
-    DOCS_DIR="${docs_dir:-./ai-docs}"
+    DOCS_DIR="${docs_dir:-./ai-cli-docs}"
     
     # 自动验证并修复Chrome配置路径
     validate_and_fix_chrome_config
