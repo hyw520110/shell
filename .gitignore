@@ -54,9 +54,11 @@ network/duck.sh
 !**/.env.template
 
 # 本地工具配置、索引和缓存
+**/.qwen/
 .grok/
 .neovate/
 .claude/settings.local.json
 .codegraph/
 .ruff_cache/
 .token-savior-cache.json
+**/.report_cache.json
