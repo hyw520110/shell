@@ -1,0 +1,82 @@
+{
+  "id": "skill-seekers",
+  "name": "Skill Seekers",
+  "description": "将文档站点、GitHub 仓库、PDF、视频、Notebook 等来源转换为 Claude/OpenAI/Gemini Skills、RAG 文档和 Cursor/Windsurf 等 AI 助手上下文资产。",
+  "category": "ai-utility",
+  "sort_order": 560,
+  "sort_key": "Skill Seekers",
+  "tags": [
+    "Skills",
+    "RAG",
+    "文档处理",
+    "MCP",
+    "Python",
+    "知识工程"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "uv tool / Python 安装",
+        "type": "bash",
+        "command": "export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$PATH\"; if command -v uv >/dev/null 2>&1; then uv tool install --upgrade skill-seekers; else python3 - <<'PY'\nimport sys\nraise SystemExit(0 if sys.version_info >= (3, 10) else 1)\nPY\npython3 -m pip install --user -U skill-seekers; fi",
+        "check": "command -v skill-seekers || python3 -m skill_seekers --help >/dev/null 2>&1",
+        "uninstall": [
+          "uv tool uninstall skill-seekers 2>/dev/null || python3 -m pip uninstall -y skill-seekers"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$PATH\"; if command -v uv >/dev/null 2>&1; then uv tool install --upgrade skill-seekers; else python3 -m pip install --user -U skill-seekers; fi",
+    "check": "command -v skill-seekers || python3 -m skill_seekers --help >/dev/null 2>&1"
+  },
+  "post_install": [
+    {
+      "description": "显示快速开始",
+      "command": "echo '示例: skill-seekers create https://docs.react.dev/ && skill-seekers package output/react --target claude'"
+    }
+  ],
+  "commands": {
+    "start": "skill-seekers --help",
+    "version": "skill-seekers --version",
+    "create-docs": "skill-seekers create https://docs.react.dev/",
+    "scan-project": "skill-seekers scan . --out ./configs/scanned/",
+    "package-claude": "skill-seekers package output/example --target claude"
+  },
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "skill-seekers --version 2>/dev/null || echo 'Skill Seekers 未安装'"
+    },
+    {
+      "name": "检查 Python",
+      "command": "python3 --version 2>/dev/null || echo 'Python3 未安装'"
+    }
+  ],
+  "prompts": {
+    "create-skill": "使用 Skill Seekers 将这个文档/仓库/PDF 转换为 AI Skill，并打包为目标平台格式。",
+    "scan-project": "使用 skill-seekers scan 扫描当前项目，生成框架配置并说明下一步如何创建 Skill。",
+    "rag-export": "将输入来源处理为 LangChain/LlamaIndex/Haystack 或向量数据库可用的 RAG 文档。"
+  },
+  "references": {
+    "homepage": "https://skillseekersweb.com/",
+    "repository": "https://github.com/yusufkaraaslan/Skill_Seekers",
+    "pypi": "https://pypi.org/project/skill-seekers/",
+    "shared_skills": [
+      "skill-seekers"
+    ]
+  },
+  "notes": "推荐作为 AI Hub 的通用 Skill/RAG 生成 CLI 集成。视频、浏览器抓取、向量库等高级能力可能需要额外 extras 或系统依赖，按任务再安装。",
+  "scenarios": [
+    "coding",
+    "knowledge",
+    "agent-workbench",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://skillseekersweb.com/",
+  "repository": "https://github.com/yusufkaraaslan/Skill_Seekers"
+}

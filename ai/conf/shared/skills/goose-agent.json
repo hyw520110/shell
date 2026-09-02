@@ -1,0 +1,52 @@
+{
+  "id": "goose-agent",
+  "name": "Goose Agent Workflow",
+  "description": "面向 Goose 本地 Agent 的使用指南：配置 Provider、接入 MCP 扩展、处理代码/研究/自动化任务，并与现有 AI Hub 能力协作。",
+  "category": "agent-workbench",
+  "prompts": {
+    "setup-provider": "帮我检查 Goose 是否已安装，并配置适合当前环境的 LLM Provider。",
+    "mcp-bridge": "把当前 AI Hub 中已启用的 MCP 能力整理成 Goose 可接入的扩展清单。",
+    "delegate-task": "判断当前任务是否适合交给 Goose 执行，并给出命令和上下文准备步骤。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "goose"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "install-goose-cli",
+      "name": "install-goose-cli",
+      "description": "安装 Goose CLI",
+      "install": {
+        "default": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-goose.XXXXXX\") && curl -fsSL -o \"$tmp\" https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc"
+      },
+      "check": {
+        "command": "goose"
+      }
+    }
+  ],
+  "instructions": {
+    "usage": "Goose 是独立 Agent，不要把它当作 MCP server。优先用于需要本地 CLI Agent 长任务、跨工具自动化或独立工作台的场景。",
+    "safety": "运行 Goose 前说明它将读取/修改哪些目录；涉及凭据、系统安装或外部服务登录时先让用户确认。"
+  },
+  "tags": [
+    "Agent",
+    "MCP",
+    "工作台",
+    "Goose"
+  ],
+  "scenarios": [
+    "agent-workbench",
+    "productivity",
+    "coding"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://goose-docs.ai/",
+  "repository": "https://github.com/aaif-goose/goose",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

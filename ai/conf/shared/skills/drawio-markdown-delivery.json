@@ -1,0 +1,55 @@
+{
+  "id": "drawio-markdown-delivery",
+  "name": "draw.io Markdown 交付流程",
+  "description": "维护 .drawio 可编辑源文件，并将其工程化导出为 Markdown/PRD/方案文档可预览的 SVG/PNG。适用于架构图、产品方案图、流程图的交付与评审。",
+  "category": "documentation",
+  "tags": [
+    "draw.io",
+    "Markdown",
+    "diagram",
+    "文档",
+    "PRD"
+  ],
+  "homepage": "https://www.drawio.com/",
+  "repository": "https://github.com/jgraph/drawio",
+  "tips": "这是一个 Skill 模块；draw.io CLI 是推荐扩展命令，仅在需要批量导出 SVG/PNG/PDF 时安装。",
+  "capabilities": [
+    "约定 .drawio 源文件与 exported SVG/PNG 预览图的目录结构",
+    "为 Markdown、PRD、方案文档提供可评审的图表预览交付方式",
+    "指导使用 draw.io CLI 批量刷新图表导出物"
+  ],
+  "prompts": {
+    "markdown_export": "请按 draw.io Markdown 交付流程，为项目中的 .drawio 文件设计导出目录、Markdown 引用方式和刷新脚本。",
+    "prd_diagram": "请为这个 PRD/方案文档规划 draw.io 图表源文件与 SVG 预览图的交付结构。"
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "drawio-cli",
+      "name": "draw.io CLI",
+      "description": "可选安装，用于批量将 .drawio 导出为 SVG/PNG/PDF；不作为 AI Hub 主工具或 MCP Server。",
+      "check": {
+        "env": "DRAWIO_CLI",
+        "paths": [
+          "/Applications/draw.io.app/Contents/MacOS/draw.io"
+        ],
+        "command": "drawio"
+      },
+      "install": {
+        "darwin": "brew install --cask drawio",
+        "linux": "echo '请安装 diagrams.net/draw.io Desktop CLI，并设置 DRAWIO_CLI 指向可执行文件'",
+        "default": "echo '请手动安装 draw.io CLI，并设置 DRAWIO_CLI 指向可执行文件'"
+      }
+    }
+  ],
+  "notes": "安装该 Skill 不会强制安装 draw.io CLI。AI Hub 只在交互安装 Skill 或场景 Bundle 时提示补齐推荐扩展命令。",
+  "scenarios": [
+    "productivity",
+    "product-docs",
+    "diagramming"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

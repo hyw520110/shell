@@ -1,0 +1,59 @@
+{
+  "id": "skillspector",
+  "name": "NVIDIA SkillSpector",
+  "description": "NVIDIA 开源的 AI Agent Skills 安全扫描器，检测 prompt injection、数据外传、危险代码、MCP 权限和供应链风险。",
+  "category": "ai-utility",
+  "tags": [
+    "安全",
+    "Skills",
+    "审计",
+    "供应链",
+    "NVIDIA"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "克隆并安装到用户目录",
+        "type": "bash",
+        "command": "base=\"$HOME/.local/share/ai-hub\"; repo=\"$base/skillspector\"; mkdir -p \"$base\"; if [ -d \"$repo/.git\" ]; then git -C \"$repo\" pull --ff-only; else git clone https://github.com/NVIDIA/SkillSpector.git \"$repo\"; fi; cd \"$repo\" && if command -v uv >/dev/null 2>&1; then uv sync; else python3 -m venv .venv && . .venv/bin/activate && pip install -e .; fi",
+        "check": "test -d $HOME/.local/share/ai-hub/skillspector && echo 'SkillSpector 已安装'"
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "repo=\"$HOME/.local/share/ai-hub/skillspector\"; git -C \"$repo\" pull --ff-only && cd \"$repo\" && if command -v uv >/dev/null 2>&1; then uv sync; else . .venv/bin/activate && pip install -e .; fi",
+    "check": "test -d $HOME/.local/share/ai-hub/skillspector && echo 'SkillSpector 已更新'"
+  },
+  "commands": {
+    "scan-no-llm": "cd $HOME/.local/share/ai-hub/skillspector && if [ -x .venv/bin/skillspector ]; then .venv/bin/skillspector scan --no-llm; else uv run skillspector scan --no-llm; fi",
+    "scan-dir": "cd $HOME/.local/share/ai-hub/skillspector && if [ -x .venv/bin/skillspector ]; then .venv/bin/skillspector scan; else uv run skillspector scan; fi",
+    "docker-build": "cd $HOME/.local/share/ai-hub/skillspector && make docker-build"
+  },
+  "status_check": [
+    {
+      "name": "检查源码目录",
+      "command": "test -d $HOME/.local/share/ai-hub/skillspector && echo 'SkillSpector 源码已就绪' || echo 'SkillSpector 未安装'"
+    },
+    {
+      "name": "检查 Docker",
+      "command": "docker --version 2>/dev/null || echo 'Docker 不可用，可使用本地 Python/uv 安装方式'"
+    }
+  ],
+  "prompts": {
+    "scan-skill": "使用 SkillSpector 扫描这个 Skill 目录，先用 --no-llm 静态模式输出风险。",
+    "scan-before-install": "安装第三方 Skill 前，先用 SkillSpector 扫描并解释风险等级。",
+    "sarif": "用 SkillSpector 输出 SARIF/Markdown 报告，方便纳入 CI 或审查记录。"
+  },
+  "notes": "SkillSpector 需要 Python 3.12+ 或 Docker。LLM 语义分析需要配置对应 Provider Key；默认建议先使用 --no-llm 静态扫描。",
+  "homepage": "https://github.com/NVIDIA/SkillSpector",
+  "repository": "https://github.com/NVIDIA/SkillSpector",
+  "scenarios": [
+    "coding",
+    "qa-testing",
+    "agent-workbench"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false
+}

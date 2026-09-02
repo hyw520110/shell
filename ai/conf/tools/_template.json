@@ -1,0 +1,73 @@
+{
+  "id": "tool-id",
+  "name": "工具名称",
+  "description": "工具描述",
+  "category": "ai-coding",
+  "sort_order": 5000,
+  "sort_key": "工具名称",
+  "tags": ["tag1", "tag2"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "安装方式名称",
+        "type": "npm",
+        "plugin": "",
+        "command": "npm install -g package-name --registry {{npm_registry}}",
+        "check": "command -v cmd-name",
+        "uninstall": [
+          "npm uninstall -g package-name"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "npm install -g package-name --registry {{npm_registry}} --force",
+    "check": "command -v cmd-name",
+    "pre_update": []
+  },
+
+  "post_install": [
+    {"description": "安装后提示", "command": "echo '安装完成！'"}
+  ],
+
+  "post_uninstall": [
+    {"description": "卸载后清理", "command": "echo '卸载完成！'"}
+  ],
+
+  "config": {
+    "path": "$HOME/.tool-id/settings.json",
+    "operations": {
+      "view": "cat $HOME/.tool-id/settings.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.tool-id/settings.json",
+      "reset": [
+        "cp $HOME/.tool-id/settings.json $HOME/.tool-id/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.tool-id/settings.json"
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "cmd-name",
+    "version": "cmd-name --version",
+    "login": "cmd-name /login"
+  },
+
+  "status_check": [
+    {"name": "检查版本", "command": "cmd-name --version 2>/dev/null || echo '未安装'"},
+    {"name": "检查配置", "command": "ls -la $HOME/.tool-id/ 2>/dev/null || echo '配置目录不存在'"}
+  ],
+
+  "mcp_servers": {},
+
+  "skills": {},
+
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+
+  "notes": "使用说明和注意事项"
+}

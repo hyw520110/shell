@@ -1,0 +1,41 @@
+{
+  "id": "tdd-expert",
+  "name": "TDD 专家 (Test-Driven Development)",
+  "description": "基于 Matt Pocock 的 TDD 实践，强制 AI 采用'测试先行'的工作流。这能有效防止 LLM 生成看似正确但逻辑有误的代码，特别是在处理复杂的 TypeScript/Rust/Go 类型逻辑时。",
+  "category": "coding-best-practices",
+  "prompts": {
+    "red-green-refactor": "采用红-绿-重构循环：1) 编写一个最小的、失败的测试用例。2) 编写最简单的代码使测试通过。3) 在不改变行为的情况下重构。每个步骤后必须运行测试并输出结果。",
+    "reproduction-first": "在修复任何 Bug 之前，必须先提供一个复现该 Bug 的最小测试用例。只有当我看到测试失败（Red）后，你才可以开始编写修复逻辑。",
+    "specification-by-test": "将我的需求描述转化为一组具体的 Vitest/Jest/Pytest 断言。在开始实现业务逻辑之前，请先让我确认这些测试断言是否覆盖了所有边界场景。"
+  },
+  "capabilities": [
+    "自动化回归预防 - 确保新功能不破坏旧逻辑",
+    "边界场景挖掘 - 强制 AI 在编写逻辑前思考异常值",
+    "可验证的交付 - 所有产出都有配套的绿色测试"
+  ],
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "npm",
+      "vitest",
+      "pytest"
+    ]
+  },
+  "install_check": "true",
+  "tips": "对于快速原型开发可能显得繁琐，但对于核心业务逻辑和重构任务，TDD 是与 AI 协作最可靠的方式。它能将'概率性的 AI 输出'转变为'确定性的逻辑验证'。",
+  "tags": [
+    "TDD",
+    "单元测试",
+    "代码质量",
+    "高级开发"
+  ],
+  "scenarios": [
+    "coding"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://www.totaltypescript.com/concepts/test-driven-development",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

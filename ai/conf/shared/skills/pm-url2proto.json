@@ -1,0 +1,42 @@
+{
+  "id": "pm-url2proto",
+  "name": "网址转Next.js原型",
+  "description": "将实时网页克隆为本地Next.js + Tailwind CSS项目，用于快速原型开发。适用于用户提供URL或截图并要求复刻、重新设计或迭代原型的场景。",
+  "category": "prototyping",
+  "prompts": {
+    "clone": "根据URL或截图，将网页克隆为本地Next.js + Tailwind CSS项目",
+    "modify": "修改已有原型项目，添加新功能或页面",
+    "iterate": "基于用户反馈迭代优化原型"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "chrome-devtools",
+      "playwright"
+    ],
+    "system_commands": [
+      "node",
+      "npm"
+    ]
+  },
+  "install_check": "which node && which npm",
+  "tips": "需要Node.js和npm环境，需要Chrome MCP支持以读取网页",
+  "notes": "原名 web-prototype，输出完整的Next.js项目",
+  "tags": [
+    "原型",
+    "URL 转原型",
+    "产品管理",
+    "页面原型"
+  ],
+  "scenarios": [
+    "productivity",
+    "product-docs",
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/zephyrwang6/pm-skills",
+  "repository": "https://github.com/zephyrwang6/pm-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

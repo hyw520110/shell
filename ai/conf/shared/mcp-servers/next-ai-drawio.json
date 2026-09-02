@@ -1,0 +1,50 @@
+{
+  "id": "next-ai-drawio",
+  "name": "Next AI Draw.io",
+  "description": "AI 驱动的 draw.io 图表工具，支持通过自然语言创建、修改和优化图表",
+  "category": "design",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @next-ai-drawio/mcp-server@latest"
+  },
+  "config": {
+    "command": "next-ai-drawio-mcp",
+    "args": [],
+    "transportType": "stdio",
+    "env": {}
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查 MCP 服务器",
+      "command": "npm list -g @next-ai-drawio/mcp-server --depth=0 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "notes": "需要先安装 Node.js 18+。使用时图表会在浏览器中实时显示。支持 Claude、Cursor、VS Code 等 MCP 客户端。",
+  "tags": [
+    "流程图",
+    "架构图",
+    "draw.io",
+    "业务流程图",
+    "业务架构图"
+  ],
+  "scenarios": [
+    "productivity",
+    "product-docs",
+    "diagramming"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://next-ai-drawio.jiang.jp",
+  "repository": "https://github.com/DayuanJiang/next-ai-draw-io",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

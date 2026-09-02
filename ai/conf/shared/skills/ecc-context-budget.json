@@ -1,0 +1,55 @@
+{
+  "id": "ecc-context-budget",
+  "name": "ECC Context Budget",
+  "description": "从 ECC 中拆出的 harness 级上下文预算与记忆治理能力，强调 token optimization、memory persistence、continuous learning、large context handling 和 parallel execution 的组合策略。",
+  "category": "context-optimizer",
+  "install": {
+    "command": "echo 'ECC Context Budget 是工作流/规则型能力，建议与 token-savior、context-mode、headroom 去重后按需启用。'",
+    "check": "true"
+  },
+  "prompts": {
+    "budget": "为当前任务 {task} 设计 ECC 风格上下文预算：哪些内容进长期记忆、哪些按需检索、哪些压缩、哪些禁止重复读取。",
+    "memory": "基于 ECC memory persistence 思路，为当前项目设计跨会话记忆结构和更新规则。",
+    "parallel": "为 {workflow} 设计并行执行方案，明确共享上下文、分工边界、汇总格式和冲突处理。"
+  },
+  "capabilities": [
+    "上下文预算规划",
+    "长期记忆和跨会话 handoff",
+    "大上下文压缩和按需检索策略",
+    "并行 Agent 任务拆分和合并",
+    "与 token-savior、context-mode、headroom 等本地能力去重"
+  ],
+  "dependencies": {
+    "mcp_servers": [
+      "token-savior",
+      "context-mode",
+      "headroom"
+    ],
+    "system_commands": []
+  },
+  "tips": "这不是替代 token-savior/context-mode/headroom 的工具，而是 ECC 风格的 harness 级治理规则。启用前应检查是否已有多个上下文 hooks，避免互相覆盖。",
+  "homepage": "https://github.com/affaan-m/ECC",
+  "repository": "https://github.com/affaan-m/ECC",
+  "documentation": "https://github.com/affaan-m/ECC/blob/main/README.zh-CN.md",
+  "tags": [
+    "上下文优化",
+    "Token优化",
+    "记忆",
+    "并行执行",
+    "Handoff",
+    "Agent工作台",
+    "Hooks",
+    "MCP"
+  ],
+  "scenarios": [
+    "context-optimizer",
+    "agent-workbench",
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

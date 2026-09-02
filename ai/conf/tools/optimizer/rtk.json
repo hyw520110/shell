@@ -1,0 +1,53 @@
+{
+  "id": "rtk",
+  "name": "RTK (Rust Token Killer)",
+  "description": "Rust Token Killer，压缩常见开发命令输出以降低 AI 会话 Token 消耗。适合终端型 AI 助手配合使用。",
+  "category": "ai-optimizer",
+  "sort_order": 100,
+  "sort_key": "RTK",
+  "tags": [
+    "Token优化",
+    "上下文压缩",
+    "命令输出压缩",
+    "Rust"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Cargo Git 安装",
+        "type": "cargo",
+        "command": "bash conf/tools/optimizer/rtk/install.sh install",
+        "check": "command -v rtk",
+        "uninstall": [
+          "bash conf/tools/optimizer/rtk/install.sh uninstall"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "bash conf/tools/optimizer/rtk/install.sh update",
+    "check": "command -v rtk"
+  },
+  "commands": {
+    "start": "rtk",
+    "version": "rtk --version",
+    "gain": "rtk gain",
+    "git-status": "rtk git status"
+  },
+  "status_check": [
+    {
+      "name": "检查 Rust/Cargo",
+      "command": "bash conf/tools/optimizer/rtk/install.sh status | head -1"
+    },
+    {
+      "name": "检查 RTK",
+      "command": "rtk --version 2>/dev/null || echo 'RTK 未安装'"
+    }
+  ],
+  "references": {
+    "homepage": "https://www.rtk-ai.app/zh/",
+    "github": "https://github.com/rtk-ai/rtk"
+  },
+  "notes": "RTK 用于命令输出压缩。不要与多个自动压缩 Hook 同时强制启用，避免双重压缩导致调试信息缺失。"
+}

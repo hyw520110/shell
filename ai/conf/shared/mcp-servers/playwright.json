@@ -1,0 +1,82 @@
+{
+  "id": "playwright",
+  "name": "Playwright MCP",
+  "description": "浏览器自动化 MCP 服务器，支持网页导航、点击、截图、表单填写等操作",
+  "category": "automation",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @playwright/mcp@latest",
+    "prepare": "bash ${SCRIPT_DIR}/scripts/install-playwright-browser.sh || npx playwright install chromium",
+    "pre_install": [
+      "npm uninstall -g @playwright/mcp 2>/dev/null || true",
+      "find $(npm root -g) -maxdepth 1 -name '.playwright-mcp-*' -type d -exec rm -rf {} + 2>/dev/null || true"
+    ],
+    "post_install": [
+      {
+        "description": "缓存 npx 运行时避免首次超时",
+        "command": "npx -y @playwright/mcp@latest --help >/dev/null 2>&1 || true"
+      }
+    ]
+  },
+  "config": {
+    "command": "playwright-mcp",
+    "args": [],
+    "transportType": "stdio"
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查安装",
+      "command": "command -v playwright-mcp >/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查浏览器",
+      "command": "npx playwright install --help >/dev/null 2>&1 && echo 'Playwright 环境就绪' || echo '浏览器环境未初始化'"
+    }
+  ],
+  "options": {
+    "browser": {
+      "description": "浏览器类型",
+      "values": [
+        "chromium",
+        "firefox",
+        "webkit",
+        "chrome",
+        "msedge"
+      ],
+      "default": "chromium"
+    },
+    "headless": {
+      "description": "无头模式",
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "tags": [
+    "浏览器",
+    "自动化测试",
+    "前端",
+    "测试"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "product-docs",
+    "diagramming",
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://playwright.dev",
+  "repository": "https://github.com/microsoft/playwright-mcp",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

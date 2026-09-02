@@ -1,0 +1,44 @@
+{
+  "id": "open-design",
+  "name": "Open Design",
+  "description": "开源的 Claude Design 替代品，一句话生成交付级设计。支持图标生成、图片编辑、设计系统、本地优先、云端协作。",
+  "category": "design-prototype",
+  "scenarios": [
+    "design-prototype",
+    "productivity"
+  ],
+  "tags": [
+    "设计",
+    "图标生成",
+    "原型"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://open-design.ai",
+  "repository": "https://github.com/nexu-io/open-design",
+  "prompts": {
+    "prototype": "用 Open Design 创建 {type} 原型，{requirements}",
+    "icon": "用 Open Design 生成 {style} 风格的图标，包含 {count} 个变体",
+    "image-edit": "用 Open Design 编辑图片：{description}",
+    "design-system": "用 Open Design 创建设计系统，包含 {components} 组件",
+    "deck": "用 Open Design 制作 {topic} 演示文稿"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "open-design"
+    ],
+    "system_commands": [
+      "od",
+      "open-design"
+    ]
+  },
+  "install_check": "command -v open-design >/dev/null 2>&1 || (command -v od >/dev/null 2>&1 && od mcp --help >/dev/null 2>&1)",
+  "instructions": {
+    "workflow": "设计需求优先使用 Open Design，支持原型、图标、图片、演示文稿等多种场景。可通过 `od mcp install trae` 一键安装 MCP 服务器。",
+    "safety": "本地优先设计，数据存储在本地，支持安全沙盒预览。"
+  },
+  "tips": "支持 21 种主流 Agent（Claude/Codex/Cursor/Copilot/Hermes/Kimi 等）。包含 100+ skills、150+ DESIGN.md 设计系统、261+ 插件。导出格式：HTML/PDF/PPTX/MP4。",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

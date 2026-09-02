@@ -1,0 +1,48 @@
+{
+  "id": "marketing-skills",
+  "name": "Marketing Skills",
+  "description": "Corey Haines 维护的营销 Skills 集合，面向技术营销人员和创业者，覆盖 CRO、文案、SEO、分析、增长工程、广告、GTM 和客户研究。",
+  "category": "marketing",
+  "install": {
+    "command": "npx skills add coreyhaines31/marketingskills",
+    "check": "npx skills find marketing 2>/dev/null | grep -Eqi 'marketing|cro|copywriting|seo'"
+  },
+  "prompts": {
+    "audit": "使用 Marketing Skills 为 {product_or_page} 做营销诊断，覆盖定位、CRO、SEO、文案和分析追踪。",
+    "growth": "为 {business_goal} 设计增长实验计划，包含假设、渠道、指标和优先级。"
+  },
+  "capabilities": [
+    "CRO、SEO、文案、广告、分析和增长工程",
+    "product-marketing 作为基础上下文，其他营销 skills 交叉引用",
+    "支持 npx skills、Claude Code plugin、SkillKit 等安装方式"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "node",
+      "npx"
+    ]
+  },
+  "tips": "适合营销落地任务。可用 `npx skills add coreyhaines31/marketingskills --list` 查看并按需安装具体 skills。",
+  "homepage": "https://github.com/coreyhaines31/marketingskills",
+  "repository": "https://github.com/coreyhaines31/marketingskills",
+  "tags": [
+    "营销",
+    "CRO",
+    "SEO",
+    "增长",
+    "文案",
+    "广告",
+    "数据分析",
+    "Skill 集合"
+  ],
+  "scenarios": [
+    "productivity",
+    "product-docs",
+    "research"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

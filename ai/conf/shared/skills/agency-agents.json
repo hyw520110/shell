@@ -1,0 +1,56 @@
+{
+  "id": "agency-agents",
+  "name": "Agency Agents",
+  "description": "完整的 AI 代理机构，包含 82+ 专业 AI Agent，涵盖设计、工程、市场等 9 个团队。每个 Agent 都是特定领域专家，模拟真实公司组织架构，支持多 Agent 协作。",
+  "category": "ai-agent",
+  "install": {
+    "command": "git clone https://github.com/mstarzewski/agency-agents.git ~/.claude/skills/agency-agents",
+    "check": "test -d ~/.claude/skills/agency-agents && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "design": "使用设计团队的 Agent 帮我完成 {design_task}",
+    "engineering": "使用工程团队的 Agent 帮我开发 {feature}",
+    "marketing": "使用市场团队的 Agent 帮我制定 {marketing_plan}",
+    "collaborate": "协调多个 Agent 团队完成 {complex_task}"
+  },
+  "capabilities": [
+    "82+ 专业 AI Agent - 覆盖设计、工程、市场、运营等领域",
+    "9 个专业团队 - design、engineering、marketing 等完整组织架构",
+    "多 Agent 协作 - 支持跨团队协作完成复杂任务",
+    "角色专业化 - 每个 Agent 都是特定领域专家",
+    "即用型 Prompt - 开箱即用的专业角色定义"
+  ],
+  "teams": {
+    "design": "设计团队 - 8 人，负责 UI/UX 设计",
+    "engineering": "工程团队 - 负责开发和技术实现",
+    "marketing": "市场团队 - 负责营销和推广",
+    "operations": "运营团队 - 负责日常运营",
+    "product": "产品团队 - 负责产品规划",
+    "sales": "销售团队 - 负责销售和客户",
+    "hr": "人力资源团队 - 负责招聘和培训",
+    "finance": "财务团队 - 负责财务和预算",
+    "legal": "法务团队 - 负责法律事务"
+  },
+  "dependencies": {
+    "platforms": [
+      "claude-code"
+    ]
+  },
+  "tips": "Agency Agents 是 Prompt 集合，不是可执行工具。安装后在 Claude Code 中直接调用特定 Agent。适合需要专业分工的复杂项目，可以同时调用多个 Agent 协作。",
+  "homepage": "https://github.com/mstarzewski/agency-agents",
+  "repository": "https://github.com/mstarzewski/agency-agents",
+  "stars": "80,000+",
+  "tags": [
+    "AI 代理",
+    "多代理",
+    "自动化"
+  ],
+  "scenarios": [
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

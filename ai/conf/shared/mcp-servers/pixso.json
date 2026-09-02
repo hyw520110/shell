@@ -1,0 +1,53 @@
+{
+  "id": "pixso",
+  "name": "Pixso MCP Server (Experimental)",
+  "description": "Pixso 设计平台 MCP 占位服务器。目前 Pixso 官方暂未在 npm 提供公开的标准 MCP 客户端，此配置供社区或本地代理插件使用。",
+  "category": "design",
+  "install": {
+    "type": "custom",
+    "command": "echo 'Pixso MCP 当前需依赖其本地客户端插件桥接或社区版实现。'"
+  },
+  "compatibility": {
+    "check": "false",
+    "reason": "Pixso 暂无稳定官方/社区 npm MCP 包；当前配置为预留占位，不写入 MCP 配置。"
+  },
+  "config": {
+    "command": "node",
+    "args": [
+      "-e",
+      "console.log('Pixso MCP is not officially published yet. Waiting for community implementation.'); process.exit(1);"
+    ],
+    "transportType": "stdio",
+    "env": {
+      "PIXSO_ACCESS_TOKEN": "${PIXSO_ACCESS_TOKEN:-}"
+    }
+  },
+  "required_tools": [
+    "node"
+  ],
+  "status_check": [
+    {
+      "name": "检查官方发布状态",
+      "command": "echo '实验性支持/开发中'"
+    }
+  ],
+  "tools": [],
+  "notes": "由于 Pixso 目前暂未像 Figma/Penpot 那样提供标准的官方 npm MCP 包，该通道为预留扩展位。用户可以自行配置本地代理插件的路径。",
+  "tags": [
+    "设计",
+    "Pixso",
+    "UI/UX"
+  ],
+  "scenarios": [
+    "design-prototype",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://pixso.cn/",
+  "repository": "",
+  "requires_env": [],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

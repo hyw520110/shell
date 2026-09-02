@@ -1,0 +1,25 @@
+{
+  "id": "market-researcher",
+  "name": "Market Researcher",
+  "description": "市场调研与分析专家。擅长竞品拆解、市场规模(TAM/SAM/SOM)估算、以及输出 GTM (Go-To-Market) 商业化策略。",
+  "category": "utility",
+  "install": {
+    "type": "custom",
+    "command": "mkdir -p ~/.gemini/skills/market-researcher"
+  },
+  "tags": [
+    "市场分析",
+    "竞品分析",
+    "商业化",
+    "GTM"
+  ],
+  "scenarios": [
+    "marketing-ops",
+    "biz-ops",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "homepage": "https://github.com/google/antigravity",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

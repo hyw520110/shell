@@ -1,0 +1,49 @@
+{
+  "id": "brave-search",
+  "name": "网络搜索与竞品调研",
+  "description": "使用 Brave Search 进行网络搜索、竞品分析、技术调研和最新信息检索",
+  "category": "research",
+  "prompts": {
+    "competitor_analysis": "搜索竞品 XX 的功能特点和用户评价",
+    "tech_research": "调研 2024 年前端框架趋势",
+    "find_solutions": "搜索解决高并发问题的最佳实践",
+    "latest_news": "查找 AI 编程工具的最新动态",
+    "market_research": "调研目标市场的主要玩家"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "brave-search"
+    ],
+    "system_commands": [
+      "node",
+      "npm"
+    ]
+  },
+  "install_check": "npm list -g @modelcontextprotocol/server-brave-search --depth=0",
+  "instructions": {
+    "setup": "申请 Brave Search API Key 并设置 BRAVE_API_KEY 环境变量",
+    "search_tips": "使用精确关键词，可配合 site: 限定域名",
+    "best_practices": [
+      "搜索时指定时间范围获取最新信息",
+      "多关键词组合提高搜索精度",
+      "验证搜索结果的来源可靠性",
+      "保存重要的搜索结果作为参考"
+    ]
+  },
+  "tips": "Brave Search 注重隐私保护，搜索结果不受个性化过滤影响",
+  "tags": [
+    "搜索",
+    "网络搜索",
+    "信息检索"
+  ],
+  "scenarios": [
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/modelcontextprotocol/servers",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

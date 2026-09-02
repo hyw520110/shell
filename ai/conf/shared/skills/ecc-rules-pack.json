@@ -1,0 +1,65 @@
+{
+  "id": "ecc-rules-pack",
+  "name": "ECC Rules Pack",
+  "description": "从 ECC 中拆出的 rules 规则包集成入口，用于按项目技术栈选择 common、typescript、python、golang、web 等长期约束规则，避免把完整 ECC 系统叠加到当前 Agent。",
+  "category": "agent-workbench",
+  "install": {
+    "command": "echo 'ECC rules 应按项目选择性同步。参考: https://github.com/affaan-m/ECC/tree/main/rules'",
+    "check": "true"
+  },
+  "prompts": {
+    "select": "根据当前项目技术栈 {stack}，从 ECC rules 中选择最小规则集，并说明 common/typescript/python/golang/web 哪些应启用。",
+    "codex": "把适合 Codex 的 ECC rules 转写为项目级 AGENTS.md 或 Codex 指令，避免与现有规则冲突。",
+    "claude": "把适合 Claude Code 的 ECC rules 转写为 CLAUDE.md 或插件规则启用方案，避免重复 hooks。"
+  },
+  "capabilities": [
+    "项目级长期规则选择",
+    "common、typescript、python、golang、web 等技术栈规则映射",
+    "转写为 Codex/Claude/OpenCode/Cursor 可用的约束说明",
+    "检查与现有 AGENTS.md、CLAUDE.md、rules、hooks 的重复和冲突"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "git"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "ecc-rules-preview",
+      "name": "ECC Rules Preview",
+      "description": "打开 ECC rules 目录，按项目技术栈人工选择规则。",
+      "check": {
+        "command": "git --version"
+      },
+      "install": {
+        "default": "echo '查看规则: https://github.com/affaan-m/ECC/tree/main/rules；建议只复制 common + 当前项目语言规则。'"
+      }
+    }
+  ],
+  "tips": "Rules 是长期约束，不是单次任务 skill。不要全量复制所有语言规则；优先 common + 当前项目主语言，并与现有 AGENTS.md/CLAUDE.md 合并去重。",
+  "homepage": "https://github.com/affaan-m/ECC/tree/main/rules",
+  "repository": "https://github.com/affaan-m/ECC",
+  "documentation": "https://github.com/affaan-m/ECC/blob/main/README.zh-CN.md",
+  "tags": [
+    "Agent工作台",
+    "规则",
+    "工程实践",
+    "TypeScript",
+    "Python",
+    "Golang",
+    "Web",
+    "Codex",
+    "Claude Code",
+    "Skill 集合"
+  ],
+  "scenarios": [
+    "agent-workbench",
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,43 @@
+{
+  "id": "karpathy-guidelines",
+  "name": "Karpathy 编码准则 (Andrej Karpathy Guidelines)",
+  "description": "基于 Andrej Karpathy 观察的 LLM 编码行为指南。旨在减少 LLM 常见的过拟合、过度设计和静默错误问题。包含四大核心原则：先思后行、极简主义、外科手术式变更和目标驱动。",
+  "category": "coding-best-practices",
+  "prompts": {
+    "think-before-coding": "在实现任何代码之前：明确陈述你的假设。如果指令存在模糊性，列出所有可能的解释并询问我，而不是默默猜测。如果你认为有更简单、非编码的方案，请直接指出。如果有任何不清楚的地方，必须立即停止并说明困惑点。",
+    "simplicity-first": "只编写解决当前问题所需的最少代码。严禁：添加未要求的'灵活性'、为未来可能的需求做准备、单次使用的过度抽象、对极低概率场景的过度错误处理。如果一段逻辑可以用 20 行完成但你写了 100 行，请立即重构为极简版。",
+    "surgical-changes": "编辑现有文件时：仅修改与任务直接相关的行。严禁：清理相邻的不规范代码、修改注释缩进、运行无关的格式化、重构没有损坏的部分。必须匹配现有项目的代码风格。如果发现无关的死代码，请在备注中提及而不是直接删除。",
+    "goal-driven": "将每个任务转换为可验证的目标。'修复 Bug' 必须先编写一个能触发该 Bug 的失败测试，然后使其通过。'添加功能' 必须定义验收标准。对于多步骤任务，必须先输出一份简要计划，并在每一步完成后进行验证。"
+  },
+  "capabilities": [
+    "假设验证 - 强制 AI 在行动前对齐认知",
+    "抗过度设计 - 拒绝 LLM 常见的复杂化倾向",
+    "风格一致性 - 确保 AI 变更在 Git Diff 中极度干净",
+    "TDD 倾向 - 默认采用测试驱动的思维方式"
+  ],
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "tips": "这些准则由 Andrej Karpathy 总结并被业界广泛采用（如 multica-ai/andrej-karpathy-skills）。它们能显著提升 AI 在大型复杂项目中的变更安全性。适用于 Claude Code, Cursor, Aider 等所有 AI 编码工具。",
+  "notes": "核心哲学：AI 的力量在于执行力，但其风险在于'自动驾驶'。这些准则为 AI 加上了必要的安全带和减速器。",
+  "tags": [
+    "编程",
+    "最佳实践",
+    "代码质量",
+    "Karpathy",
+    "高级工程师"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/multica-ai/andrej-karpathy-skills",
+  "repository": "https://github.com/multica-ai/andrej-karpathy-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

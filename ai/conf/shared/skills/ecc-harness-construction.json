@@ -1,0 +1,77 @@
+{
+  "id": "ecc-harness-construction",
+  "name": "ECC Harness Construction",
+  "description": "从 ECC 中拆出的多 Agent Harness 构建能力，用于规划 Claude Code、Codex、OpenCode、Cursor、Gemini 等环境下的 skills、agents、rules、hooks、MCP configs 和同步边界。",
+  "category": "agent-workbench",
+  "install": {
+    "command": "echo 'ECC Harness Construction 是设计/规划型能力。需要落地时再参考 ECC minimal/profile/consult 方式选择组件。'",
+    "check": "true"
+  },
+  "prompts": {
+    "design": "为当前项目 {project} 设计 ECC 风格 Agent Harness，明确目标平台、skills、rules、hooks、MCP、记忆、权限边界和同步策略。",
+    "dedupe": "审查当前已安装的 Agent/Skills/MCP/Hooks，和 ECC 组件做去重，给出保留、替换、禁用和新增建议。",
+    "migration": "把现有 Claude Code/Codex/OpenCode/Cursor 配置迁移成一致的 harness 架构，避免重复 hooks 和重复 skills。"
+  },
+  "capabilities": [
+    "跨 harness 架构设计",
+    "skills、agents、rules、hooks、MCP configs 组合规划",
+    "Claude Code、Codex、OpenCode、Cursor、Gemini 等平台差异映射",
+    "组件去重、权限边界和安装顺序建议",
+    "和 revfactory-harness、agency-agents、superpowers 等现有配置协同"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "git",
+      "node",
+      "npm",
+      "npx"
+    ],
+    "platforms": [
+      "claude-code",
+      "codex",
+      "opencode",
+      "cursor",
+      "gemini-cli"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "ecc-consult-harness",
+      "name": "ECC Harness Consult",
+      "description": "使用 ECC consult 思路预览推荐 profile 和组件组合。",
+      "check": {
+        "command": "npx ecc --version"
+      },
+      "install": {
+        "default": "npx ecc consult \"agent harness construction\" --target claude"
+      }
+    }
+  ],
+  "tips": "适合先做设计再安装。不要与 ECC full/manual/plugin 多路径同时启用；先检查已有 superpowers、revfactory-harness、agency-agents、context hooks 和 MCP，再决定最小组件集。",
+  "homepage": "https://github.com/affaan-m/ECC",
+  "repository": "https://github.com/affaan-m/ECC",
+  "documentation": "https://github.com/affaan-m/ECC/blob/main/README.zh-CN.md",
+  "tags": [
+    "Agent工作台",
+    "Harness",
+    "Skill 集合",
+    "Hooks",
+    "MCP",
+    "Claude Code",
+    "Codex",
+    "OpenCode",
+    "Cursor",
+    "工程实践",
+    "架构"
+  ],
+  "scenarios": [
+    "agent-workbench",
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

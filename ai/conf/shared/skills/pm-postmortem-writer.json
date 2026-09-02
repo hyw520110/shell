@@ -1,0 +1,33 @@
+{
+  "id": "pm-postmortem-writer",
+  "name": "复盘报告生成",
+  "description": "生成结构化的上线复盘报告，包含目标达成、偏差原因、经验沉淀和后续行动项（含责任归因和改进owner）。适用于用户说'写复盘'、'上线复盘'、'项目复盘'、'postmortem'等场景。",
+  "category": "project-management",
+  "prompts": {
+    "write": "根据上线数据、过程记录、问题清单，生成结构化复盘报告，包含5-Why归因和行动项",
+    "incident": "生成P0/P1事故复盘报告（RCA）",
+    "okr": "生成OKR复盘报告"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "tips": "使用5-Why归因方法，每条行动项必须有明确的owner和截止日期",
+  "notes": "适用于版本上线复盘、事故复盘、OKR复盘、季度复盘",
+  "tags": [
+    "复盘",
+    "文档",
+    "产品管理"
+  ],
+  "scenarios": [
+    "product-docs"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/zephyrwang6/pm-skills",
+  "repository": "https://github.com/zephyrwang6/pm-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

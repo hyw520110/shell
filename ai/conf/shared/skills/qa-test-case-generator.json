@@ -1,0 +1,32 @@
+{
+  "id": "qa-test-case-generator",
+  "name": "QA Test Case Generator",
+  "description": "QA 测试用例生成专家。基于 PRD 或代码逻辑，自动生成包含正向、逆向、边界条件和异常处理的全覆盖测试用例表。",
+  "category": "development",
+  "install": {
+    "type": "custom",
+    "command": "mkdir -p ~/.gemini/skills/qa-test-case-generator && echo '已创建测试用例生成技能目录。请参照标准编写 SKILL.md。'"
+  },
+  "commands": {
+    "start": "echo 'Skill 已激活，AI Agent 可在测试阶段调用本技能指导。'"
+  },
+  "required_tools": [],
+  "status_check": [],
+  "tags": [
+    "QA",
+    "测试用例",
+    "自动化测试",
+    "研发质量"
+  ],
+  "scenarios": [
+    "qa-testing",
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/google/antigravity",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

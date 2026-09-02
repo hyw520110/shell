@@ -1,0 +1,43 @@
+{
+  "id": "composio-awesome-claude-skills",
+  "name": "Awesome Claude Skills (ComposioHQ)",
+  "description": "ComposioHQ 维护的 Claude Skills 与插件精选索引，覆盖文档处理、开发、数据分析、营销、协作、安全、应用自动化等方向，并包含 connect-apps 等可连接外部应用的插件入口。",
+  "category": "knowledge",
+  "install": {
+    "command": "echo '这是精选索引仓库，不建议整体安装。请打开 https://github.com/ComposioHQ/awesome-claude-skills 按需选择具体 Skill 或插件。'",
+    "check": "true"
+  },
+  "prompts": {
+    "discover": "根据我的任务 {task}，从 ComposioHQ/awesome-claude-skills 中筛选适合的 Claude Skills 或插件，并说明选择理由。",
+    "automation": "我想让 Agent 连接外部应用完成 {workflow}，请参考 ComposioHQ/awesome-claude-skills 里的 app automation 方向给出方案。"
+  },
+  "capabilities": [
+    "按任务发现 Claude Skills 与插件",
+    "覆盖文档、开发、数据、营销、协作、安全和应用自动化",
+    "提供 connect-apps 等外部应用自动化入口"
+  ],
+  "dependencies": {
+    "system_commands": []
+  },
+  "tips": "该仓库是精选索引，不是单一 Skill。两个 awesome-claude-skills 仓库使用 owner 前缀区分，避免菜单显示和 id 冲突。",
+  "homepage": "https://github.com/ComposioHQ/awesome-claude-skills",
+  "repository": "https://github.com/ComposioHQ/awesome-claude-skills",
+  "tags": [
+    "Claude Skills",
+    "Skill 集合",
+    "精选索引",
+    "App Automation",
+    "Composio",
+    "生产力"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "research"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

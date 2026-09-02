@@ -1,0 +1,53 @@
+{
+  "id": "cybersecurity-expert",
+  "name": "网络安全专家 (Anthropic Cybersecurity Skills)",
+  "description": "集成了 754 个结构化的 AI 安全专家技能。将您的 AI 助手升级为具备 MITRE ATT&CK 和 NIST CSF 2.0 框架知识的高级安全分析师。涵盖云安全、威胁猎捕、恶意软件分析和事件响应等 26 个领域。",
+  "category": "coding-best-practices",
+  "tags": [
+    "安全",
+    "Cybersecurity",
+    "MITRE",
+    "审计",
+    "渗透测试"
+  ],
+  "install": {
+    "command": "npx skills add mukul975/Anthropic-Cybersecurity-Skills",
+    "check": "test -d ~/.claude/skills/Anthropic-Cybersecurity-Skills -o -d ~/.cursor/rules/cybersecurity.mdc && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "threat-modeling": "为我的项目进行一次深度威胁建模，参照 MITRE ATT&CK 框架识别潜在的攻击向量。",
+    "cloud-audit": "审计我当前的云基础设施配置（如 AWS/Azure），检查是否存在不符合 NIST CSF 2.0 标准的安全漏洞。",
+    "malware-analysis": "分析这段可疑代码的行为模式，识别其是否包含恶意软件特征或后门逻辑。",
+    "incident-response": "起草一份针对 {incident_type} 的紧急响应预案，包含遏制、根除和恢复的具体步骤。"
+  },
+  "capabilities": [
+    "754 个专家级技能点 - 覆盖 26 个核心安全领域",
+    "五大安全框架对齐 - MITRE ATT&CK, NIST CSF 2.0, MITRE ATLAS, MITRE D3FEND, NIST AI RMF",
+    "渐进式披露架构 - 极低的 Token 消耗，仅在需要时加载特定安全逻辑",
+    "企业级标准 - 所有的审查和建议均符合国际安全基准"
+  ],
+  "dependencies": {
+    "platforms": [
+      "claude-code",
+      "cursor",
+      "gemini"
+    ],
+    "system_commands": [
+      "npx"
+    ]
+  },
+  "tips": "这是目前 AI 社区最庞大、最专业的安全技能库。它不仅能发现 Bug，还能以专业分析师的视角审视整个系统的防御体系。强烈建议安全敏感型项目安装。",
+  "notes": "这是一套结构化的指令集。安装后，Agent 在处理安全相关提问时会显著提升专业度和准确率。",
+  "homepage": "https://github.com/mukul975/Anthropic-Cybersecurity-Skills",
+  "repository": "https://github.com/mukul975/Anthropic-Cybersecurity-Skills",
+  "scenarios": [
+    "coding",
+    "productivity",
+    "research"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,34 @@
+{
+  "id": "pdf",
+  "name": "PDF 处理",
+  "description": "PDF文档读取、文本提取、格式转换能力",
+  "category": "document",
+  "prompts": {
+    "extract": "提取PDF文件中的文本内容，保持原有结构和格式",
+    "summarize": "阅读并总结PDF文档的核心内容和关键信息",
+    "convert": "将PDF转换为{format}格式"
+  },
+  "dependencies": {
+    "system_commands": [
+      "pdftotext"
+    ]
+  },
+  "install_check": "which pdftotext || which pandoc",
+  "tips": "安装 poppler-utils 可获得 pdftotext 命令用于PDF文本提取",
+  "tags": [
+    "PDF",
+    "文档",
+    "文件处理",
+    "研究"
+  ],
+  "scenarios": [
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/anthropics/skills",
+  "repository": "https://github.com/anthropics/skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,42 @@
+{
+  "id": "appium",
+  "name": "Appium MCP",
+  "description": "\u79fb\u52a8\u7aef App \u81ea\u52a8\u5316\u6d4b\u8bd5 MCP\u3002\u5141\u8bb8 Agent \u8fde\u63a5 iOS/Android \u8bbe\u5907\u6216\u6a21\u62df\u5668\uff0c\u6267\u884c\u5143\u7d20\u70b9\u51fb\u3001\u6ed1\u52a8\u3001\u622a\u56fe\u7b49 E2E \u6d4b\u8bd5\u64cd\u4f5c\u3002",
+  "category": "automation",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g appium-mcp@latest"
+  },
+  "config": {
+    "command": "appium-mcp",
+    "args": [],
+    "transportType": "stdio",
+    "startup_timeout_sec": 120
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "\u68c0\u67e5 Appium MCP \u5b89\u88c5",
+      "command": "test -x \"$HOME/.local/bin/appium-mcp\" || command -v appium-mcp >/dev/null 2>&1 || npm list -g --depth=0 appium-mcp >/dev/null 2>&1"
+    }
+  ],
+  "tags": [
+    "App\u6d4b\u8bd5",
+    "\u79fb\u52a8\u7aef",
+    "\u81ea\u52a8\u5316",
+    "E2E"
+  ],
+  "scenarios": [
+    "qa-testing",
+    "web-automation"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://github.com/appium/appium-mcp",
+  "recommended_scenarios": "\u6839\u636e\u8be5\u5de5\u5177\u7279\u6027\u9002\u7528\u7684\u6700\u4f73\u573a\u666f\uff08\u5f85\u8865\u5145\uff09",
+  "unsuitable_scenarios": "\u4e0d\u63a8\u8350\u4f7f\u7528\u8be5\u5de5\u5177\u7684\u573a\u666f\u6216\u5c40\u9650\u6027\uff08\u5f85\u8865\u5145\uff09"
+}

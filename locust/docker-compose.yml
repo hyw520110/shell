@@ -1,0 +1,22 @@
+version: '3'
+services:
+  master:
+    image: locustio/locust
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./:/mnt/locust
+    environment:
+      - LOCUST_LOCUSTFILE=/mnt/locust/distributedbench.py
+      - LOCUST_HOST=${TARGET_HOST}
+    command: --master
+
+  worker:
+    image: locustio/locust
+    volumes:
+      - ./:/mnt/locust
+    environment:
+      - LOCUST_LOCUSTFILE=/mnt/locust/distributedbench.py
+      - LOCUST_HOST=${TARGET_HOST}
+      - LOCUST_MASTER_NODE_HOST=master
+    command: --worker

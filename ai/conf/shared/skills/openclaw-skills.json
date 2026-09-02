@@ -1,0 +1,35 @@
+{
+  "id": "openclaw-skills",
+  "name": "OpenClaw Skills",
+  "description": "在 CI/CD 场景中创建 code-reviewer、security-scanner 等 Skill，结合 GitHub Actions 打造自动化流水线。",
+  "category": "automation",
+  "scenarios": [
+    "automation",
+    "ops",
+    "code-review"
+  ],
+  "tags": [
+    "CI/CD",
+    "自动化",
+    "审查",
+    "流水线"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/example/openclaw-skills",
+  "repository": "https://github.com/example/openclaw-skills",
+  "prompts": {
+    "default": "使用 OpenClaw Skills 生成基于 GitHub Actions 的自动化代码审查流水线配置。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "instructions": {
+    "workflow": "将 OpenClaw 技能部署到现有仓库，搭建自动化的审查卡点和防腐蚀安全流水线。"
+  },
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

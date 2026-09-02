@@ -1,0 +1,42 @@
+{
+  "id": "gitnexus",
+  "name": "GitNexus (MCP)",
+  "description": "GitNexus 无服务器代码智能 MCP。为 IDE 提供 16+ 个强大的代码关系分析工具。",
+  "category": "ai",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g gitnexus"
+  },
+  "config": {
+    "command": "gitnexus",
+    "args": [
+      "mcp"
+    ],
+    "transportType": "stdio"
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "gitnexus --version 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "tags": [
+    "代码智能",
+    "图谱",
+    "MCP"
+  ],
+  "scenarios": [
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/abhigyanpatwari/GitNexus",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

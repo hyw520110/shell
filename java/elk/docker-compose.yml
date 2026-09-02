@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  elasticsearch:
+    image: ${ELASTICSEARCH_IMAGE:-docker.elastic.co/elasticsearch/elasticsearch}:${ELK_VERSION:-8.11.1}
+    container_name: elasticsearch
+    hostname: elasticsearch
+    environment:
+      - node.name=es01
+      - cluster.name=es-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=${MEMORY_LOCK:-false}
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - ELASTIC_PASSWORD=${ES_PASSWORD:-elastic123}
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./data/elasticsearch:/usr/share/elasticsearch/data
+      - ./logs/elasticsearch:/usr/share/elasticsearch/logs
+      - ./config/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+    ports:
+      - "${ES_PORT:-9200}:9200"
+    networks:
+      - elk-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -E '(green|yellow)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  logstash:
+    image: ${LOGSTASH_IMAGE:-docker.elastic.co/logstash/logstash}:${ELK_VERSION:-8.11.1}
+    container_name: logstash
+    hostname: logstash
+    environment:
+      - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
+    volumes:
+      - ./data/logstash:/usr/share/logstash/data
+      - ./logs/logstash:/usr/share/logstash/logs
+      - ./config/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml
+      - ./config/logstash/pipeline:/usr/share/logstash/pipeline
+    ports:
+      - "${LS_HTTP_PORT:-5044}:5044"
+      - "9600:9600"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - elk-network
+    restart: unless-stopped
+
+  kibana:
+    image: ${KIBANA_IMAGE:-docker.elastic.co/kibana/kibana}:${ELK_VERSION:-8.11.1}
+    container_name: kibana
+    hostname: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=${ES_PASSWORD:-elastic123}
+      - xpack.security.enabled=true
+      - xpack.security.enrollment.enabled=false
+    volumes:
+      - ./data/kibana:/usr/share/kibana/data
+      - ./logs/kibana:/usr/share/kibana/logs
+      - ./config/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+    ports:
+      - "${KIBANA_PORT:-5601}:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - elk-network
+    restart: unless-stopped
+
+  # Filebeat（可选，取消注释启用）
+  # filebeat:
+  #   image: ${FILEBEAT_IMAGE:-docker.elastic.co/beats/filebeat}:${ELK_VERSION:-8.11.1}
+  #   container_name: filebeat
+  #   hostname: filebeat
+  #   user: root
+  #   volumes:
+  #     - ./config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+  #     - /var/log:/var/log:ro
+  #     - /var/lib/docker/containers:/var/lib/docker/containers:ro
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #   depends_on:
+  #     - logstash
+  #   networks:
+  #     - elk-network
+  #   restart: unless-stopped
+
+networks:
+  elk-network:
+    driver: bridge

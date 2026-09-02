@@ -1,0 +1,86 @@
+{
+  "id": "career-ops",
+  "name": "Career-Ops",
+  "description": "基于 AI coding CLI 的求职作战系统，支持职位评估、个性化 CV/PDF、求职管线、岗位门户扫描、面试故事库和谈薪脚本。",
+  "category": "ai-agent",
+  "sort_order": 640,
+  "sort_key": "Career-Ops",
+  "tags": [
+    "求职",
+    "职业发展",
+    "简历",
+    "PDF",
+    "Playwright",
+    "Codex",
+    "Claude Code"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "官方 npx 初始化",
+        "type": "bash",
+        "command": "bash agent/career-ops/install-career-ops.sh",
+        "check": "[ -d \"$HOME/.local/share/ai-hub/career-ops\" ]",
+        "uninstall": [
+          "rm -rf \"$HOME/.local/share/ai-hub/career-ops\""
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "bash agent/career-ops/install-career-ops.sh",
+    "check": "[ -d \"$HOME/.local/share/ai-hub/career-ops\" ]"
+  },
+  "post_install": [
+    {
+      "description": "显示使用提示",
+      "command": "echo 'Career-Ops 已安装到 ~/.local/share/ai-hub/career-ops。进入目录后运行 codex/claude/opencode，并让 Agent 执行 career-ops setup 或评估职位 URL。'"
+    }
+  ],
+  "commands": {
+    "start-codex": "cd \"$HOME/.local/share/ai-hub/career-ops\" && codex",
+    "start-claude": "cd \"$HOME/.local/share/ai-hub/career-ops\" && claude",
+    "doctor": "cd \"$HOME/.local/share/ai-hub/career-ops\" && npm run doctor",
+    "dashboard": "cd \"$HOME/.local/share/ai-hub/career-ops\" && npm run dashboard 2>/dev/null || npm run tracker 2>/dev/null || echo '请查看 package.json 中可用脚本'",
+    "version": "cd \"$HOME/.local/share/ai-hub/career-ops\" && node -p \"require('./package.json').version\""
+  },
+  "status_check": [
+    {
+      "name": "检查安装目录",
+      "command": "[ -d \"$HOME/.local/share/ai-hub/career-ops\" ] && echo '已安装' || echo '未安装'"
+    },
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查 Playwright Chromium",
+      "command": "[ -d \"$HOME/.cache/ms-playwright\" ] || [ -d \"$HOME/Library/Caches/ms-playwright\" ] && echo 'Playwright 缓存存在' || echo '首次生成 PDF 时可能需要安装 Chromium'"
+    }
+  ],
+  "prompts": {
+    "setup": "在 Career-Ops 目录中完成个人求职配置初始化，包括 CV、profile、目标岗位和岗位来源。",
+    "evaluate-job": "使用 Career-Ops auto-pipeline 评估这个职位链接或 JD，输出匹配分、风险、下一步和是否值得申请。",
+    "generate-cv": "基于 Career-Ops 为指定职位生成 ATS 友好的个性化 CV/PDF。",
+    "tracker": "使用 Career-Ops tracker 汇总当前求职管线状态、优先级和下一步。"
+  },
+  "references": {
+    "homepage": "https://career-ops.org",
+    "repository": "https://github.com/santifer/career-ops",
+    "shared_skills": [
+      "career-ops"
+    ]
+  },
+  "notes": "推荐作为可选求职工作台集成，不加入默认全量安装。Career-Ops 不自动提交申请，仍需要人工审核。首次使用需要提供个人 CV/职业偏好等敏感信息，建议保存在本机私有目录。",
+  "scenarios": [
+    "productivity",
+    "agent-workbench",
+    "research"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://career-ops.org",
+  "repository": "https://github.com/santifer/career-ops"
+}

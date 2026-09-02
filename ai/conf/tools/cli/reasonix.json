@@ -1,0 +1,106 @@
+{
+  "id": "reasonix",
+  "name": "DeepSeek Reasonix",
+  "description": "DeepSeek 原生 AI 编程代理，专为 prefix-cache 优化，大幅降低 Token 成本。支持 MCP、Web 搜索、内置 Dashboard",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "coding",
+    "deepseek",
+    "agent",
+    "tui",
+    "open-source"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "npx 快速启动 (推荐)",
+        "type": "bash",
+        "command": "npx reasonix --version 2>/dev/null || echo '直接运行 npx reasonix code 启动'"
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npx reasonix update",
+    "check": "npx reasonix --version"
+  },
+  "post_install": [
+    {
+      "description": "显示使用提示",
+      "command": "echo '\\n========================================' && echo 'DeepSeek Reasonix 安装完成！' && echo '========================================' && echo '' && echo '快速开始:' && echo '  npx reasonix code          # 编程代理 (推荐)' && echo '  npx reasonix chat         # 纯聊模式' && echo '  npx reasonix run \"任务\"   # 单次执行' && echo '' && echo '首次运行需要配置 DeepSeek API Key' && echo '获取 API Key: https://platform.deepseek.com/' && echo '' && echo '更多信息: https://github.com/esengine/DeepSeek-Reasonix' && echo '========================================\\n'"
+    }
+  ],
+  "post_uninstall": [
+    "echo '正在清理 Reasonix...'",
+    "rm -rf ~/.reasonix 2>/dev/null && echo '✓ 删除配置目录 ~/.reasonix' || echo '配置目录不存在'",
+    "npm uninstall -g reasonix 2>/dev/null && echo '✓ 卸载全局包' || true",
+    "echo 'Reasonix 清理完成'"
+  ],
+  "config": {
+    "path": "$HOME/.reasonix/config.json",
+    "operations": {
+      "view": "cat $HOME/.reasonix/config.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.reasonix/config.json",
+      "reset": [
+        "cp $HOME/.reasonix/config.json $HOME/.reasonix/config.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.reasonix/config.json"
+      ]
+    }
+  },
+  "commands": {
+    "code": "npx reasonix code",
+    "chat": "npx reasonix chat",
+    "run": "npx reasonix run",
+    "doctor": "npx reasonix doctor",
+    "update": "npx reasonix update",
+    "version": "npx reasonix --version",
+    "mcp": "npx reasonix mcp",
+    "sessions": "npx reasonix replay --list 2>/dev/null || echo '暂无会话记录'"
+  },
+  "status_check": [
+    {
+      "name": "检查 Node.js 版本",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查 Reasonix 版本",
+      "command": "npx reasonix --version 2>/dev/null || echo '未安装或未初始化'"
+    },
+    {
+      "name": "检查配置文件",
+      "command": "ls -la $HOME/.reasonix/ 2>/dev/null || echo '配置目录不存在'"
+    },
+    {
+      "name": "检查 API Key",
+      "command": "grep -i 'DEEPSEEK_API_KEY' $HOME/.reasonix/config.json 2>/dev/null && echo 'API Key 已配置' || echo 'API Key 未配置'"
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {
+    "reasonix-skill": {
+      "name": "自定义 Skill",
+      "description": "创建和管理 Reasonix 自定义技能",
+      "prompts": {
+        "new": "在当前目录创建新的 skill 文件",
+        "list": "列出所有可用的 skills",
+        "global": "创建全局可用的 skill"
+      },
+      "dependencies": {
+        "system_commands": ["node"]
+      },
+      "tips": "使用 /skill new <name> 创建自定义技能，使用 /skill list 查看"
+    }
+  },
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "需要 Node.js ≥ 22 和 DeepSeek API Key。支持 prefix-cache 优化，大幅降低长会话的 Token 成本。提供 Web Dashboard 查看缓存命中率和费用统计。",
+  "required_tools": ["node"],
+  "homepage": "https://github.com/esengine/DeepSeek-Reasonix",
+  "links": {
+    "docs": "https://github.com/esengine/DeepSeek-Reasonix#readme",
+    "api_key": "https://platform.deepseek.com/"
+  }
+}

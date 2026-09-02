@@ -1,0 +1,143 @@
+{
+  "id": "ponytail",
+  "name": "Ponytail - AI 代码精简引擎 (Lazy Ladder)",
+  "description": "40.9K Star 爆款技能。AI Agent 代码精简引擎，通过 6 级「懒惰阶梯」决策模型让 AI 在写代码前逐级自问：真的需要存在吗？→ 标准库能做吗？→ 原生平台特性覆盖了吗？→ 已安装依赖能解吗？→ 能一行搞定吗？→ 最后才写最少能工作的代码。效果：代码量减少 80-94%、延迟降低 3-6x、成本降低 42-75%。与 karpathy-guidelines（控制代码质量）和 Caveman（控制对话 Token）互补。",
+  "category": "coding-best-practices",
+  "tags": [
+    "代码精简",
+    "YAGNI",
+    "反过度设计",
+    "代码质量",
+    "Token 优化",
+    "成本控制",
+    "懒人编程"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Claude Code 插件 (推荐，功能最全)",
+        "type": "claude-plugin",
+        "command": "/plugin marketplace add DietrichGebert/ponytail && /plugin install ponytail@ponytail"
+      },
+      {
+        "name": "Codex 插件",
+        "type": "codex-plugin",
+        "command": "codex plugin marketplace add DietrichGebert/ponytail && codex"
+      },
+      {
+        "name": "Git Clone + 手动配置 (Cursor/Windsurf/Cline 等规则文件 Agent)",
+        "type": "git",
+        "command": "git clone https://github.com/DietrichGebert/ponytail.git ~/.ponytail && cp ~/.ponytail/.cursor/rules/ponytail.mdc ~/.cursor/rules/ 2>/dev/null; cp ~/.ponytail/.windsurf/rules/ponytail.md ~/.windsurf/rules/ 2>/dev/null; cp ~/.ponytail/.clinerules/ponytail.md ~/.clinerules/ 2>/dev/null; echo '已安装，请重启 Agent 生效'"
+      },
+      {
+        "name": "Copilot CLI 插件",
+        "type": "copilot-plugin",
+        "command": "copilot plugin marketplace add DietrichGebert/ponytail && copilot plugin install ponytail@ponytail"
+      },
+      {
+        "name": "OpenClaw (ClawHub)",
+        "type": "clawhub",
+        "command": "clawhub install ponytail"
+      }
+    ],
+    "default_method": 0,
+    "post_install": [
+      "echo '1. Ponytail 默认以 full 模式运行，零配置即可使用'",
+      "echo '2. 可选设置默认模式: export PONYTAIL_DEFAULT_MODE=full (lite/full/ultra/off)'",
+      "echo '3. 可选配置文件: ~/.config/ponytail/config.json 中设置 defaultMode'",
+      "echo '4. Claude Code/Codex 插件需要 node 在 PATH 中 (nvm 用户注意非交互 shell)'",
+      "echo '5. 使用 /ponytail lite|full|ultra|off 切换强度 (Ultra 最激进)'",
+      "echo '6. 规则文件 Agent (Cursor/Windsurf/Cline) 需手动复制规则文件到项目目录'",
+      "echo '7. 与 karpathy-guidelines 和 caveman 可同时使用，三者互补不冲突'"
+    ]
+  },
+  "features": {
+    "lazy_ladder": "6 级决策阶梯：不写 > 标准库 > 原生特性 > 已有依赖 > 一行 > 最少代码",
+    "three_levels": "Lite (提示但不强制) / Full (默认，强制执行阶梯) / Ultra (极端 YAGNI，先删再写)",
+    "commands": "5 个交互命令：模式切换、代码审查、全局审计、技术债务追踪、帮助",
+    "safety_boundaries": "不可偷懒的领域：输入验证、错误处理、安全措施、无障碍基础、硬件校准",
+    "ponytail_comments": "每次捷径都在代码中用 ponytail: 注释标注升级路径，方便后续追踪",
+    "benchmark_verified": "promptfoo 可复现基准测试，覆盖 Haiku/Sonnet/Opus 三种模型",
+    "cross_agent": "支持 13+ Agent 平台，按能力降级适配（插件 → 规则文件 → 纯指令）"
+  },
+  "commands": [
+    {
+      "name": "/ponytail [lite|full|ultra|off]",
+      "description": "设置精简强度或关闭。不带参数显示当前级别。"
+    },
+    {
+      "name": "/ponytail-review",
+      "description": "审查当前 diff 中的过度工程，返回可删除清单。"
+    },
+    {
+      "name": "/ponytail-audit",
+      "description": "审查整个仓库的过度工程，不只 diff。"
+    },
+    {
+      "name": "/ponytail-debt",
+      "description": "收集所有延期的 ponytail: 快捷方式，生成技术债务清单。"
+    },
+    {
+      "name": "/ponytail-help",
+      "description": "快速参考以上命令。"
+    }
+  ],
+  "examples": [
+    {
+      "task": "日期选择器",
+      "prompt": "AI 原本会安装 flatpickr + wrapper + 样式表，Ponytail 下直接: <input type=\"date\">"
+    },
+    {
+      "task": "切换强度",
+      "prompt": "/ponytail ultra  (代码库让你火大时使用)"
+    },
+    {
+      "task": "代码审查",
+      "prompt": "/ponytail-review  (审查当前 diff 的过度工程)"
+    },
+    {
+      "task": "全局审计",
+      "prompt": "/ponytail-audit  (审计整个仓库)"
+    }
+  ],
+  "requirements": {
+    "node": "Claude Code/Codex 插件需要 node 在 PATH 中（nvm 用户需确保非交互 shell 可用）",
+    "git": "手动安装方式需要 git",
+    "agent": "支持 Plugin 或 Rules 的 AI Agent (Claude Code, Codex, Cursor, Windsurf 等 13+)"
+  },
+  "compatibility": {
+    "claude_code": true,
+    "codex": true,
+    "copilot": true,
+    "cursor": true,
+    "windsurf": true,
+    "cline": true,
+    "opencode": true,
+    "gemini_cli": true,
+    "antigravity": true,
+    "openclaw": true,
+    "kiro": true,
+    "aider": true,
+    "pi": true
+  },
+  "references": {
+    "github": "https://github.com/DietrichGebert/ponytail",
+    "benchmarks": "https://github.com/DietrichGebert/ponytail/blob/main/benchmarks",
+    "docs": "https://github.com/DietrichGebert/ponytail/blob/main/docs",
+    "agent_portability": "https://github.com/DietrichGebert/ponytail/blob/main/docs/agent-portability.md",
+    "examples": "https://github.com/DietrichGebert/ponytail/blob/main/examples"
+  },
+  "notes": "1. 在 thinking 模型（如 GPT-5.5）上可能反而变慢——阶梯推理消耗 thinking tokens，对简短 prompt 可能得不偿失。2. 安全边界明确：输入验证、错误处理、安全措施、无障碍基础不受阶梯约束。3. 与 karpathy-guidelines（控制代码质量）和 Caveman（控制对话 Token）互补，三者可叠加使用。4. 规则文件 Agent（Cursor/Windsurf/Cline/Aider/Kiro）只加载规则集，不支持 /ponytail 交互命令。5. 默认 full 模式，推荐新手从 lite 模式开始体验。6. 最新版本 v4.7.0 (2026-06-16)，69 commits，9 releases。",
+  "license": "MIT",
+  "scenarios": [
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/DietrichGebert/ponytail",
+  "repository": "https://github.com/DietrichGebert/ponytail",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

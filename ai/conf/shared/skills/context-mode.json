@@ -1,0 +1,44 @@
+{
+  "id": "context-mode",
+  "name": "Context Mode",
+  "description": "让 AI Agent 优先使用沙箱执行、意图筛选和本地知识库来减少上下文窗口浪费。",
+  "category": "context-optimizer",
+  "scenarios": [
+    "productivity",
+    "coding",
+    "context-optimizer"
+  ],
+  "tags": [
+    "上下文优化",
+    "Token优化",
+    "MCP",
+    "知识库"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://context-mode.com/",
+  "repository": "https://github.com/mksglu/context-mode",
+  "prompts": {
+    "default": "使用 Context Mode 优化 {task} 的上下文获取：大输出先沙箱执行并按意图筛选，重复资料先索引再搜索。",
+    "analyze_logs": "用 Context Mode 分析日志，只返回和 {intent} 相关的片段。",
+    "index_docs": "把 {path_or_content} 索引到 Context Mode 知识库，并基于 {question} 搜索相关上下文。"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "context-mode"
+    ],
+    "system_commands": [
+      "node",
+      "npm"
+    ]
+  },
+  "install_check": "context-mode --version",
+  "instructions": {
+    "workflow": "优先用 Context Mode 处理可能产生大量输出的命令、日志、搜索和文档读取；仅在需要原始全文时再读取完整内容。",
+    "safety": "不要和其他自动压缩 Hook 同时强制启用；遇到调试信息缺失时回退到原始命令输出。"
+  },
+  "tips": "适合日志分析、依赖扫描、大型仓库搜索和长会话压缩。",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

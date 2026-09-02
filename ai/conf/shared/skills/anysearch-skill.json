@@ -1,0 +1,112 @@
+{
+  "id": "anysearch-skill",
+  "name": "AnySearch - 跨 Agent 统一实时搜索引擎",
+  "description": "3.1K Star。跨 Agent 平台的统一实时搜索引擎 Skill，支持通用网页搜索、垂直领域搜索、并行批量搜索和全页面内容提取。输出直接为 Markdown 格式，Agent 可直接消费。兼容 Claude Code、OpenCode、Cursor、Codex、OpenClaw、Hermes 六大平台。",
+  "category": "research",
+  "tags": [
+    "搜索",
+    "网络搜索",
+    "信息检索",
+    "内容提取",
+    "批量搜索",
+    "跨平台"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "下载安装 (推荐)",
+        "type": "curl",
+        "command": "curl -L -o anysearch-skill.zip https://github.com/anysearch-ai/anysearch-skill/archive/refs/heads/main.zip && unzip anysearch-skill.zip && mv anysearch-skill-main ~/.claude/skills/anysearch"
+      },
+      {
+        "name": "共享安装位置 (多 Agent 共用)",
+        "type": "curl",
+        "command": "curl -L -o anysearch-skill.zip https://github.com/anysearch-ai/anysearch-skill/archive/refs/heads/main.zip && unzip anysearch-skill.zip && mv anysearch-skill-main ~/.agents/skills/anysearch"
+      },
+      {
+        "name": "手动克隆",
+        "type": "git",
+        "command": "git clone https://github.com/anysearch-ai/anysearch-skill.git ~/.claude/skills/anysearch"
+      }
+    ],
+    "default_method": 0,
+    "post_install": [
+      "echo '1. 配置 API Key (可选但推荐): cp ~/.claude/skills/anysearch/.env.example ~/.claude/skills/anysearch/.env'",
+      "echo '2. 编辑 .env 填入 ANYSEARCH_API_KEY (从 https://anysearch.com/console/api-keys 获取)'",
+      "echo '3. 或直接设置环境变量: export ANYSEARCH_API_KEY=<your_key>'",
+      "echo '4. 无 API Key 也可使用匿名访问，但速率和配额有限'",
+      "echo '5. 运行探测: python3 ~/.claude/skills/anysearch/scripts/anysearch_cli.py doc'",
+      "echo '6. 测试搜索: python3 ~/.claude/skills/anysearch/scripts/anysearch_cli.py search \"hello world\" --max_results 1'"
+    ]
+  },
+  "sources": {
+    "free_anonymous": [
+      "通用网页搜索 (速率/配额有限)",
+      "垂直领域搜索",
+      "并行批量搜索",
+      "全页面内容提取"
+    ],
+    "api_key": [
+      "无限速通用网页搜索",
+      "高配额批量搜索",
+      "全功能内容提取"
+    ]
+  },
+  "features": {
+    "web_search": "通用网页实时搜索，支持 --max_results 控制返回数量",
+    "batch_search": "多查询并行搜索，一次调用完成多个独立搜索",
+    "content_extract": "全页面内容提取，输出直接为 Markdown 格式（Agent 可消费）",
+    "vertical_search": "垂直领域搜索：新闻、图片、视频、学术",
+    "multi_runtime": "支持 Python / Node.js / Shell / PowerShell 四种运行时自动适配",
+    "cross_agent": "单一 SKILL.md 兼容 Claude Code / OpenCode / Cursor / Codex / OpenClaw / Hermes"
+  },
+  "examples": [
+    {
+      "task": "通用搜索",
+      "prompt": "python3 <skill_dir>/scripts/anysearch_cli.py search \"AI agent framework comparison\" --max_results 5"
+    },
+    {
+      "task": "批量搜索",
+      "prompt": "python3 <skill_dir>/scripts/anysearch_cli.py batch_search --queries '[{\"query\":\"vLLM Metal backend\",\"max_results\":5},{\"query\":\"Ollama MLX performance\",\"max_results\":5}]'"
+    },
+    {
+      "task": "内容提取",
+      "prompt": "python3 <skill_dir>/scripts/anysearch_cli.py extract \"https://example.com/article\""
+    },
+    {
+      "task": "运行时探测",
+      "prompt": "python3 <skill_dir>/scripts/anysearch_cli.py doc"
+    }
+  ],
+  "requirements": {
+    "runtime": "Python >= 3.6 (推荐) 或 Node.js >= 12 或 Shell (bash/PowerShell)",
+    "python_deps": "requests 库 (pip install requests)",
+    "api_key": "可选 (获取地址: https://anysearch.com/console/api-keys)"
+  },
+  "compatibility": {
+    "claude_code": true,
+    "codex": true,
+    "cursor": true,
+    "opencode": true,
+    "openclaw": true,
+    "hermes": true
+  },
+  "references": {
+    "github": "https://github.com/anysearch-ai/anysearch-skill",
+    "skill_spec": "https://github.com/anysearch-ai/anysearch-skill/blob/main/SKILL.md",
+    "api_keys": "https://anysearch.com/console/api-keys"
+  },
+  "notes": "无 API Key 可匿名使用所有搜索功能，但速率和配额较低。建议注册免费 API Key 获得完整配额。extract 命令输出直接是 Markdown，不要加 --format 参数。跨 Agent 共享安装路径: ~/.agents/skills/anysearch。",
+  "license": "Apache-2.0",
+  "scenarios": [
+    "research",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/anysearch-ai/anysearch-skill",
+  "repository": "https://github.com/anysearch-ai/anysearch-skill",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

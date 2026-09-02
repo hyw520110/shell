@@ -1,0 +1,45 @@
+{
+  "id": "open-design",
+  "name": "Open Design",
+  "description": "开源的 Claude Design 替代品，提供 MCP 服务和 CLI，用于生成原型、图标、图片、演示稿和 HyperFrames。",
+  "category": "ai-utility",
+  "tags": ["设计", "图标生成", "原型", "MCP"],
+  "install": {
+    "methods": [
+      {
+        "name": "Homebrew / 官方安装脚本",
+        "type": "brew",
+        "command": "brew install --cask open-design || tmp=\"$(mktemp)\" && curl -fsSL https://open-design.ai/install.sh -o \"$tmp\" && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc", 
+        "check": "command -v open-design >/dev/null 2>&1 || (command -v od >/dev/null 2>&1 && od mcp --help >/dev/null 2>&1)",
+        "uninstall": ["brew uninstall --cask open-design 2>/dev/null || true"]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "brew upgrade --cask open-design 2>/dev/null || brew install --cask open-design",
+    "check": "command -v open-design >/dev/null 2>&1 || (command -v od >/dev/null 2>&1 && od mcp --help >/dev/null 2>&1)"
+  },
+  "commands": {
+    "start-mcp": "od mcp serve",
+    "help": "od --help",
+    "version": "od --version"
+  },
+  "status_check": [
+    {
+      "name": "检查 Open Design CLI",
+      "command": "(open-design --version 2>/dev/null || od --version 2>/dev/null) && echo '已安装' || echo '未安装'"
+    },
+    {
+      "name": "检查 MCP 模块",
+      "command": "od mcp --help 2>/dev/null && echo 'MCP 可用' || echo 'MCP 不可用'"
+    }
+  ],
+  "homepage": "https://open-design.ai",
+  "repository": "https://github.com/nexu-io/open-design",
+  "scenarios": ["design-prototype", "productivity"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "notes": "Open Design 同时提供 CLI 和 MCP 服务；本条目归入工具组件，不属于 AI 客户端。"
+}

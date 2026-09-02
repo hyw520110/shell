@@ -1,0 +1,55 @@
+{
+  "id": "trivy-security",
+  "name": "Trivy Security Scan",
+  "description": "使用 Trivy 对项目依赖、容器镜像、IaC、Kubernetes 配置和密钥泄露进行安全扫描，并把结果转化为可执行修复计划。",
+  "category": "security",
+  "prompts": {
+    "scan-project": "使用 trivy fs . 扫描当前项目，按 CRITICAL/HIGH/MEDIUM 分类列出风险、影响文件和修复建议。",
+    "scan-config": "使用 trivy config . 审计 Dockerfile、Kubernetes、Terraform 或其他 IaC 配置风险。",
+    "scan-secrets": "使用 trivy fs --scanners secret . 检查当前项目是否存在硬编码密钥或敏感信息。",
+    "release-gate": "把 Trivy 扫描结果整理为发布前安全门禁报告，并列出必须修复项。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "trivy"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "install-trivy",
+      "name": "install-trivy",
+      "description": "安装 Trivy CLI",
+      "install": {
+        "darwin": "brew install trivy",
+        "linux": "curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b \"$HOME/.local/bin\""
+      },
+      "check": {
+        "command": "trivy"
+      }
+    }
+  ],
+  "instructions": {
+    "workflow": "先运行只读扫描命令，再根据严重度和可利用性排序。除非用户要求，不要自动修改依赖锁文件或 IaC。",
+    "reporting": "报告应包含命令、摘要、严重度、受影响文件/包、修复版本或配置建议、残余风险。"
+  },
+  "tags": [
+    "安全",
+    "漏洞扫描",
+    "依赖审计",
+    "密钥扫描",
+    "IaC"
+  ],
+  "scenarios": [
+    "coding",
+    "qa-testing",
+    "ops-monitoring"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://trivy.dev/",
+  "repository": "https://github.com/aquasecurity/trivy",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

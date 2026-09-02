@@ -1,0 +1,20 @@
+# 基础集群与网络配置
+cluster.name: "es-cluster"
+network.host: 0.0.0.0
+http.port: 9200
+transport.tcp.port: 9300
+
+# 跨域配置 (支持诸如 Dejavu, ElasticHD 等前端连接)
+http.cors.enabled: true
+http.cors.allow-credentials: true
+http.cors.allow-headers: X-Requested-With,X-Auth-Token,Content-Type,Content-Length,Authorization
+http.cors.allow-origin: "*"
+
+# 节点角色与优化
+bootstrap.memory_lock: true
+node.master: true
+node.data: true
+
+# 安全配置 (如需开启账号密码登录，请取消以下注释并配置环境变量)
+# xpack.security.enabled: true
+# xpack.security.transport.ssl.enabled: true

@@ -1,0 +1,25 @@
+{
+  "id": "legal-advisor",
+  "name": "Legal Advisor",
+  "description": "法务与合规顾问。擅长开源协议(License)审查、GDPR/CCPA 隐私合规性检查，以及起草产品服务条款(ToS)与隐私政策框架。",
+  "category": "utility",
+  "install": {
+    "type": "custom",
+    "command": "mkdir -p ~/.gemini/skills/legal-advisor"
+  },
+  "tags": [
+    "法务合规",
+    "开源协议",
+    "隐私政策",
+    "GDPR"
+  ],
+  "scenarios": [
+    "biz-ops",
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "homepage": "https://github.com/google/antigravity",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

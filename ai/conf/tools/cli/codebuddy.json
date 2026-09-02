@@ -1,0 +1,62 @@
+{
+  "id": "codebuddy",
+  "name": "Codebuddy Code",
+  "description": "",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @tencent-ai/codebuddy-code --registry {{npm_registry}}",
+        "check": "command -v codebuddy",
+        "uninstall": [
+          "npm uninstall -g @tencent-ai/codebuddy-code"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @tencent-ai/codebuddy-code --registry {{npm_registry}}",
+    "check": "command -v codebuddy"
+  },
+  "config": {
+    "path": "$HOME/.codebuddy/settings.json",
+    "operations": {
+      "view": "cat $HOME/.codebuddy/settings.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.codebuddy/settings.json",
+      "reset": [
+        "cp $HOME/.codebuddy/settings.json $HOME/.codebuddy/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.codebuddy/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "codebuddy",
+    "version": "codebuddy --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "codebuddy --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.codebuddy/settings.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

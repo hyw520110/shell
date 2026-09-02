@@ -1,0 +1,181 @@
+{
+  "version": "2.0.0",
+  "description": "AI CLI 工具安装器全局配置 V2",
+  "global": {
+    "npm_registry": "https://registry.npmmirror.com",
+    "docs_dir": "./ai-cli-docs",
+    "cache_ttl": 300,
+    "max_concurrent_procs": 5,
+    "key_input_timeout": 0.15,
+    "default_timeout": 10
+  },
+  "recommended_tools": [
+    "cursor",
+    "trae",
+    "windsurf",
+    "zed",
+    "codex-ide",
+    "zcode",
+    "workbuddy",
+    "qoderwork",
+    "one-api",
+    "new-api",
+    "sub2api",
+    "openhuman",
+    "monkey-code",
+    "clawx",
+    "codewhale",
+    "trivy",
+    "goose",
+    "agent-reach",
+    "skillspector"
+  ],
+  "proxy": {
+    "http": null,
+    "https": null,
+    "git_url_replace": "https://ghproxy.com/https://github.com",
+    "pip": null
+  },
+  "variables": {
+    "chrome_path": "{{auto_detect}}",
+    "github_token": "{{user_input}}",
+    "npm_registry": "{{global.npm_registry}}",
+    "workspace_path": "{{env.HOME}}/workspace"
+  },
+  "paths": {
+    "tools_dir": "./ai/conf/tools",
+    "shared_mcp_dir": "./ai/conf/shared/mcp-servers",
+    "shared_skills_dir": "./ai/conf/shared/skills",
+    "cache_file": "{{env.HOME}}/.ai-tools-cache",
+    "error_log": "{{env.HOME}}/.ai-tools-error.log"
+  },
+  "default_scenario": "productivity",
+  "scenarios": {
+    "productivity": {
+      "name": "全场景生产力",
+      "description": "编程、产品文档、方案图、研究整理",
+      "order": 10,
+      "include_optional": false,
+      "include_experimental": false
+    },
+    "coding": {
+      "name": "代码研发协作",
+      "description": "代码管理、代码质量、代码图谱、前端调试",
+      "order": 20,
+      "include_optional": false,
+      "include_experimental": false
+    },
+    "context-optimizer": {
+      "name": "上下文/Token优化",
+      "description": "上下文压缩、命令输出压缩、代码导航记忆、Token成本控制",
+      "order": 25,
+      "include_optional": false,
+      "include_experimental": false
+    },
+    "agent-workbench": {
+      "name": "Agent工作台/编排平台",
+      "description": "本地Agent工作台、任务编排、多项目记忆和长任务运行",
+      "order": 26,
+      "include_optional": true,
+      "include_experimental": false
+    },
+    "product-docs": {
+      "name": "产品/方案文档交付",
+      "description": "PRD、评审、路线图、优先级、埋点、原型",
+      "order": 30,
+      "include_optional": false,
+      "include_experimental": false
+    },
+    "diagramming": {
+      "name": "架构图/流程图交付",
+      "description": "业务流程图、业务架构图、技术架构图、draw.io 交付",
+      "order": 40,
+      "include_optional": false,
+      "include_experimental": false
+    },
+    "design-prototype": {
+      "name": "设计/原型",
+      "description": "页面设计图、交互原型、截图转原型、网页原型",
+      "order": 50,
+      "include_optional": false,
+      "include_experimental": false
+    },
+    "research": {
+      "name": "研究与知识整理",
+      "description": "PDF、NotebookLM、网络搜索、科学研究、知识管理",
+      "order": 60,
+      "include_optional": false,
+      "include_experimental": false
+    },
+    "ops-monitoring": {
+      "name": "智能运维与监控",
+      "description": "AIOps、指标排查、崩溃日志、服务器管理",
+      "order": 70,
+      "include_optional": true,
+      "include_experimental": true
+    },
+    "web-automation": {
+      "name": "Web自动化与交互",
+      "description": "真实的浏览器驱动、端到端测试、爬虫、表单自动填写",
+      "order": 80,
+      "include_optional": true,
+      "include_experimental": true
+    },
+    "qa-testing": {
+      "name": "质量保证与自动化测试",
+      "description": "测试用例生成、接口测试、性能测试脚本、边界分析",
+      "order": 90,
+      "include_optional": true,
+      "include_experimental": false
+    },
+    "marketing-ops": {
+      "name": "市场运营与增长",
+      "description": "SEO分析、社交媒体文案、用户反馈分析、社群运营",
+      "order": 100,
+      "include_optional": true,
+      "include_experimental": false
+    },
+    "biz-ops": {
+      "name": "商业运营与合规",
+      "description": "财务模型分析、法务合规审计、定价策略、商业计划书",
+      "order": 110,
+      "include_optional": true,
+      "include_experimental": false
+    },
+    "architecture": {
+      "name": "系统与架构设计",
+      "description": "软件架构设计、云原生部署图、系统演进方案",
+      "order": 120,
+      "include_optional": true,
+      "include_experimental": false
+    },
+    "code-review": {
+      "name": "代码审查与质量控制",
+      "description": "代码安全审计、重构建议、PR 审查、代码规范检查",
+      "order": 130,
+      "include_optional": true,
+      "include_experimental": false
+    },
+    "ops": {
+      "name": "基础设施与持续交付",
+      "description": "CI/CD、Kubernetes 管理、基础设施即代码 (IaC)、部署自动化",
+      "order": 140,
+      "include_optional": true,
+      "include_experimental": false
+    },
+    "security": {
+      "name": "网络安全与审计",
+      "description": "渗透测试、漏洞扫描、合规检查、安全配置",
+      "order": 150,
+      "include_optional": true,
+      "include_experimental": false
+    },
+    "automation": {
+      "name": "系统级工作流自动化",
+      "description": "脚本编写、桌面自动化、跨应用集成流水线",
+      "order": 160,
+      "include_optional": true,
+      "include_experimental": false
+    }
+  }
+}

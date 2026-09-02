@@ -1,0 +1,35 @@
+{
+  "id": "pm-competitor-deconstructor",
+  "name": "竞品分析",
+  "description": "按策略/功能/体验/增长四个维度结构化拆解竞品，输出可借鉴点、不可抄点与差异化建议。适用于用户说'竞品分析'、'竞品拆解'、'帮我分析竞品'、'差异化怎么做'等场景。",
+  "category": "market-research",
+  "prompts": {
+    "analyze": "从策略、功能、体验、增长四个维度结构化拆解竞品，输出横向对比矩阵",
+    "compare": "对比多个竞品的差异，找出可借鉴点和差异化机会",
+    "differentiate": "基于竞品分析提出差异化策略建议"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "tips": "输出包含可借鉴清单、不可抄清单、差异化建议和行动清单",
+  "notes": "四维度拆解：策略层、功能层、体验层、增长层",
+  "tags": [
+    "竞品分析",
+    "产品管理",
+    "市场研究"
+  ],
+  "scenarios": [
+    "productivity",
+    "product-docs",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/zephyrwang6/pm-skills",
+  "repository": "https://github.com/zephyrwang6/pm-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

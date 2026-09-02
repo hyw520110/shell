@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  gitea:
+    image: gitea/gitea:${GITEA_VERSION:-latest}
+    container_name: gitea
+    environment:
+      - USER_UID=${GITEA_UID:-1000}
+      - USER_GID=${GITEA_GID:-1000}
+      - GITEA__server__DOMAIN=${GITEA_DOMAIN:-gitea.local}
+      - GITEA__server__HTTP_PORT=${GITEA_PORT:-3000}
+      - GITEA__server__SSH_PORT=${GITEA_SSH_PORT:-2222}
+      - GITEA__server__ROOT_URL=http://${GITEA_DOMAIN:-gitea.local}:${GITEA_PORT:-3000}
+      - GITEA__database__DB_TYPE=${GITEA_DB:-sqlite3}
+    ports:
+      - "${GITEA_PORT:-3000}:3000"
+      - "${GITEA_SSH_PORT:-2222}:22"
+    volumes:
+      - ./data:/data
+      - ./config:/etc/gitea
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - gitea
+
+networks:
+  gitea:
+    driver: bridge

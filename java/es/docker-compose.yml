@@ -1,0 +1,55 @@
+version: '3.3'
+services:
+  elasticsearch: 
+    image: elasticsearch:${ES_VERSION:-7.10.1}
+    restart: always
+    container_name: elasticsearch
+    volumes: 
+      - ./logs:/usr/share/elasticsearch/logs
+      - ./data:/usr/share/elasticsearch/data
+      - ./plugins:/usr/share/elasticsearch/plugins
+      - ./config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+    environment:
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.name=${CLUSTER_NAME:-es-cluster}
+      # 对于单机测试，如果是单节点模式，这里可以保持elasticsearch自己作为master
+      - cluster.initial_master_nodes=elasticsearch
+      - bootstrap.memory_lock=true
+      - TZ=Asia/Shanghai
+    ports:
+      - "${ES_PORT:-9200}:9200"     
+      - "9300:9300"     
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
+    networks:
+      - elastic
+
+  elastichd:
+    image: containerize/elastichd:latest
+    container_name: elasticsearch-hd
+    ports:
+      - "9800:9800"
+    networks:
+      - elastic
+    depends_on:
+      - elasticsearch
+
+  dejavu:
+    image: appbaseio/dejavu:latest
+    container_name: dejavu
+    ports:
+      - "1358:1358"
+    networks:
+      - elastic
+    depends_on:
+      - elasticsearch
+
+networks:
+  elastic:
+    driver: bridge

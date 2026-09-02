@@ -1,0 +1,63 @@
+{
+  "id": "crewai",
+  "name": "CrewAI",
+  "description": "角色扮演式多 Agent 协作框架，支持自定义角色、任务和流程编排，适合软件开发、调研、运营等多种场景",
+  "category": "ai-agent",
+  "tags": ["ai", "agents", "multi-agent", "orchestration", "python"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "pip 安装（推荐）",
+        "type": "pip",
+        "command": "pip3 install crewai crewai-tools",
+        "check": "pip3 show crewai",
+        "uninstall": ["pip3 uninstall -y crewai crewai-tools"]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "pip3 install --upgrade crewai crewai-tools",
+    "check": "pip3 show crewai"
+  },
+
+  "post_install": [
+    {"description": "显示配置提示", "command": "echo -e '\\nCrewAI 已安装。使用方式:\\n  1. 定义 Agent 角色和任务\\n  2. 组装 Crew 并启动\\n  3. 或使用 crewai create 快速创建项目\\n\\n配置 LLM:\\n  export OPENAI_API_KEY=your_key\\n\\nCrewAI 也支持本地模型 (Ollama/vLLM)。'"}
+  ],
+
+  "post_uninstall": [],
+
+  "config": {
+    "path": "$HOME/.crewai/config.yaml",
+    "operations": {
+      "view": "cat $HOME/.crewai/config.yaml 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.crewai/config.yaml",
+      "reset": [
+        "rm -rf $HOME/.crewai 2>/dev/null || true"
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "crewai create",
+    "version": "crewai --version"
+  },
+
+  "status_check": [
+    {"name": "检查安装", "command": "pip3 show crewai 2>/dev/null | grep Name || echo '未安装'"},
+    {"name": "检查版本", "command": "crewai --version 2>/dev/null || echo '未安装'"}
+  ],
+
+  "mcp_servers": {},
+
+  "skills": {},
+
+  "references": {
+    "shared_mcp_servers": ["fetch", "brave-search", "filesystem"],
+    "shared_skills": []
+  },
+
+  "notes": "⭐ 45k+ Stars。通用多 Agent 协作框架，通过定义角色(Role)、任务(Task)和流程(Crew)实现灵活编排。不限于软件开发，也适合调研、数据分析、内容创作等场景。支持 OpenAI/Ollama/vLLM 等多种 LLM 后端。"
+}

@@ -1,0 +1,43 @@
+{
+  "id": "sequential-thinking",
+  "name": "顺序思维 (Sequential Thinking)",
+  "description": "通过结构化的推理步骤解决复杂问题。将'灵光一现'式的随机输出转变为'步步为营'的逻辑推导。特别适用于复杂重构、算法设计和战略规划。",
+  "category": "workflow-optimization",
+  "prompts": {
+    "complex-problem": "这个问题比较复杂，请使用 sequential-thinking 工具将其分解为至少 5 个推理步骤。在每一步之后，请自我检查是否存在逻辑漏洞或更好的替代方案。",
+    "architectural-decision": "请对 {technology_choice} 进行深入分析。使用分支推导来评估 3 种不同的实现路径，并最终给出基于数据和逻辑的最优推荐。",
+    "refactor-plan": "在开始重构代码之前，请先用顺序思维列出所有受影响的组件和潜在的破坏性变更。我们需要一个详尽的风险评估报告。"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "sequential-thinking"
+    ],
+    "system_commands": []
+  },
+  "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequential-thinking",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "install_check": "npm list -g @modelcontextprotocol/server-sequential-thinking --depth=0",
+  "instructions": {
+    "best_practices": [
+      "当一个问题无法在一次思考中解决时，强制开启顺序思维模式",
+      "利用工具的'修正'能力，当发现之前的假设错误时，要求 AI 返回上一步重新推导",
+      "查看 AI 的'思考日志'，这有助于理解其决策背后的逻辑"
+    ]
+  },
+  "tags": [
+    "思维",
+    "推理",
+    "逻辑",
+    "深度思考"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

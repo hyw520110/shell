@@ -1,0 +1,83 @@
+{
+  "id": "qoderwork",
+  "name": "QoderWork",
+  "description": "阿里智能助手 Qoder 出品的桌面级通用 AI Agent 工作台，支持自然语言任务自动规划与交付，具备多模型接入、Office 文档自动化处理及远程控制能力。",
+  "category": "ai-ide",
+  "sort_order": 60,
+  "sort_key": "QoderWork",
+  "tags": [
+    "Agent平台",
+    "Agent工作台",
+    "桌面客户端",
+    "阿里",
+    "Qoder"
+  ],
+  "scenarios": ["productivity", "coding", "agent-workbench", "product-docs", "diagramming", "design-prototype"],
+  "experimental": false,
+  "optional": false,
+
+  "install": {
+    "methods": [
+      {
+        "name": "官方 dmg 自动安装 (macOS)",
+        "type": "bash",
+        "command": "bash ../ide/install-qoderwork.sh",
+        "check": "command -v qoder >/dev/null 2>&1 || command -v qodercli >/dev/null 2>&1 || [ -x \"$HOME/.local/bin/qodercli\" ] || command -v qoderwake >/dev/null 2>&1 || [ -x \"$HOME/.qoderwake/bin/qoderwake\" ]",
+        "uninstall": [
+          "echo '正在卸载 QoderWork...'",
+          "rm -rf /Applications/QoderWork*.app /Applications/Qoder*.app 2>/dev/null || sudo rm -rf /Applications/QoderWork*.app /Applications/Qoder*.app",
+          "read -p '是否同时删除配置数据 (~/.qoderwork/)？[y/N] ' _qwAns && [[ \"$_qwAns\" == 'y' ]] && rm -rf ~/.qoderwork/",
+          "echo '✅ QoderWork 已卸载'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash ../ide/install-qoderwork.sh",
+    "check": "command -v qoder >/dev/null 2>&1 || command -v qodercli >/dev/null 2>&1 || [ -x \"$HOME/.local/bin/qodercli\" ] || command -v qoderwake >/dev/null 2>&1 || [ -x \"$HOME/.qoderwake/bin/qoderwake\" ]"
+  },
+
+  "config": {
+    "path": "$HOME/.qoderwork/.mcp.json",
+    "operations": {
+      "view": "cat \"$HOME/.qoderwork/.mcp.json\" 2>/dev/null | jq . || echo 'MCP 配置文件不存在'",
+      "edit": "${EDITOR:-vim} \"$HOME/.qoderwork/.mcp.json\"",
+      "reset": [
+        "cp \"$HOME/.qoderwork/.mcp.json\" \"$HOME/.qoderwork/.mcp.json.backup.$(date +%Y%m%d_%H%M%S)\" 2>/dev/null || true",
+        "echo '{\"mcpServers\":{}}' > \"$HOME/.qoderwork/.mcp.json\""
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "open -a QoderWork",
+    "version": "defaults read /Applications/QoderWork.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo '未知'",
+    "settings": "open -a QoderWork && echo '请在 QoderWork 设置中配置'"
+  },
+
+  "status_check": [
+    {
+      "name": "应用状态",
+      "command": "PATH=\"$HOME/.local/bin:$HOME/.qoderwake/bin:$PATH\"; qoder --version 2>/dev/null || qodercli --version 2>/dev/null || qoderwake --version 2>/dev/null || [ -x \"$HOME/.local/bin/qodercli\" ] && echo 'Qoder CLI 已安装' || [ -x \"$HOME/.qoderwake/bin/qoderwake\" ] && echo 'Qoder Wake 已安装' || echo '未安装'"
+    },
+    {
+      "name": "MCP 配置",
+      "command": "[ -f \"$HOME/.qoderwork/.mcp.json\" ] && jq '.mcpServers | keys | length' \"$HOME/.qoderwork/.mcp.json\" 2>/dev/null | xargs echo '已配置 MCP 数量' || echo 'MCP 配置未初始化'"
+    }
+  ],
+
+  "references": {
+    "homepage": "https://qoder.com.cn/qoderwork",
+    "docs": "https://help.aliyun.com/zh/qoderwork",
+    "shared_mcp_servers": [
+      "filesystem",
+      "github",
+      "fetch"
+    ],
+    "shared_skills": []
+  },
+
+  "notes": "QoderWork 旧版桌面 dmg 入口已失效；当前脚本安装官方 Qoder CLI/唤醒器并打开 https://qoder.com/download。MCP 配置写入 ~/.qoderwork/.mcp.json（标准 JSON 格式）。"
+}

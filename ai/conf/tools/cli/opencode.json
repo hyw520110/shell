@@ -1,0 +1,62 @@
+{
+  "id": "opencode",
+  "name": "OpenCode AI",
+  "description": "",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g opencode-ai --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g opencode-ai"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g opencode-ai --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.opencode/settings.json",
+    "operations": {
+      "view": "cat $HOME/.opencode/settings.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.opencode/settings.json",
+      "reset": [
+        "cp $HOME/.opencode/settings.json $HOME/.opencode/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.opencode/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "opencode",
+    "version": "opencode --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "opencode --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.opencode/settings.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

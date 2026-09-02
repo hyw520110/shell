@@ -1,0 +1,33 @@
+{
+  "id": "pm-analytics",
+  "name": "数据分析",
+  "description": "从数据现象出发，生成可执行的产品决策建议，并以可视化HTML报告输出。适用于用户说'分析一下这组数据'、'这个指标为什么跌了'、'帮我做个留存分析'、'用户流失原因是什么'等场景。",
+  "category": "data-analysis",
+  "prompts": {
+    "analyze": "分析提供的数据，从数据现象到产品决策，输出可视化HTML报告",
+    "funnel": "分析漏斗数据，找出流失点并给出改进建议",
+    "retention": "分析用户留存数据，找出流失原因和提升策略"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "tips": "输出使用 Chart.js 和 D3.js 进行可视化，需要浏览器环境查看",
+  "notes": "原名 SPACE-analytics，输出可视化HTML数据分析报告",
+  "tags": [
+    "产品分析",
+    "数据分析",
+    "产品管理"
+  ],
+  "scenarios": [
+    "product-docs"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/zephyrwang6/pm-skills",
+  "repository": "https://github.com/zephyrwang6/pm-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

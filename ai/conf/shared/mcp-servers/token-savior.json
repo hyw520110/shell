@@ -1,0 +1,74 @@
+{
+  "id": "token-savior",
+  "name": "Token Savior",
+  "description": "结构化代码导航、持久记忆和 Bash 输出压缩 MCP，面向 AI 编码 Agent 的 Token 优化与代码上下文检索。",
+  "category": "ai",
+  "scenarios": [
+    "productivity",
+    "coding",
+    "context-optimizer"
+  ],
+  "tags": [
+    "上下文优化",
+    "Token优化",
+    "代码分析",
+    "MCP",
+    "记忆"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://mibayy.github.io/token-savior/",
+  "repository": "https://github.com/Mibayy/token-savior",
+  "install": {
+    "type": "bash",
+    "command": "bash \"${SCRIPT_DIR}/scripts/install_python_mcp.sh\" \"token-savior-recall[mcp]\"",
+    "prerequisites": [
+      {
+        "name": "python3 >= 3.11 或 uv",
+        "check": "command -v uv >/dev/null 2>&1 || python3 -c 'import sys; exit(0 if sys.version_info >= (3,11) else 1)'",
+        "install_hint": "uv: curl -LsSf https://astral.sh/uv/install.sh | sh | brew install python@3.11"
+      }
+    ]
+  },
+  "config": {
+    "command": "token-savior",
+    "args": [],
+    "transportType": "stdio",
+    "env": {
+      "TOKEN_SAVIOR_CLIENT": "ai-hub",
+      "TOKEN_SAVIOR_PROFILE": "optimized"
+    }
+  },
+  "required_tools": [
+    "python3",
+    "pip3"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Token Savior",
+      "command": "token-savior --help >/dev/null 2>&1 && echo '已安装' || echo '未安装'"
+    },
+    {
+      "name": "检查 TS CLI",
+      "command": "ts --help >/dev/null 2>&1 && echo 'ts CLI 可用' || echo 'ts CLI 不可用'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "structural code navigation",
+      "description": "结构化代码导航与索引"
+    },
+    {
+      "name": "persistent memory",
+      "description": "跨会话持久记忆"
+    },
+    {
+      "name": "bash compaction",
+      "description": "命令输出压缩"
+    }
+  ],
+  "notes": "Bash compaction 和 hooks 需要额外执行 ts init 并设置环境变量。默认 MCP 配置只启用服务端，避免自动改写 hooks。",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

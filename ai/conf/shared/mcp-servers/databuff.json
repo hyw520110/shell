@@ -1,0 +1,67 @@
+{
+  "id": "databuff",
+  "name": "DataBuff / OpenOcta MCP Server",
+  "description": "DataBuff AIOps 智能运维 MCP 服务器，允许 AI Agent 接入基础设施、获取监控数据(如 Prometheus)、执行系统诊断与自动化运维操作。",
+  "category": "ops",
+  "install": {
+    "type": "custom",
+    "command": "echo '请参考 OpenOcta 官方文档或 DataBuff 企业版配置手册拉取对应的 MCP 镜像或脚本。'"
+  },
+  "config": {
+    "command": "python3",
+    "args": [
+      "-m",
+      "databuff_mcp_server"
+    ],
+    "transportType": "stdio",
+    "env": {
+      "DATABUFF_API_URL": "${DATABUFF_API_URL:-https://api.databuff.com}",
+      "DATABUFF_API_TOKEN": "${DATABUFF_API_TOKEN:-}"
+    }
+  },
+  "required_tools": [
+    "python3"
+  ],
+  "status_check": [
+    {
+      "name": "检查配置",
+      "command": "[[ -n \"$DATABUFF_API_TOKEN\" ]] || echo '未配置 DATABUFF_API_TOKEN'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_metrics",
+      "description": "获取实时监控指标和告警信息"
+    },
+    {
+      "name": "system_diagnose",
+      "description": "对指定主机或服务执行深度巡检与诊断"
+    },
+    {
+      "name": "execute_playbook",
+      "description": "触发 DataBuff 预设的自动化修复工作流"
+    }
+  ],
+  "notes": "该 MCP 用于对接乘云数字(DataBuff)及 OpenOcta 开源平台的后端运维数据。",
+  "tags": [
+    "AIOps",
+    "运维",
+    "DataBuff",
+    "监控"
+  ],
+  "scenarios": [
+    "ops-monitoring",
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://www.databuff.com",
+  "repository": "https://github.com/openocta",
+  "requires_env": [
+    "DATABUFF_API_TOKEN"
+  ],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

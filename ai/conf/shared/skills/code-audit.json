@@ -1,0 +1,34 @@
+{
+  "id": "code-audit",
+  "name": "Code Audit 白盒安全审计",
+  "description": "面向 Java、Python、Go、PHP、JavaScript/TypeScript、C/C++、.NET、Ruby、Rust 的只读白盒代码安全审计 Skill，覆盖注入、认证授权、文件操作、SSRF、反序列化、配置与供应链。",
+  "category": "security",
+  "prompts": {
+    "audit": "对当前源码执行只读 Code Audit：先枚举语言、框架、入口、路由、鉴权、依赖和危险 sink，再按 D1-D10 分轨审计。每个候选必须有真实文件路径、行号、数据流和证据；区分 possible、validated、confirmed，不把猜测当漏洞。",
+    "quick": "对当前源码做高信号快速安全审计，优先注入、认证授权、敏感信息、依赖 CVE 和高风险配置；不得修改代码、安装依赖或运行破坏性 PoC。",
+    "report": "生成 Markdown 审计报告，包含覆盖范围、确认漏洞、疑似漏洞、已排除误报、盲区、影响边界、修复建议和回归验证标准。"
+  },
+  "capabilities": [
+    "双轨白盒审计：sink-driven 与 control-driven",
+    "OWASP/CWE 风险分类和数据流追踪",
+    "多语言/框架路由、鉴权和配置检查",
+    "证据化报告与修复回归建议"
+  ],
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "instructions": {
+    "safety": "默认只读；不修改代码、不安装依赖、不联网下载、不提交 git、不执行利用链。动态验证仅限本地隔离测试环境，并且必须单独取得授权。",
+    "anti_hallucination": "报告前必须用文件读取/搜索工具确认路径和行号；无法从真实源码和运行证据确认的内容只能列为候选。",
+    "workflow": "侦察 → 候选发现 → 最小验证 → 影响边界 → 去重 → Markdown 报告。"
+  },
+  "tags": ["安全", "代码审计", "SAST", "OWASP", "白盒", "article-2026-security"],
+  "scenarios": ["security", "code-review"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/3stoneBrother/code-audit",
+  "repository": "https://github.com/3stoneBrother/code-audit",
+  "notes": "文章引用的第三方 Code Audit Skill；当前仅将其工作流纳入 AI Hub 配置，不自动下载第三方 Skill 文件。安装前应先审查来源和脚本。"
+}

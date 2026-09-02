@@ -1,0 +1,130 @@
+{
+  "id": "zcode",
+  "name": "ZCode",
+  "description": "智谱AI 推出的 AI 编程助手桌面客户端，集成自研 ZCode Agent 内核，深度适配 GLM-5.2，支持 Anthropic / OpenAI 协议自定义供应商（含 token173 等第三方 API 中转）。支持规划、编码、评审与上线全流程。",
+  "category": "ai-ide",
+  "sort_order": 15,
+  "sort_key": "ZCode",
+  "tags": [
+    "AI编程",
+    "IDE",
+    "Claude",
+    "Codex",
+    "Gemini",
+    "智谱AI",
+    "GLM-5.2",
+    "MCP",
+    "多引擎",
+    "第三方API"
+  ],
+  "scenarios": ["coding", "code-review", "agent-workbench", "productivity"],
+  "experimental": false,
+  "optional": false,
+
+  "install": {
+    "methods": [
+      {
+        "name": "官方 dmg 自动安装 (macOS) — 自动检测最新版本",
+        "type": "bash",
+        "command": "# 自动检测最新版本\nZC_ARCH=$(uname -m | grep -q arm && echo 'mac-arm64' || echo 'mac-x64'); ZC_CDN_PRIMARY='https://cdn-zcode.z.ai/zcode/electron/releases'; ZC_CDN_FALLBACK='https://cdn.zcode-ai.com/zcode/electron/releases'; ZC_FALLBACK='3.2.0'; _zc_check_url() { curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 \"$1\" 2>/dev/null || echo 000; }; _zc_detect_ver() { local v code; for v in 3.2.0 3.1.5 3.1.4 3.1.3 3.1.2 3.1.1 3.1.0 3.0.0 2.15.0 2.14.0 2.13.0; do code=$(_zc_check_url \"${ZC_CDN_PRIMARY}/${v}/ZCode-${v}-${ZC_ARCH}.dmg\"); if [ \"$code\" = '200' ]; then echo \"$v\"; return 0; fi; done; echo \"$ZC_FALLBACK\"; }; ZC_VER=$(_zc_detect_ver); ZC_URL=\"${ZC_CDN_PRIMARY}/${ZC_VER}/ZCode-${ZC_VER}-${ZC_ARCH}.dmg\"; echo \"🔍 检测 ZCode 最新版本: v$ZC_VER ($ZC_ARCH)\"; ZC_DMG=$(mktemp '/tmp/zcode-XXXXXX.dmg'); echo \"🔽 正在下载 ZCode v${ZC_VER} (${ZC_ARCH})...\"; echo \"   ${ZC_URL}\"; curl -fL# --retry 3 --connect-timeout 10 --max-time 0 \"$ZC_URL\" -o \"$ZC_DMG\" || { echo '❌ 主 CDN 下载失败，尝试备用 CDN...'; ZC_URL=\"${ZC_CDN_FALLBACK}/${ZC_VER}/ZCode-${ZC_VER}-mac-${ZC_ARCH#mac-}.dmg\"; curl -fL# --retry 3 --connect-timeout 10 --max-time 0 \"$ZC_URL\" -o \"$ZC_DMG\" || { echo '❌ 下载失败，请手动下载: https://zcode.z.ai/cn#all-downloads'; rm -f \"$ZC_DMG\"; return 1; }; }; echo ''; echo '📦 正在挂载 DMG...'; ZC_VOL=$(hdiutil attach \"$ZC_DMG\" -nobrowse 2>/dev/null | awk '/Volumes/ {print $3}' | head -1); if [ -z \"$ZC_VOL\" ] || [ ! -d \"$ZC_VOL\" ]; then ZC_VOL=$(ls -d /Volumes/ZCode* 2>/dev/null | head -1); fi; if [ -z \"$ZC_VOL\" ] || [ ! -d \"$ZC_VOL\" ]; then echo '❌ 挂载 DMG 失败'; rm -f \"$ZC_DMG\"; return 1; fi; echo \"   挂载点: ${ZC_VOL}\"; ZC_APP=$(ls -d \"$ZC_VOL\"/*.app 2>/dev/null | head -1); if [ -z \"$ZC_APP\" ]; then echo '❌ DMG 中未找到 .app'; hdiutil detach \"$ZC_VOL\" -force 2>/dev/null; rm -f \"$ZC_DMG\"; return 1; fi; echo \"📦 正在安装 $(basename \"$ZC_APP\") 到 /Applications...\"; if [ -d \"/Applications/$(basename \"$ZC_APP\")\" ]; then echo '   覆盖已有版本...'; rm -rf \"/Applications/$(basename \"$ZC_APP\")\" 2>/dev/null; fi; cp -R \"$ZC_APP\" /Applications/ 2>/dev/null || sudo cp -R \"$ZC_APP\" /Applications/; echo '🧹 正在清理...'; hdiutil detach \"$ZC_VOL\" 2>/dev/null || hdiutil detach \"$ZC_VOL\" -force 2>/dev/null; rm -f \"$ZC_DMG\"; ZC_INSTALLED=$(ls -d /Applications/ZCode*.app 2>/dev/null | head -1); if [ -n \"$ZC_INSTALLED\" ]; then echo \"✅ ZCode 安装完成！\"; echo \"📌 应用路径: ${ZC_INSTALLED}\"; echo '📌 首次启动: 1) 注册/登录智谱账号  2) 配置 AI 供应商 (支持 BigModel/Z.ai/自定义 API Key)  3) 选择模型'; echo '📌 第三方 API 接入: 设置 → 模型设置 → 添加供应商 → 填入 token173 等 API 地址和 Key'; else echo '❌ 安装失败，请尝试手动安装: https://zcode.z.ai/cn#all-downloads'; return 1; fi",
+        "check": "ls -d /Applications/ZCode*.app &>/dev/null",
+        "uninstall": [
+          "echo '正在卸载 ZCode...'",
+          "ZC_APPS=$(ls -d /Applications/ZCode*.app 2>/dev/null); if [ -n \"$ZC_APPS\" ]; then for app in $ZC_APPS; do echo \"  删除: $app\"; rm -rf \"$app\" 2>/dev/null || sudo rm -rf \"$app\"; done; fi",
+          "read -p '是否同时删除配置数据 (~/Library/Application Support/ZCode/)？[y/N] ' _zcAns && [[ \"$_zcAns\" == 'y' ]] && rm -rf \"$HOME/Library/Application Support/ZCode/\" && rm -rf \"$HOME/Library/Application Support/com.zcode-ai.zcode/\"",
+          "echo '✅ ZCode 已卸载'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "ZC_ARCH=$(uname -m | grep -q arm && echo 'mac-arm64' || echo 'mac-x64'); ZC_CDN_PRIMARY='https://cdn-zcode.z.ai/zcode/electron/releases'; ZC_CDN_FALLBACK='https://cdn.zcode-ai.com/zcode/electron/releases'; ZC_FALLBACK='3.2.0'; _zc_check_url() { curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 \"$1\" 2>/dev/null || echo 000; }; _zc_detect_ver() { local v code; for v in 3.2.0 3.1.5 3.1.4 3.1.3 3.1.2 3.1.1 3.1.0 3.0.0 2.15.0 2.14.0 2.13.0; do code=$(_zc_check_url \"${ZC_CDN_PRIMARY}/${v}/ZCode-${v}-${ZC_ARCH}.dmg\"); if [ \"$code\" = '200' ]; then echo \"$v\"; return 0; fi; done; echo \"$ZC_FALLBACK\"; }; ZC_VER=$(_zc_detect_ver); ZC_URL=\"${ZC_CDN_PRIMARY}/${ZC_VER}/ZCode-${ZC_VER}-${ZC_ARCH}.dmg\"; echo \"🔍 检测 ZCode 最新版本: v$ZC_VER ($ZC_ARCH)\"; ZC_DMG=$(mktemp '/tmp/zcode-update-XXXXXX.dmg'); echo \"🔄 正在下载 ZCode v${ZC_VER} (${ZC_ARCH})...\"; curl -fL# --retry 3 --connect-timeout 10 --max-time 0 \"$ZC_URL\" -o \"$ZC_DMG\" || { echo '❌ 主 CDN 下载失败，尝试备用 CDN...'; ZC_URL=\"${ZC_CDN_FALLBACK}/${ZC_VER}/ZCode-${ZC_VER}-mac-${ZC_ARCH#mac-}.dmg\"; curl -fL# --retry 3 --connect-timeout 10 --max-time 0 \"$ZC_URL\" -o \"$ZC_DMG\" || { echo '❌ 下载失败'; rm -f \"$ZC_DMG\"; return 1; }; }; echo ''; echo '📦 正在挂载 DMG...'; ZC_VOL=$(hdiutil attach \"$ZC_DMG\" -nobrowse 2>/dev/null | awk '/Volumes/ {print $3}' | head -1); [ -z \"$ZC_VOL\" ] && ZC_VOL=$(ls -d /Volumes/ZCode* 2>/dev/null | head -1); if [ -z \"$ZC_VOL\" ] || [ ! -d \"$ZC_VOL\" ]; then echo '❌ 挂载 DMG 失败'; rm -f \"$ZC_DMG\"; return 1; fi; ZC_APP=$(ls -d \"$ZC_VOL\"/*.app 2>/dev/null | head -1); if [ -z \"$ZC_APP\" ]; then echo '❌ DMG 中未找到 .app'; hdiutil detach \"$ZC_VOL\" -force 2>/dev/null; rm -f \"$ZC_DMG\"; return 1; fi; echo \"📦 正在更新 /Applications/$(basename \"$ZC_APP\")...\"; rm -rf \"/Applications/$(basename \"$ZC_APP\")\" 2>/dev/null; cp -R \"$ZC_APP\" /Applications/ 2>/dev/null || sudo cp -R \"$ZC_APP\" /Applications/; hdiutil detach \"$ZC_VOL\" 2>/dev/null || hdiutil detach \"$ZC_VOL\" -force 2>/dev/null; rm -f \"$ZC_DMG\"; echo \"✅ ZCode 已更新至 v${ZC_VER}！\"",
+    "check": "ls -d /Applications/ZCode*.app &>/dev/null"
+  },
+
+  "config": {
+    "path": "$HOME/Library/Application Support/ZCode/",
+    "operations": {
+      "view": "echo 'ZCode 配置目录:'; ls -la \"$HOME/Library/Application Support/ZCode/\" 2>/dev/null || echo '配置目录不存在（首次启动后创建）'",
+      "edit": "open -a ZCode 2>/dev/null && echo '请在 ZCode → 设置 中修改配置' || echo 'ZCode 未安装'",
+      "reset": [
+        "read -p '⚠️ 确认重置 ZCode 所有配置？[y/N] ' _zcReset && [[ \"$_zcReset\" == 'y' ]] || return 0",
+        "rm -rf \"$HOME/Library/Application Support/ZCode/\" 2>/dev/null",
+        "rm -rf \"$HOME/Library/Application Support/com.zcode-ai.zcode/\" 2>/dev/null",
+        "echo '✅ ZCode 配置已重置（重启 ZCode 后生效）'"
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "open -a \"$(ls -d /Applications/ZCode*.app | head -1)\"",
+    "version": "ZC_APP=$(ls -d /Applications/ZCode*.app 2>/dev/null | head -1); if [ -n \"$ZC_APP\" ]; then defaults read \"$ZC_APP/Contents/Info.plist\" CFBundleShortVersionString 2>/dev/null || echo '未知'; else echo '未安装'; fi",
+    "settings": "open -a \"$(ls -d /Applications/ZCode*.app | head -1)\" && echo '请在 ZCode → 设置（⌘,）中管理配置'",
+    "check-latest": "echo '正在检测 ZCode 最新版本...'; bash \"$(dirname \"$0\")/../scripts/get-zcode-latest.sh\" --json 2>/dev/null || echo '无法检测，请访问 https://zcode.z.ai 查看'"
+  },
+
+  "status_check": [
+    {
+      "name": "应用状态",
+      "command": "ZC_APP=$(ls -d /Applications/ZCode*.app 2>/dev/null | head -1); if [ -n \"$ZC_APP\" ]; then defaults read \"$ZC_APP/Contents/Info.plist\" CFBundleShortVersionString 2>/dev/null | xargs echo '已安装 v'; echo '  (最新: '$(bash \"$(dirname \"$0\")/../scripts/get-zcode-latest.sh\" 2>/dev/null || echo '未知')')'; else echo '未安装'; fi"
+    },
+    {
+      "name": "配置目录",
+      "command": "[ -d \"$HOME/Library/Application Support/ZCode/\" ] && echo '已初始化' || echo '未初始化（首次启动后创建）'"
+    }
+  ],
+
+  "references": {
+    "homepage": "https://zcode.z.ai",
+    "docs": "https://zcode.z.ai/cn/docs/install",
+    "config_docs": "https://zcode.z.ai/cn/docs/configuration",
+    "changelog": "https://zcode.z.ai/changelog",
+    "mcp_docs": "https://zcode.z.ai/newdocs/mcp-services",
+    "version_script": "ai/scripts/get-zcode-latest.sh",
+    "shared_mcp_servers": [
+      "filesystem",
+      "github",
+      "fetch",
+      "brave-search",
+      "sequential-thinking",
+      "playwright"
+    ],
+    "shared_skills": []
+  },
+
+  "third_party_api": {
+    "supported": true,
+    "protocols": ["Anthropic", "OpenAI 兼容"],
+    "providers": [
+      {
+        "name": "token173",
+        "base_url": "https://token173.com/v1",
+        "protocol": "OpenAI",
+        "note": "一个 API Key 调用多模型 (GLM-5.2/Claude/GPT 等)"
+      },
+      {
+        "name": "DeepSeek",
+        "base_url": "https://api.deepseek.com/v1",
+        "protocol": "OpenAI",
+        "note": "DeepSeek 开放平台"
+      },
+      {
+        "name": "OpenRouter",
+        "base_url": "https://openrouter.ai/api",
+        "protocol": "OpenAI",
+        "note": "多模型聚合平台"
+      },
+      {
+        "name": "自定义",
+        "base_url": "任意 Anthropic/OpenAI 兼容地址",
+        "protocol": "通用",
+        "note": "设置 → 模型设置 → 添加供应商"
+      }
+    ],
+    "config_steps": "设置 → 模型设置 → 添加供应商 → 填写名称/Base URL/API Key → 自动加载模型列表 → 启用"
+  },
+
+  "notes": "ZCode 3.x 是智谱AI 推出的多引擎 AI 编程助手桌面客户端（基于 Electron），深度适配 GLM-5.2。安装脚本自动检测架构（arm64/x64）和最新版本，从 CDN 下载对应 DMG，挂载后安装到 /Applications。支持三种接入方式: 1) BigModel 直连 (智谱开放平台) 2) Z.ai 直连 (海外) 3) 自定义供应商 (兼容 Anthropic/OpenAI 协议的任意 API 服务，如 token173)。版本检测: 通过 CDN 探测自动获取最新版本，也可运行 ai/scripts/get-zcode-latest.sh 独立查询。ZCode 通过 GUI 管理 MCP 配置（设置 → MCP 服务器），配置存储在 ~/Library/Application Support/ZCode/。支持 macOS（Apple Silicon + Intel）、Windows、Linux。"
+}

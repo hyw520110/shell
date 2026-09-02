@@ -1,0 +1,102 @@
+{
+  "id": "insforge",
+  "name": "InsForge",
+  "description": "AI Coding Agent 的全栈后端平台。提供 Database、Auth、Storage、Model Gateway、Edge Functions、Compute、Deployment 等一站式后端服务。支持 MCP Server 和 CLI + Skills 两种接口，让 AI Agent 像后端工程师一样操作后端。",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "coding",
+    "backend",
+    "mcp",
+    "database",
+    "auth",
+    "storage",
+    "serverless"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Docker Compose (自托管)",
+        "type": "docker",
+        "command": "git clone https://github.com/InsForge/InsForge.git && cd InsForge && cp .env.example .env && docker compose -f docker-compose.prod.yml up -d",
+        "url": "https://github.com/InsForge/InsForge"
+      },
+      {
+        "name": "云托管 (insforge.dev)",
+        "type": "web",
+        "command": "echo '访问 https://insforge.dev 注册使用云服务'",
+        "url": "https://insforge.dev"
+      }
+    ],
+    "default_method": 0,
+    "post_install": [
+      "echo '1. 访问 http://localhost:7130 打开 InsForge Dashboard'",
+      "echo '2. 按照 Dashboard 指引连接 InsForge MCP Server'",
+      "echo '3. 在 AI Agent 中测试: 请调用 InsForge MCP 的 fetch-docs 工具了解使用说明'"
+    ]
+  },
+  "capabilities": [
+    "Database - Postgres 关系数据库，支持迁移和 schema 管理",
+    "Authentication - 用户管理、认证、会话管理",
+    "Storage - S3 兼容的文件存储",
+    "Model Gateway - 多 LLM 提供商的 OpenAI 兼容 API 网关",
+    "Edge Functions - 边缘无服务器函数",
+    "Compute - 长运行容器服务 (私有预览)",
+    "Site Deployment - 站点构建和部署",
+    "MCP Server - 为 MCP 兼容 Agent 暴露操作工具"
+  ],
+  "requirements": {
+    "docker": "Docker (自托管模式)",
+    "nodejs": "Node.js (自托管模式)",
+    "optional": "云托管无需本地依赖"
+  },
+  "commands": {
+    "start": "docker compose -f docker-compose.prod.yml up -d",
+    "stop": "docker compose -f docker-compose.prod.yml down",
+    "logs": "docker compose -f docker-compose.prod.yml logs -f",
+    "status": "docker compose -f docker-compose.prod.yml ps",
+    "open": "open http://localhost:7130"
+  },
+  "integrations": {
+    "cursor": "Cursor Dashboard 内置 InsForge MCP Server 配置引导",
+    "claude_code": "支持 Claude Code 通过 MCP 调用",
+    "copilot": "支持 GitHub Copilot 通过 MCP 调用",
+    "cline": "支持 Cline 通过 MCP 调用"
+  },
+  "deployment": {
+    "one_click": [
+      {
+        "platform": "Railway",
+        "url": "https://railway.app"
+      },
+      {
+        "platform": "Zeabur",
+        "url": "https://zeabur.com"
+      },
+      {
+        "platform": "Sealos",
+        "url": "https://sealos.io"
+      }
+    ]
+  },
+  "status_check": [
+    {
+      "name": "检查 Docker 服务",
+      "command": "docker compose -f docker-compose.prod.yml ps 2>/dev/null | grep -q 'Up' && echo 'running' || echo 'stopped'"
+    },
+    {
+      "name": "检查 Dashboard",
+      "command": "curl -s http://localhost:7130 > /dev/null && echo 'Dashboard 可访问' || echo 'Dashboard 不可访问'"
+    }
+  ],
+  "references": {
+    "homepage": "https://insforge.dev",
+    "github": "https://github.com/InsForge/InsForge",
+    "docs": "https://docs.insforge.dev",
+    "discord": "https://discord.com/invite/MPxwj5xVvW",
+    "twitter": "https://x.com/InsForge_dev"
+  },
+  "notes": "InsForge 是 AI Coding Agent 的后端基础设施，让 Agent 能够端到端构建全栈应用。支持自托管和云托管两种模式。Cursor 官方已内置集成支持。",
+  "post_install": [],
+  "post_uninstall": []
+}

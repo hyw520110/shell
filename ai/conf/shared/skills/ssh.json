@@ -1,0 +1,51 @@
+{
+  "id": "ssh",
+  "name": "SSH 远程管理",
+  "description": "通过 SSH 连接远程服务器执行命令、管理文件和监控系统，支持批量操作和多主机管理",
+  "category": "infrastructure",
+  "prompts": {
+    "check_status": "检查服务器运行状态和系统资源",
+    "deploy_app": "部署应用到远程服务器 /var/www/app",
+    "view_logs": "查看远程服务器 Nginx 错误日志",
+    "sync_files": "同步本地 dist 目录到服务器的 /opt/app",
+    "restart_service": "重启远程服务器的 Docker 服务",
+    "run_command": "在服务器上执行 'df -h' 查看磁盘使用情况"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "ssh"
+    ],
+    "system_commands": [
+      "node",
+      "npm",
+      "ssh"
+    ]
+  },
+  "install_check": "npm list -g @modelcontextprotocol/server-ssh --depth=0",
+  "instructions": {
+    "setup": "配置 SSH 连接：1) 设置环境变量 SSH_HOST/SSH_USER/SSH_KEY_PATH，或 2) 使用 ~/.ssh/config 配置主机别名",
+    "security": "确保私钥文件权限为 400 (chmod 400 ~/.ssh/id_rsa)，避免权限过宽导致 SSH 拒绝连接",
+    "best_practices": [
+      "使用 SSH config 管理多主机配置，通过 Host 别名快速切换",
+      "敏感操作前使用 dry-run 模式验证命令",
+      "批量操作多台服务器时，建议先在一台测试",
+      "重要配置修改前自动备份原文件"
+    ]
+  },
+  "tips": "配合本地 sshm 脚本使用更便捷：先用 sshm 配置好 ~/.ssh/config，再通过 SSH MCP 执行自动化操作",
+  "tags": [
+    "SSH",
+    "远程连接",
+    "服务器管理"
+  ],
+  "scenarios": [
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/modelcontextprotocol/servers",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

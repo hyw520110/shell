@@ -1,0 +1,33 @@
+{
+  "id": "pm-experiment-designer",
+  "name": "A/B实验设计",
+  "description": "A/B实验设计Skill。从实验目标出发，输出完整的实验方案（假设、分组、指标体系、样本量估算、止损规则、判定规则）。适用于用户提到'A/B测试'、'AB实验'、'实验设计'、'样本量计算'、'显著性检验'等关键词。",
+  "category": "data-science",
+  "prompts": {
+    "design": "设计完整的A/B实验方案，包含假设、分组方式、指标体系、样本量估算、判定规则",
+    "calculate": "计算实验所需的样本量和实验周期",
+    "evaluate": "评估现有实验设计是否合理，提供改进建议"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "tips": "输出可视化HTML实验方案文档，包含样本量计算器等交互功能",
+  "notes": "原名 SPACE-experiment-designer，输出完整的A/B实验方案",
+  "tags": [
+    "实验设计",
+    "A/B 测试",
+    "产品管理"
+  ],
+  "scenarios": [
+    "product-docs"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/zephyrwang6/pm-skills",
+  "repository": "https://github.com/zephyrwang6/pm-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,50 @@
+{
+  "id": "postgres",
+  "name": "数据库设计与 SQL 开发",
+  "description": "PostgreSQL 数据库操作，支持 SQL 查询、数据建模、ER 图生成和性能优化",
+  "category": "database",
+  "prompts": {
+    "design_schema": "设计用户系统的数据库表结构",
+    "create_tables": "创建 users、orders、products 表及关联",
+    "query_data": "查询最近 30 天的订单统计",
+    "optimize_query": "优化这个慢查询语句",
+    "generate_er": "生成当前数据库的 ER 图"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "postgres"
+    ],
+    "system_commands": [
+      "node",
+      "npm",
+      "psql"
+    ]
+  },
+  "install_check": "npm list -g @modelcontextprotocol/server-postgres --depth=0",
+  "instructions": {
+    "setup": "设置 DATABASE_URL 环境变量连接到 PostgreSQL 实例",
+    "modeling": "使用 get_tables 和 get_schema 了解现有结构，再设计新表",
+    "best_practices": [
+      "设计表时考虑索引策略",
+      "使用外键约束保证数据完整性",
+      "复杂查询先用 EXPLAIN 分析执行计划",
+      "定期备份重要数据"
+    ]
+  },
+  "tips": "PostgreSQL 支持 JSONB 字段，可灵活存储半结构化数据",
+  "tags": [
+    "数据库",
+    "PostgreSQL",
+    "数据"
+  ],
+  "scenarios": [
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/modelcontextprotocol/servers",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

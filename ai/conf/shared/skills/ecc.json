@@ -1,0 +1,104 @@
+{
+  "id": "ecc",
+  "name": "ECC Agent Harness",
+  "description": "跨 Claude Code、Codex、OpenCode、Cursor 等 AI Agent Harness 的 operator 系统，提供 skills、instincts、memory optimization、continuous learning、security scanning、research-first development、hooks、rules、MCP 配置和多 harness 同步能力。",
+  "category": "agent-workbench",
+  "install": {
+    "claude_code": {
+      "command": "echo '在 Claude Code 中运行: /plugin marketplace add https://github.com/affaan-m/ECC && /plugin install ecc@ecc'",
+      "check": "claude /plugin list 2>/dev/null | grep -q 'ecc@ecc' && echo '已安装' || echo '未安装'"
+    },
+    "codex": {
+      "command": "echo 'Codex 自动同步参考: git clone https://github.com/affaan-m/ECC.git && cd ECC && npm install && bash scripts/sync-ecc-to-codex.sh'",
+      "check": "test -d ~/.codex/skills -o -d ~/.codex/plugins && echo '请检查 Codex ECC 同步状态' || echo '未检测到 Codex ECC 目录'"
+    },
+    "manual": {
+      "command": "echo '选择性安装建议: npx ecc consult \"security reviews\" --target claude；手动安装: npx ecc-install --profile minimal --target claude'",
+      "check": "npx ecc --version 2>/dev/null || npx ecc-install --version 2>/dev/null || true"
+    }
+  },
+  "prompts": {
+    "consult": "使用 ECC 的组件选择思路，为 {task} 推荐最小可行 profile、skills、rules、hooks 和 MCP 组合。",
+    "security": "使用 ECC/AgentShield 思路审查当前 Agent 配置，检查 hooks、MCP、skills、rules 和权限边界风险。",
+    "codex_sync": "为当前项目设计 ECC 到 Codex 的同步方案，避免重复 skills、重复 hooks 和 MCP 冲突。",
+    "optimization": "基于 ECC 的 token optimization、memory persistence、continuous learning 和 parallelization 指南，优化当前 AI Agent 工作流。"
+  },
+  "capabilities": [
+    "跨 harness Agent 工作流：Claude Code、Codex、OpenCode、Cursor、Gemini、Zed、GitHub Copilot 等",
+    "Skills、agents、commands、hooks、rules、MCP configs 和 legacy command shims",
+    "Token 优化、记忆持久化、连续学习、并行执行和研究优先开发",
+    "AgentShield 安全扫描，可用于 Claude Code 配置风险检查",
+    "支持最小 profile、组件级安装和 Codex 同步，避免过量上下文和重复 hooks"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "git",
+      "node",
+      "npm",
+      "npx"
+    ],
+    "platforms": [
+      "claude-code",
+      "codex",
+      "opencode",
+      "cursor",
+      "gemini-cli",
+      "zed",
+      "github-copilot-cli"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "ecc-consult",
+      "name": "ECC Advisor",
+      "description": "按任务咨询 ECC 推荐组件、profile 和安装预览命令。",
+      "check": {
+        "command": "npx ecc --version"
+      },
+      "install": {
+        "default": "npx ecc consult \"security reviews\" --target claude"
+      }
+    },
+    {
+      "id": "ecc-agentshield",
+      "name": "ECC AgentShield",
+      "description": "扫描 Claude Code 配置中的漏洞、误配置和注入风险。",
+      "check": {
+        "command": "npx ecc-agentshield --version"
+      },
+      "install": {
+        "default": "npx ecc-agentshield scan"
+      }
+    }
+  ],
+  "tips": "ECC 是完整 harness operator 系统，不建议无脑叠加安装。仓库明确提示不要同时使用 Claude 插件路径和 full/manual 安装，以免重复 skills、重复 hooks 或重复运行时行为。优先用 consult/minimal/profile 方式按需选择。",
+  "homepage": "https://github.com/affaan-m/ECC",
+  "repository": "https://github.com/affaan-m/ECC",
+  "documentation": "https://github.com/affaan-m/ECC/blob/main/README.md",
+  "tags": [
+    "Agent工作台",
+    "Skill 集合",
+    "Claude Code",
+    "Codex",
+    "OpenCode",
+    "Cursor",
+    "MCP",
+    "Hooks",
+    "安全扫描",
+    "上下文优化",
+    "记忆",
+    "并行执行",
+    "工程实践"
+  ],
+  "scenarios": [
+    "agent-workbench",
+    "coding",
+    "context-optimizer",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

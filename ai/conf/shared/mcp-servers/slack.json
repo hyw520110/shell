@@ -1,0 +1,54 @@
+{
+  "id": "slack",
+  "name": "Slack MCP",
+  "description": "Slack 集成 MCP，支持在 Slack 工作区和频道中读取消息、发送消息、管理频道。用于社群运营、告警通知等自动化工作流。",
+  "category": "automation",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @modelcontextprotocol/server-slack"
+  },
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-slack"
+    ],
+    "transportType": "stdio",
+    "env": {
+      "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN:-}",
+      "SLACK_TEAM_ID": "${SLACK_TEAM_ID:-}"
+    }
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    }
+  ],
+  "tags": [
+    "Slack",
+    "社区运营",
+    "自动化",
+    "通信"
+  ],
+  "scenarios": [
+    "marketing-ops",
+    "web-automation",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://modelcontextprotocol.io",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "requires_env": [
+    "SLACK_BOT_TOKEN",
+    "SLACK_TEAM_ID"
+  ],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,36 @@
+{
+  "id": "pm-image2pencil",
+  "name": "截图转Pencil设计",
+  "description": "将截图/设计稿复刻为Pencil .pen设计，并在同一画布旁输出结构化设计文档。必须使用pencil MCP工具完成读取、绘制和截图校验。",
+  "category": "prototyping",
+  "prompts": {
+    "create": "使用pencil MCP将截图复刻为.pen设计图，并在页面旁输出设计文档",
+    "modify": "修改已有的.pen页面，同步更新设计文档",
+    "align": "进行像素级对齐，优化视觉一致性"
+  },
+  "dependencies": {
+    "system_commands": [],
+    "external_mcp_servers": [
+      "pencil"
+    ]
+  },
+  "install_check": "true",
+  "tips": "必须安装并配置pencil MCP服务器，双产出：设计图+设计文档",
+  "notes": "原名 image2pencil，依赖pencil MCP工具",
+  "tags": [
+    "原型",
+    "草图",
+    "产品管理",
+    "页面原型"
+  ],
+  "scenarios": [
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/zephyrwang6/pm-skills",
+  "repository": "https://github.com/zephyrwang6/pm-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

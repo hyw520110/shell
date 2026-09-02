@@ -1,0 +1,100 @@
+{
+  "id": "superpowers",
+  "name": "Superpowers",
+  "description": "AI 编码助手技能框架，提供完整的软件开发方法论。包含 20+ 技能：TDD、系统调试、代码审查、子代理开发等。让 AI 编码助手具备工程思维和系统化开发能力。",
+  "category": "development",
+  "install": {
+    "claude_code": {
+      "command": "claude /plugin install superpowers@claude-plugins-official",
+      "check": "claude /plugin list 2>/dev/null | grep -q superpowers && echo '已安装' || echo '未安装'"
+    },
+    "codex": {
+      "command": "echo '在 Codex 中运行: /plugins 然后搜索 superpowers'",
+      "check": "echo '请手动检查 Codex 插件列表'"
+    },
+    "cursor": {
+      "command": "echo '在 Cursor Agent 中运行: /add-plugin superpowers'",
+      "check": "echo '请手动检查 Cursor 插件列表'"
+    },
+    "gemini": {
+      "command": "gemini extensions install https://github.com/obra/superpowers",
+      "check": "gemini extensions list 2>/dev/null | grep -q superpowers && echo '已安装' || echo '未安装'"
+    },
+    "opencode": {
+      "command": "echo '在 OpenCode 中运行: Fetch and follow instructions from https://raw.githubusercontent.com/obra/superpowers/refs/heads/main/.opencode/INSTALL.md'",
+      "check": "echo '请手动检查 OpenCode 插件列表'"
+    },
+    "copilot": {
+      "command": "copilot plugin marketplace add obra/superpowers-marketplace && copilot plugin install superpowers@superpowers-marketplace",
+      "check": "copilot plugin list 2>/dev/null | grep -q superpowers && echo '已安装' || echo '未安装'"
+    }
+  },
+  "prompts": {
+    "brainstorming": "帮我完善这个项目想法：{idea}，请通过提问澄清需求，然后给出设计方案",
+    "tdd": "为 {feature} 编写测试驱动的代码，遵循 RED-GREEN-REFACTOR 循环",
+    "debugging": "系统性地调试这个问题：{problem}，使用 4 阶段根因分析法",
+    "code_review": "对这段代码进行审查，检查是否符合设计规范和代码质量",
+    "planning": "为 {task} 制定详细的实施计划，将工作分解为 2-5 分钟的小任务",
+    "subagent": "使用子代理驱动开发模式完成 {feature}，包含两阶段审查"
+  },
+  "capabilities": [
+    "头脑风暴 (brainstorming) - 苏格拉底式需求澄清，自动生成设计文档",
+    "Git 工作树 (using-git-worktrees) - 隔离开发分支，验证干净基线",
+    "计划编写 (writing-plans) - 细粒度任务分解，精确文件路径和验证步骤",
+    "子代理开发 (subagent-driven-development) - 两阶段审查（规范合规+代码质量）",
+    "测试驱动开发 (test-driven-development) - RED-GREEN-REFACTOR 严格循环",
+    "系统调试 (systematic-debugging) - 4 阶段根因分析，防御性编程",
+    "代码审查 (requesting-code-review) - 按严重程度报告问题，关键问题阻断",
+    "分支收尾 (finishing-a-development-branch) - 验证测试，合并/PR 决策",
+    "并行代理 (dispatching-parallel-agents) - 并发子代理工作流",
+    "技能编写 (writing-skills) - 创建新技能的最佳实践"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "git"
+    ],
+    "platforms": [
+      "claude-code",
+      "codex",
+      "cursor",
+      "gemini-cli",
+      "opencode",
+      "github-copilot-cli"
+    ]
+  },
+  "tips": "Superpowers 是编码助手插件/扩展，不是独立工具。安装后在对应平台（Claude Code/Cursor 等）中自动激活技能。核心工作流：头脑风暴→设计确认→计划编写→子代理开发→TDD→代码审查→分支收尾",
+  "homepage": "https://github.com/obra/superpowers",
+  "repository": "https://github.com/obra/superpowers",
+  "documentation": "https://github.com/obra/superpowers/blob/main/README.md",
+  "workflows": {
+    "standard": [
+      "1. 头脑风暴 - 澄清需求，生成设计文档",
+      "2. 设计确认 - 用户确认设计后保存",
+      "3. 创建 Git 工作树 - 隔离开发分支",
+      "4. 编写计划 - 细粒度任务分解",
+      "5. 子代理开发 - 并行执行任务，两阶段审查",
+      "6. TDD - RED-GREEN-REFACTOR 循环",
+      "7. 代码审查 - 自动审查，关键问题阻断",
+      "8. 分支收尾 - 验证、合并、清理"
+    ]
+  },
+  "philosophy": [
+    "测试驱动开发 - 始终先写测试",
+    "系统化而非随意 - 流程胜过猜测",
+    "复杂度降低 - 简单是首要目标",
+    "证据胜过声明 - 验证后才宣布成功"
+  ],
+  "tags": [
+    "AI 增强",
+    "生产力"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

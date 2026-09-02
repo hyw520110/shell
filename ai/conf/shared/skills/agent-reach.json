@@ -1,0 +1,55 @@
+{
+  "id": "agent-reach",
+  "name": "Agent Reach Internet Access",
+  "description": "为 Agent 接入网页、YouTube、RSS、GitHub、搜索和社交平台数据源的操作指南，强调安全模式、诊断和凭据边界。",
+  "category": "research",
+  "prompts": {
+    "doctor": "运行 agent-reach doctor，汇总哪些互联网渠道可用、哪些需要用户配置。",
+    "safe-install": "按 Agent Reach 安全模式安装，不使用 sudo，不在当前项目目录写入工具仓库。",
+    "channel-plan": "根据我的研究/运营/竞品分析需求，推荐 Agent Reach 要启用的渠道组合。",
+    "fix-channel": "根据 agent-reach doctor 输出，排查某个渠道不可用的原因。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "agent-reach"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "install-agent-reach-safe",
+      "name": "install-agent-reach-safe",
+      "description": "用 pipx 安装 Agent Reach 并执行安全模式初始化",
+      "install": {
+        "default": "command -v pipx >/dev/null 2>&1 || python3 -m pip install --user pipx; pipx install https://github.com/Panniantong/agent-reach/archive/main.zip && agent-reach install --env=auto --safe"
+      },
+      "check": {
+        "command": "agent-reach"
+      }
+    }
+  ],
+  "instructions": {
+    "boundaries": "不要使用 sudo；不要在项目工作目录 clone 上游工具；所有 Agent Reach 文件应放在 ~/.agent-reach/ 或 ~/.agent-reach-venv。",
+    "credentials": "Twitter、小红书等 Cookie 登录建议使用专用/小号账号。不要要求用户提供主账号 Cookie，除非用户明确接受风险。",
+    "workflow": "先安全安装或检查，再运行 doctor，再根据用户选择启用渠道。"
+  },
+  "tags": [
+    "调研",
+    "互联网",
+    "搜索",
+    "社交媒体",
+    "Agent"
+  ],
+  "scenarios": [
+    "research",
+    "marketing-ops",
+    "agent-workbench"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/Panniantong/Agent-Reach",
+  "repository": "https://github.com/Panniantong/Agent-Reach",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

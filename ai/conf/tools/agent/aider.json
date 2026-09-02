@@ -1,0 +1,67 @@
+{
+  "id": "aider",
+  "name": "Aider",
+  "description": "AI 结对编程工具，支持 Git 集成，可在终端中与 LLM 协作编程",
+  "category": "ai-agent",
+  "tags": [
+    "ai",
+    "pip"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "pip",
+        "command": "pip3 install --user aider-chat",
+        "check": true,
+        "uninstall": [
+          "pip3 uninstall -y aider-chat"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "pip3 install --user aider-chat",
+    "check": true
+  },
+  "config": {
+    "path": "",
+    "operations": {
+      "view": "cat $HOME/.aider.conf.yml 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.aider.conf.yml",
+      "reset": [
+        "cp $HOME/.aider.conf.yml $HOME/.aider.conf.yml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.aider.conf.yml"
+      ]
+    }
+  },
+  "commands": {
+    "start": "aider",
+    "version": "aider --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "aider --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.aider.conf.yml 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [
+    {
+      "description": "确保 pip 用户脚本目录在 PATH 中",
+      "command": "py_bin=$(python3 -m site --user-base 2>/dev/null)/bin; if [ -x \"$py_bin/aider\" ] && ! command -v aider >/dev/null 2>&1; then if [ -x \"$HOME/work/shell/os/envs\" ]; then \"$HOME/work/shell/os/envs\" add PATH=\"$py_bin\" \"$HOME/.zshrc\" >/dev/null; else printf '\\n# Python user scripts\\nexport PATH=\"%s:$PATH\"\\n' \"$py_bin\" >> \"$HOME/.zshrc\"; fi; echo \"已添加 $py_bin 到 ~/.zshrc，请执行: source ~/.zshrc\"; fi"
+    }
+  ],
+  "post_uninstall": []
+}

@@ -1,0 +1,62 @@
+{
+  "id": "gpt-researcher",
+  "name": "GPT-Researcher",
+  "description": "自主型 AI 线上研究助手，针对任意课题自动进行全面的 Web 搜索、信息汇总与深度分析，最终输出学术级或专业级的长篇研究报告。",
+  "category": "ai-workbench",
+  "sort_order": 2490,
+  "sort_key": "GPT-Researcher",
+  "tags": ["workbench", "research", "agent", "docker"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "Docker 部署 (推荐)",
+        "type": "bash",
+        "command": "if [ ! -d \"$HOME/gpt-researcher\" ]; then git clone https://github.com/assafelovic/gpt-researcher.git \"$HOME/gpt-researcher\"; fi && cd \"$HOME/gpt-researcher\" && docker-compose up -d",
+        "check": "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q 'gpt-researcher'",
+        "uninstall": [
+          "cd \"$HOME/gpt-researcher\" && docker-compose down -v",
+          "rm -rf \"$HOME/gpt-researcher\""
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "cd \"$HOME/gpt-researcher\" && git pull && docker-compose pull && docker-compose up -d",
+    "check": "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q 'gpt-researcher'"
+  },
+
+  "config": {
+    "path": "$HOME/gpt-researcher/.env",
+    "operations": {
+      "view": "cat $HOME/gpt-researcher/.env 2>/dev/null || echo '请先在 $HOME/gpt-researcher 目录下创建 .env 文件，填入 OPENAI_API_KEY 和 TAVILY_API_KEY'",
+      "edit": "${EDITOR:-vim} $HOME/gpt-researcher/.env"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "容器状态",
+      "command": "command -v docker >/dev/null 2>&1 && docker ps --filter 'name=gpt-researcher' --format '{{.Names}} - {{.Status}}' || echo '未运行'"
+    },
+    {
+      "name": "Web 界面",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:8000 >/dev/null && echo '正常 (端口 8000)' || echo '未响应'"
+    }
+  ],
+
+  "commands": {
+    "start": "cd \"$HOME/gpt-researcher\" && docker-compose up -d",
+    "stop": "cd \"$HOME/gpt-researcher\" && docker-compose down",
+    "logs": "cd \"$HOME/gpt-researcher\" && docker-compose logs -f"
+  },
+
+  "prompts": {
+    "setup_api": "如何在 GPT-Researcher 中配置 Tavily 搜索 API 和大模型 API 密钥？",
+    "how_to_research": "说明如何给 GPT-Researcher 设定一个研究目标并生成报告。"
+  },
+
+  "notes": "GPT-Researcher 默认运行在 8000 端口。它需要至少一个 LLM API (如 OpenAI) 和一个 Web 搜索 API (如 Tavily、DuckDuckGo 等) 才能工作。请在配置文件中设置。项目主页: https://github.com/assafelovic/gpt-researcher"
+}

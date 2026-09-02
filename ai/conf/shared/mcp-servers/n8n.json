@@ -1,0 +1,50 @@
+{
+  "id": "n8n",
+  "name": "n8n Automation MCP",
+  "description": "n8n 自动化运营与工作流编排 MCP。允许 Agent 创建、触发和管理复杂的 API 管道，打通多达数百个 SaaS 服务。",
+  "category": "automation",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @leonardsellem/n8n-mcp-server"
+  },
+  "config": {
+    "command": "n8n-mcp-server",
+    "args": [],
+    "transportType": "stdio",
+    "env": {
+      "N8N_API_URL": "${N8N_API_URL:-}",
+      "N8N_API_KEY": "${N8N_API_KEY:-}"
+    }
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查安装",
+      "command": "npm list -g @leonardsellem/n8n-mcp-server --depth=0"
+    }
+  ],
+  "tags": [
+    "自动化运营",
+    "RPA",
+    "工作流",
+    "SaaS集成"
+  ],
+  "scenarios": [
+    "marketing-ops",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://n8n.io",
+  "repository": "https://github.com/leonardsellem/n8n-mcp-server",
+  "requires_env": [
+    "N8N_API_URL",
+    "N8N_API_KEY"
+  ],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,49 @@
+{
+  "id": "k6",
+  "name": "K6 Performance MCP",
+  "description": "Grafana k6 性能测试 MCP。支持动态生成并发压测脚本，执行负载测试，并分析吞吐量(RPS)、延迟等性能指标。",
+  "category": "ops",
+  "install": {
+    "type": "custom",
+    "command": "echo '请先通过 Homebrew 安装 k6 (brew install k6)'"
+  },
+  "compatibility": {
+    "check": "false",
+    "reason": "@modelcontextprotocol/server-k6 当前未发布到 npm；仅保留 k6 CLI/Skill 使用，不写入 MCP 配置。"
+  },
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-k6"
+    ],
+    "transportType": "stdio"
+  },
+  "required_tools": [
+    "node",
+    "npm",
+    "k6"
+  ],
+  "status_check": [
+    {
+      "name": "检查 k6 CLI",
+      "command": "k6 version 2>/dev/null || echo 'k6 未安装'"
+    }
+  ],
+  "tags": [
+    "性能测试",
+    "压测",
+    "Ops",
+    "k6"
+  ],
+  "scenarios": [
+    "qa-testing",
+    "ops-monitoring"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://k6.io",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,54 @@
+# FRP 客户端配置模板
+# 此文件包含占位符，安装脚本会自动替换为实际值
+
+# 服务端连接配置
+serverAddr = "{{SERVER_IP}}"
+serverPort = {{SERVER_PORT}}
+
+# 认证配置
+auth.method = "token"
+auth.token = "{{SERVER_TOKEN}}"
+
+# 日志配置
+log.to = "{{LOG_FILE}}"
+log.level = "info"
+log.maxDays = 30
+
+# 代理配置示例
+[[proxies]]
+name = "{{TUNNEL_NAME}}"
+type = "tcp"
+localIP = "{{LOCAL_IP}}"
+localPort = {{SSH_PORT}}
+remotePort = 6000
+
+# 可选：启用加密
+# transport.useEncryption = true
+
+# 可选：启用压缩
+# transport.useCompression = true
+
+# 可选：心跳间隔（秒）
+# transport.heartbeatInterval = 30
+
+# 可选：其他代理类型示例
+# [[proxies]]
+# name = "web_http"
+# type = "http"
+# localIP = "127.0.0.1"
+# localPort = 80
+# customDomains = ["www.example.com"]
+#
+# [[proxies]]
+# name = "web_https"
+# type = "https"
+# localIP = "127.0.0.1"
+# localPort = 443
+# customDomains = ["www.example.com"]
+#
+# [[proxies]]
+# name = "dns"
+# type = "tcp"
+# localIP = "8.8.8.8"
+# localPort = 53
+# remotePort = 6005

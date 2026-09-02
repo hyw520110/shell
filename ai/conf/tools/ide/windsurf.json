@@ -1,0 +1,50 @@
+{
+  "id": "windsurf",
+  "name": "Windsurf IDE",
+  "description": "Codeium 推出的 AI 原生 IDE，具备深度上下文理解和 Agent 协作能力",
+  "category": "ai-ide",
+  "tags": ["ai", "ide", "codeium"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "官方 dmg 安装 (via 脚本)",
+        "type": "bash",
+        "command": "bash ../ide/install-windsurf.sh",
+        "check": "[ -d '/Applications/Windsurf.app' ]",
+        "uninstall": [
+          "echo '请手动在 /Applications 中删除 Windsurf 应用'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash ../ide/install-windsurf.sh",
+    "check": "[ -d '/Applications/Windsurf.app' ]"
+  },
+
+  "config": {
+    "path": "$HOME/Library/Application Support/Windsurf/User/settings.json",
+    "operations": {
+      "view": "cat \"$HOME/Library/Application Support/Windsurf/User/settings.json\" 2>/dev/null || echo '配置文件不存在'",
+      "edit": "open -a Windsurf 2>/dev/null || echo '请在 IDE 中手动打开设置'"
+    }
+  },
+
+  "commands": {
+    "start": "open -a Windsurf"
+  },
+
+  "status_check": [
+    {
+      "name": "检查应用",
+      "command": "[ -d '/Applications/Windsurf.app' ] && echo '已安装' || echo '未安装'"
+    }
+  ],
+
+  "mcp_servers": {},
+  "skills": {},
+  "notes": "Windsurf 是目前最先进的 AI IDE 之一，支持 Flow 模式进行自主编程。"
+}

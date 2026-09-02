@@ -1,0 +1,39 @@
+{
+  "id": "tscanplus",
+  "name": "TscanPlus MCP",
+  "description": "TscanPlus/TscanClient 的本地 MCP 接口，用于授权环境中的资产侦察、URL 指纹、JS 收集及人工控制的安全验证。",
+  "category": "security",
+  "install": {
+    "type": "download",
+    "setup": [
+      "运行 security/scanner/tscanplus/tscanplus.sh install mcp 安装官方 TscanPlus 构建",
+      "安装完成后重启 Codex，再检查 MCP 状态"
+    ]
+  },
+  "compatibility": {
+    "check": "case \"$(uname -s 2>/dev/null)\" in Darwin|Linux) exit 0 ;; *) exit 1 ;; esac",
+    "reason": "需要先由 security/scanner/tscanplus/tscanplus.sh 安装 TscanPlus MCP 启动器；支持 macOS Intel/Apple Silicon 和 Linux x64/arm64。"
+  },
+  "config": {
+    "command": "tscanplus-mcp",
+    "args": ["mcp"],
+    "transportType": "stdio"
+  },
+  "required_tools": ["tscanplus-mcp"],
+  "status_check": [
+    {
+      "name": "检查 TscanPlus MCP 启动器",
+      "command": "command -v tscanplus-mcp >/dev/null 2>&1 && echo 'TscanPlus MCP 已安装' || echo 'TscanPlus MCP 未安装'"
+    }
+  ],
+  "tags": ["安全", "资产侦察", "漏洞扫描", "MCP", "TscanPlus", "article-2026-security"],
+  "scenarios": ["security", "qa-testing"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://github.com/TideSec/TscanPlus",
+  "repository": "https://github.com/TideSec/TscanPlus",
+  "recommended_scenarios": "授权实验室或明确范围内的低影响资产侦察；默认使用小端口集合、URL 指纹和 JS 收集。",
+  "unsuitable_scenarios": "未授权公网扫描、生产环境主动利用、弱口令/爆破、全端口大网段扫描、自动化提交漏洞。",
+  "notes": "TscanPlus MCP 暴露的能力可能包括 POC、目录枚举和弱口令；本条目保持 default_enabled=false，启用前必须确认目标授权和 MCP 工具权限。"
+}

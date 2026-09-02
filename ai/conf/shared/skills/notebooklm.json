@@ -1,0 +1,48 @@
+{
+  "id": "notebooklm",
+  "name": "NotebookLM Skill",
+  "description": "Google NotebookLM 集成技能。无需复杂配置，像老板一样动动嘴，它自己去找工具干活。支持自动调用 NotebookLM 进行知识管理和内容分析。",
+  "category": "knowledge",
+  "install": {
+    "command": "npx skills add https://github.com/anthropics/skills --skill notebooklm",
+    "check": "test -d ~/.claude/skills/notebooklm && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "analyze": "使用 NotebookLM 分析 {document}",
+    "summarize": "用 NotebookLM 总结 {content}",
+    "research": "帮我研究 {topic}，整理成 NotebookLM 笔记",
+    "qa": "基于 NotebookLM 知识库回答 {question}"
+  },
+  "capabilities": [
+    "知识管理 - 自动整理和管理知识",
+    "内容分析 - 深度分析文档和内容",
+    "智能问答 - 基于知识库回答问题",
+    "自动调用 - 无需手动指定，自动选择工具",
+    "多源整合 - 整合多个知识源"
+  ],
+  "dependencies": {
+    "platforms": [
+      "claude-code"
+    ],
+    "external_services": [
+      "Google NotebookLM"
+    ]
+  },
+  "tips": "安装后无需复杂配置，Claude 会自动判断何时调用 NotebookLM。适合需要知识管理和内容分析的场景。",
+  "homepage": "https://github.com/anthropics/skills",
+  "repository": "https://github.com/anthropics/skills",
+  "tags": [
+    "笔记",
+    "知识管理",
+    "研究",
+    "文档"
+  ],
+  "scenarios": [
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

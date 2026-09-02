@@ -1,0 +1,77 @@
+{
+  "id": "postgres",
+  "name": "PostgreSQL MCP Server",
+  "description": "PostgreSQL 数据库 MCP 服务器，支持 SQL 查询、数据建模和 ER 图生成",
+  "category": "development",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @modelcontextprotocol/server-postgres"
+  },
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-postgres"
+    ],
+    "transportType": "stdio",
+    "env": {
+      "DATABASE_URL": "${DATABASE_URL:-postgresql://localhost:5432/postgres}"
+    }
+  },
+  "required_tools": [
+    "node",
+    "npm",
+    "psql"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查 PostgreSQL",
+      "command": "psql --version 2>/dev/null || echo 'PostgreSQL 客户端未安装'"
+    },
+    {
+      "name": "检查安装",
+      "command": "npm list -g @modelcontextprotocol/server-postgres --depth=0 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "query",
+      "description": "执行 SQL 查询"
+    },
+    {
+      "name": "execute",
+      "description": "执行 SQL 语句（INSERT/UPDATE/DELETE）"
+    },
+    {
+      "name": "get_tables",
+      "description": "获取数据库表列表"
+    },
+    {
+      "name": "get_schema",
+      "description": "获取表结构信息"
+    }
+  ],
+  "notes": "使用前需设置 DATABASE_URL 环境变量或在本地启动 PostgreSQL 服务",
+  "tags": [
+    "数据库",
+    "PostgreSQL",
+    "数据"
+  ],
+  "scenarios": [
+    "coding"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://modelcontextprotocol.io",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "requires_env": [
+    "DATABASE_URL"
+  ],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

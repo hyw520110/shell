@@ -1,0 +1,72 @@
+{
+  "id": "crush",
+  "name": "Crush",
+  "description": "Charmbracelet 出品的终端 AI 编程助手，支持多种 LLM 提供商，优雅的 TUI 界面",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @charmland/crush --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g @charmland/crush"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @charmland/crush --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.config/crush/crush.json",
+    "operations": {
+      "view": "cat $HOME/.config/crush/crush.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.config/crush/crush.json",
+      "reset": [
+        "cp $HOME/.config/crush/crush.json $HOME/.config/crush/crush.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.config/crush/crush.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "crush",
+    "version": "crush --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "crush --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.config/crush/crush.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [
+    {
+      "description": "显示安装完成提示",
+      "command": "echo \"安装完成！\""
+    }
+  ],
+  "post_uninstall": [
+    {
+      "description": "清理残留文件",
+      "command": "echo \"卸载完成！\""
+    }
+  ]
+}

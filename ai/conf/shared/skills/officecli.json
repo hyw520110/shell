@@ -1,0 +1,78 @@
+{
+  "id": "officecli",
+  "name": "Office 文档处理 (OfficeCLI)",
+  "description": "通过 OfficeCLI 让 AI agent 创建、读取、修改 Word/Excel/PowerPoint 文档；内置 HTML/PNG 渲染引擎支持 render→look→fix 闭环，单二进制无依赖",
+  "category": "document",
+  "prompts": {
+    "create_pptx": "创建一个 PowerPoint 文件 {path}，添加标题为 {title} 的幻灯片",
+    "create_docx": "创建一个 Word 文件 {path}，写入 {content} 作为正文段落",
+    "create_xlsx": "创建一个 Excel 文件 {path}，在 {sheet} 中写入表头 {headers}",
+    "view_outline": "查看 {path} 的文档大纲结构",
+    "view_html": "把 {path} 渲染为 HTML 并在浏览器中预览",
+    "get_element": "以 JSON 形式获取 {path} 中 {selector} 元素的结构信息",
+    "add_shape": "在 {path} 的 {selector} 位置添加文本框，内容为 {text}",
+    "close": "保存并关闭 {path}，把驻留会话刷盘",
+    "watch": "在 {path} 上启动实时预览，打开 http://localhost:26315"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "officecli"
+    ]
+  },
+  "install_check": "command -v officecli >/dev/null 2>&1 && officecli --version >/dev/null 2>&1",
+  "instructions": {
+    "usage": "先运行 officecli install 把 SKILL.md 安装到检测到的 AI coding agent（Claude Code、Cursor、Windsurf、GitHub Copilot 等）。编辑文档时推荐 create → watch → add/set/remove → close 的工作流：watch 会启动浏览器实时预览，每次修改自动刷新。",
+    "best_practices": [
+      "使用 watch 启动实时预览作为视觉反馈回路，再在另一终端执行 add/set/remove",
+      "查询元素结构时加 --json 获取可直接处理的结构化输出",
+      "文档编辑完成后用 close 显式刷盘，避免驻留会话丢失",
+      "复杂样式优先用 view html 渲染检查，再决定是否 set 调整"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "name": "install",
+      "description": "安装 OfficeCLI 二进制到 PATH（自带 d.officecli.ai 镜像加速，GitHub 兜底）",
+      "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-officecli.XXXXXX\") && curl -fsSL -o \"$tmp\" https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc"
+    },
+    {
+      "name": "install-skill",
+      "description": "把 officecli skill 安装到所有检测到的 AI coding agent",
+      "command": "officecli install"
+    },
+    {
+      "name": "upgrade",
+      "description": "升级到最新版本（install.sh 支持原子替换）",
+      "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-officecli.XXXXXX\") && curl -fsSL -o \"$tmp\" https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc"
+    },
+    {
+      "name": "uninstall",
+      "description": "删除 officecli 二进制",
+      "command": "rm -f \"$(command -v officecli 2>/dev/null)\" 2>/dev/null || true"
+    }
+  ],
+  "tags": [
+    "Office",
+    "Word",
+    "Excel",
+    "PowerPoint",
+    "文档",
+    "docx",
+    "xlsx",
+    "pptx"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://officecli.ai",
+  "repository": "https://github.com/iOfficeAI/OfficeCLI",
+  "tips": "单二进制，无需安装 Office 或任何依赖；基于 .NET/CoreCLR 但发布为独立可执行文件。支持 350+ Excel 公式、i18n/RTL、修订追踪、数据透视表、图表、动画等高级特性。",
+  "recommended_scenarios": "需要 AI agent 程序化生成或修改 Office 文档的场景：自动生成报告/演示文稿、批量填充 Excel 数据、文档格式审查与修复、结合 AI 对话生成结构化文档",
+  "unsuitable_scenarios": "仅需纯文本或 Markdown 的场景（直接用 AI 对话即可，无需 Office 文档）；需要复杂宏/VBA 交互的场景（OfficeCLI 不执行宏）"
+}

@@ -1,0 +1,58 @@
+{
+  "id": "chrome-devtools",
+  "name": "Chrome DevTools",
+  "description": "Chrome 浏览器开发者工具集成，支持网页调试和自动化",
+  "category": "automation",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g chrome-devtools-mcp@latest",
+    "pre_install": [
+      "npm uninstall -g chrome-devtools-mcp 2>/dev/null || true",
+      "find $(npm root -g) -maxdepth 1 -name '.chrome-devtools-mcp-*' -type d -exec rm -rf {} + 2>/dev/null || true"
+    ]
+  },
+  "config": {
+    "command": "chrome-devtools-mcp",
+    "args": [
+      "--isolated",
+      "--executablePath={{chrome_path}}"
+    ],
+    "transportType": "stdio",
+    "env": {}
+  },
+  "required_tools": [
+    "node",
+    "npm",
+    "chrome"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Chrome",
+      "command": "ls -la /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome 2>/dev/null || echo 'Chrome 未安装'"
+    },
+    {
+      "name": "检查安装",
+      "command": "command -v chrome-devtools-mcp >/dev/null || echo '未安装'"
+    }
+  ],
+  "tags": [
+    "浏览器",
+    "调试",
+    "前端",
+    "网页"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "product-docs",
+    "diagramming",
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/ChromeDevTools/chrome-devtools-mcp#readme",
+  "repository": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

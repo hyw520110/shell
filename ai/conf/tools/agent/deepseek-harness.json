@@ -1,0 +1,61 @@
+{
+  "id": "deepseek-harness",
+  "name": "DeepSeek Harness",
+  "description": "DeepSeek 开源的 agent harness（智能体框架），由 Cordis 驱动，采用一切皆插件架构，提供 Web UI 和可扩展的 Agent 运行环境。",
+  "category": "ai-agent",
+  "tags": ["ai", "agent", "harness", "deepseek", "cordis", "web-ui", "npm"],
+  "install": {
+    "methods": [
+      {
+        "name": "npm 全局安装（推荐）",
+        "type": "npm",
+        "command": "npm install -g @deepseek-ai/dsh@0.1.1-rc.2",
+        "check": "dsh --help >/dev/null 2>&1",
+        "uninstall": [
+          "npm uninstall -g @deepseek-ai/dsh"
+        ]
+      },
+      {
+        "name": "npx 临时运行",
+        "type": "bash",
+        "command": "npx -y @deepseek-ai/dsh@0.1.1-rc.2 --help",
+        "check": "npx -y @deepseek-ai/dsh@0.1.1-rc.2 --help >/dev/null 2>&1"
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @deepseek-ai/dsh@0.1.1-rc.2",
+    "check": "dsh --help >/dev/null 2>&1"
+  },
+  "commands": {
+    "start": "dsh web --no-open",
+    "start-open": "dsh web",
+    "run-npx": "npx @deepseek-ai/dsh web --no-open",
+    "help": "dsh --help",
+    "version": "npm list -g @deepseek-ai/dsh --depth=0",
+    "open": "open http://127.0.0.1:3080"
+  },
+  "status_check": [
+    {
+      "name": "检查 dsh CLI",
+      "command": "dsh --help >/dev/null 2>&1 && echo 'dsh 已安装' || echo 'dsh 未安装'"
+    },
+    {
+      "name": "检查 Web UI",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:3080 >/dev/null && echo 'Web UI 可访问 (http://127.0.0.1:3080)' || echo 'Web UI 未运行'"
+    }
+  ],
+  "requirements": {
+    "node": ">=18",
+    "npm": true
+  },
+  "homepage": "https://github.com/deepseek-ai/deepseek-harness",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "docs": "https://github.com/deepseek-ai/deepseek-harness/blob/master/README.zh.md",
+  "scenarios": ["agent-workbench", "coding", "productivity"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "notes": "DeepSeek Harness 当前处于开发者预览阶段，未来可能出现破坏兼容性的变更。官方默认通过 dsh web 在 http://127.0.0.1:3080 启动 Web UI；首次使用建议先阅读官方文档。"
+}

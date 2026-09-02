@@ -1,0 +1,42 @@
+{
+  "id": "open-code-review",
+  "name": "深度代码审查 (Alibaba OCR)",
+  "description": "基于阿里巴巴开源工程实践的 AI 代码审查技能。通过结合确定性逻辑与 LLM 智能，提供高精准度的缺陷检测和架构建议。支持 slash 命令集成。",
+  "category": "coding",
+  "prompts": {
+    "review": "使用 /open-code-review:review 审查我当前的变更，重点关注逻辑缺陷和 NPE 风险。",
+    "branch-compare": "审查当前分支与 main 分支的差异，列出潜在的破坏性变更。",
+    "expert-advice": "针对我最近的代码修改，请按照阿里巴巴的工程标准给出架构优化建议。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "ocr"
+    ]
+  },
+  "install_check": "ocr version",
+  "instructions": {
+    "usage": "安装后，你可以直接使用 'ocr review' 进行本地审查。在集成技能的 Agent 中，可以使用 /review 指令触发深度分析。",
+    "best_practices": [
+      "在提交代码前运行 OCR，能减少 30% 以上的初级 Bug",
+      "配合 Karpathy 编码准则使用，能获得极致的代码质量控制",
+      "利用 ocr config 设置您的专用 LLM，以获得最佳的响应速度"
+    ]
+  },
+  "tags": [
+    "代码质量",
+    "阿里巴巴",
+    "CR",
+    "最佳实践"
+  ],
+  "scenarios": [
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/alibaba/open-code-review",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

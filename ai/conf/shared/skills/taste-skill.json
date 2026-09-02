@@ -1,0 +1,53 @@
+{
+  "id": "taste-skill",
+  "name": "Taste Skill (高级审美增强)",
+  "description": "Anti-Slop 审美框架。通过强制执行高水准的布局、字体、间距和动画（GSAP）标准，彻底消除 AI 生成界面的'廉价感'。支持极简、粗犷、柔和等多种风格。",
+  "category": "design",
+  "tags": [
+    "审美",
+    "UI",
+    "前端",
+    "动画",
+    "视觉增强"
+  ],
+  "install": {
+    "command": "npx skills add https://github.com/Leonxlnx/taste-skill",
+    "check": "test -d ~/.claude/skills/design-taste-frontend -o -d ~/.cursor/rules/taste.mdc && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "upgrade-ui": "使用 taste-skill 重构我当前的前端界面。设置：Design Variance: 8, Motion Intensity: 5。确保使用精细的排版和有节奏的间距。",
+    "brutalist-style": "将此页面转换为粗犷主义（Brutalist）风格，保持高对比度和功能性美感。",
+    "soft-motion": "为该组件添加 Taste 级的柔和动画，使用 GSAP 实现流畅的进入和退出效果。",
+    "generate-reference": "生成一个高审美标准的网页视觉参考图，作为我下一步编码的 DNA 锚点。"
+  },
+  "capabilities": [
+    "审美调节拨盘 - 1-10 级自定义设计变量、动画强度和视觉密度",
+    "Anti-Slop 门控 - 强制执行专业级的排版（Typography）和负空间（Whitespace）原则",
+    "多风格预设 - 包含 Minimalist, Brutalist, Soft, Redesign 等模块",
+    "现代技术栈集成 - 深度适配 Tailwind, GSAP, Framer Motion"
+  ],
+  "dependencies": {
+    "platforms": [
+      "claude-code",
+      "cursor",
+      "gemini"
+    ],
+    "system_commands": [
+      "npx"
+    ]
+  },
+  "tips": "Taste Skill 与 Hallmark 互补。Hallmark 擅长宏观结构和 Anti-AI-slop 规则，而 Taste Skill 擅长微观的审美调节和动效细节。推荐在进行高保真原型开发时同时启用两者。",
+  "notes": "这是一个便携式 Agent 技能框架。安装后，Agent 会加载其内部的审判准则，从而在生成代码时展现出'更好的品味'。",
+  "homepage": "https://github.com/Leonxlnx/taste-skill",
+  "repository": "https://github.com/Leonxlnx/taste-skill",
+  "scenarios": [
+    "productivity",
+    "design-prototype",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

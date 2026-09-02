@@ -1,0 +1,63 @@
+{
+  "id": "deepseek",
+  "name": "DeepSeek API CLI",
+  "description": "DeepSeek API 命令行工具，支持 DeepSeek-V3/R1/Coder 模型",
+  "category": "ai-coding",
+  "sort_key": "DeepSeek 10 API CLI",
+  "tags": [
+    "ai",
+    "pip"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "pip",
+        "command": "pip3 install deepseek-cli",
+        "check": "pip3 show deepseek-cli",
+        "uninstall": [
+          "pip3 uninstall -y deepseek-cli"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "pip3 install deepseek-cli",
+    "check": "pip3 show deepseek-cli"
+  },
+  "config": {
+    "path": "$HOME/.deepseek/config.json",
+    "operations": {
+      "view": "cat $HOME/.deepseek/config.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.deepseek/config.json",
+      "reset": [
+        "cp $HOME/.deepseek/config.json $HOME/.deepseek/config.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.deepseek/config.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "deepseek",
+    "version": "deepseek --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "deepseek --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.deepseek/config.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

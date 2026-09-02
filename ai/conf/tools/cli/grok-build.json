@@ -1,0 +1,76 @@
+{
+  "id": "grok-build",
+  "name": "Grok Build",
+  "description": "xAI（马斯克旗下）推出的首款全栈编程 Agent。支持并行智能体、仓库集成、代码生成与调试。基于 Grok 系列代码专用模型 + SuperGrok 层，直接对标 Claude Code、Cursor、GitHub Copilot。",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "coding",
+    "agent",
+    "grok",
+    "xai",
+    "spacexai"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "订阅 SuperGrok Heavy",
+        "type": "web",
+        "command": "echo '请访问 https://grok.com 订阅 SuperGrok Heavy 计划'",
+        "url": "https://grok.com"
+      }
+    ],
+    "default_method": 0,
+    "post_install": [
+      "echo '1. 访问 https://grok.com'",
+      "echo '2. 订阅 SuperGrok Heavy 计划（99美元/月，前6个月优惠价）'",
+      "echo '3. 在 Grok 中启用 Grok Build 功能'",
+      "echo '4. 连接代码仓库开始使用'"
+    ]
+  },
+  "capabilities": [
+    "并行智能体 - 多个 Agent 并行处理任务",
+    "仓库集成 - 直接连接 GitHub/GitLab 仓库",
+    "代码生成 - 全栈代码生成与补全",
+    "调试分析 - 智能调试和错误分析",
+    "项目理解 - 理解整个项目上下文",
+    "SuperGrok 层 - 增强推理能力的专用模型层"
+  ],
+  "requirements": {
+    "subscription": "SuperGrok Heavy（99美元/月，前6个月优惠价）",
+    "original_price": "300美元/月",
+    "note": "仅对付费订阅用户开放"
+  },
+  "commands": {
+    "open": "echo '打开 https://grok.com 使用 Grok Build'",
+    "docs": "echo '文档: https://docs.x.ai'"
+  },
+  "comparisons": {
+    "claude_code": {
+      "advantage": "SuperGrok 层推理更强，并行智能体",
+      "disadvantage": "生态不如 Claude Code 成熟，价格更高"
+    },
+    "cursor": {
+      "advantage": "原生全栈支持，仓库集成更深",
+      "disadvantage": "需要订阅，不如 Cursor 灵活"
+    },
+    "github_copilot": {
+      "advantage": "Agent 能力更强，不只是补全",
+      "disadvantage": "价格远高于 Copilot"
+    }
+  },
+  "status_check": [
+    {
+      "name": "检查订阅",
+      "command": "echo '请登录 https://grok.com 确认 SuperGrok Heavy 订阅状态'"
+    }
+  ],
+  "references": {
+    "homepage": "https://grok.com",
+    "docs": "https://docs.x.ai",
+    "company": "xAI (SpaceXAI)"
+  },
+  "notes": "Grok Build 是付费 SaaS 服务，需要 SuperGrok Heavy 订阅。不是开源工具，无法本地部署。适合已订阅 SuperGrok 的用户作为 Coding Agent 使用。",
+  "post_install": [],
+  "post_uninstall": []
+}

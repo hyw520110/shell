@@ -1,0 +1,105 @@
+{
+  "id": "deerflow",
+  "name": "DeerFlow",
+  "description": "字节跳动开源的 super agent harness，支持 sub-agents、memory、sandbox 和可扩展 skills",
+  "category": "ai-agent",
+  "tags": [
+    "ai",
+    "agent",
+    "langchain",
+    "langgraph",
+    "docker"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "从源码克隆安装",
+        "type": "bash",
+        "command": "git clone https://github.com/bytedance/deer-flow.git ~/deer-flow && cd ~/deer-flow && make config",
+        "check": true
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "cd ~/deer-flow && git pull && make install",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/deer-flow/config.yaml",
+    "operations": {
+      "view": "cat $HOME/deer-flow/config.yaml 2>/dev/null || echo '配置文件不存在，请先运行 make config'",
+      "edit": "${EDITOR:-vim} $HOME/deer-flow/config.yaml",
+      "reset": [
+        "cp $HOME/deer-flow/config.yaml $HOME/deer-flow/config.yaml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "cd $HOME/deer-flow && make config"
+      ]
+    }
+  },
+  "commands": {
+    "start": "cd $HOME/deer-flow && make dev",
+    "docker_start": "cd $HOME/deer-flow && make docker-start",
+    "stop": "if cd $HOME/deer-flow && make down 2>/dev/null; then true; elif pkill -f 'deerflow' 2>/dev/null; then true; else echo 'DeerFlow 未运行'; fi",
+    "check": "cd $HOME/deer-flow && make check"
+  },
+  "status_check": [
+    {
+      "name": "检查安装目录",
+      "command": "if ls -la $HOME/deer-flow 2>/dev/null; then true; else echo '未安装'; fi"
+    },
+    {
+      "name": "检查配置文件",
+      "command": "if ls -la $HOME/deer-flow/config.yaml 2>/dev/null; then true; else echo '配置文件不存在'; fi"
+    },
+    {
+      "name": "检查服务状态",
+      "command": "if curl -s http://localhost:2026/health 2>/dev/null; then true; else echo '服务未运行'; fi"
+    }
+  ],
+  "setup_guide": {
+    "manual": "1. git clone https://github.com/bytedance/deer-flow.git\n2. cd deer-flow && make config\n3. 编辑 config.yaml 配置模型\n4. 配置 .env 文件设置 API keys\n5. make dev 或 make docker-start 启动",
+    "env_auto": "配置 .env 文件: OPENAI_API_KEY, TAVILY_API_KEY 等",
+    "workflows": [
+      {
+        "name": "本地开发模式",
+        "command": "make dev",
+        "note": "需要 Node.js 22+, pnpm, uv, nginx"
+      },
+      {
+        "name": "Docker 模式",
+        "command": "make docker-init && make docker-start",
+        "note": "推荐，隔离性更好"
+      }
+    ]
+  },
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "DeerFlow 2.0 需要 Docker 或本地开发环境。支持多模型配置、sandbox 执行、IM 集成(Telegram/Slack/飞书/企业微信)。建议配合 Doubao-Seed-2.0-Code、DeepSeek v3.2 或 Kimi 2.5 使用。",
+  "post_install": [
+    {
+      "description": "生成配置文件",
+      "command": "if cd $HOME/deer-flow && make config 2>/dev/null; then echo '✓ 配置文件已生成'; else echo '✗ 配置文件生成失败'; fi"
+    },
+    {
+      "description": "显示配置指引",
+      "command": "echo '\n========================================' && echo 'DeerFlow 安装完成！' && echo '========================================' && echo '' && echo '配置文件位置: ~/deer-flow/config.yaml' && echo '' && echo '接下来需要:' && echo '' && echo '  1. 编辑 config.yaml 配置模型' && echo '  2. 编辑 .env 配置 API keys' && echo '' && echo '  3. 启动服务:' && echo '     cd ~/deer-flow' && echo '     make dev          # 本地开发' && echo '     make docker-start # Docker 模式' && echo '' && echo '服务启动后访问: http://localhost:2026' && echo '========================================\n'"
+    }
+  ],
+  "post_uninstall": [
+    "echo '正在清理 DeerFlow...'",
+    "cd $HOME/deer-flow 2>/dev/null && make down 2>/dev/null; true",
+    "if rm -rf $HOME/deer-flow 2>/dev/null; then echo '✓ 删除安装目录'; else echo '✗ 安装目录不存在'; fi",
+    "docker rm -f deerflow-* 2>/dev/null; true",
+    "echo 'DeerFlow 清理完成'"
+  ],
+  "uninstall_extended": [
+    {
+      "description": "彻底清理 DeerFlow 所有文件和 Docker 容器",
+      "command": "echo '=== 开始彻底清理 DeerFlow ===' && cd $HOME/deer-flow 2>/dev/null && make down 2>/dev/null; docker rm -f deerflow-* 2>/dev/null; docker rmi deerflow-* 2>/dev/null; if rm -rf $HOME/deer-flow 2>/dev/null; then echo '✓ 删除安装目录 ~/deer-flow'; else echo '✗ 安装目录不存在'; fi; if rm -rf $HOME/.deerflow 2>/dev/null; then echo '✓ 删除配置目录 ~/.deerflow'; else echo '✗ 配置目录不存在'; fi; echo '=== DeerFlow 彻底清理完成 ==='"
+    }
+  ]
+}

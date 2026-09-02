@@ -1,0 +1,61 @@
+{
+  "id": "openclacky",
+  "name": "OpenClacky",
+  "description": "开源 Token-efficient AI Agent 工作台，支持 BYOK、Skills、本地 Web UI 和终端交互。",
+  "category": "ai-agent",
+  "sort_order": 100,
+  "sort_key": "OpenClacky",
+  "tags": [
+    "Agent平台",
+    "Agent工作台",
+    "Token优化",
+    "BYOK"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "官方安装脚本",
+        "type": "bash",
+        "command": "/bin/bash -c \"$(curl -sSL https://raw.githubusercontent.com/clacky-ai/openclacky/main/scripts/install.sh)\"",
+        "check": "command -v openclacky",
+        "uninstall": [
+          "gem uninstall openclacky -aIx 2>/dev/null || true"
+        ]
+      },
+      {
+        "name": "Ruby Gem 安装",
+        "type": "gem",
+        "command": "gem install openclacky",
+        "check": "command -v openclacky",
+        "uninstall": [
+          "gem uninstall openclacky -aIx"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "gem update openclacky || /bin/bash -c \"$(curl -sSL https://raw.githubusercontent.com/clacky-ai/openclacky/main/scripts/install.sh)\"",
+    "check": "command -v openclacky"
+  },
+  "commands": {
+    "start": "openclacky",
+    "version": "openclacky --version"
+  },
+  "status_check": [
+    {
+      "name": "检查 OpenClacky",
+      "command": "openclacky --version 2>/dev/null || echo 'OpenClacky 未安装'"
+    },
+    {
+      "name": "检查 Ruby",
+      "command": "ruby --version 2>/dev/null || echo 'Ruby 未安装'"
+    }
+  ],
+  "references": {
+    "homepage": "https://www.openclacky.com/",
+    "github": "https://github.com/clacky-ai/openclacky",
+    "docs": "https://www.openclacky.com/docs/installation"
+  },
+  "notes": "OpenClacky 是独立 Agent 工作台，不是普通 CLI 扩展。安装脚本会设置运行环境；如需更可控安装可选择 Ruby Gem。"
+}

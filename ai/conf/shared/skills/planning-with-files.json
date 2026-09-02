@@ -1,0 +1,47 @@
+{
+  "id": "planning-with-files",
+  "name": "Planning with Files",
+  "description": "解决 Claude Code Plan Mode 规划易丢失的问题。将规划、进度和知识写入 Markdown 文件，任务开始前创建计划文件，每完成一步更新进度，确保长期任务不丢失上下文。",
+  "category": "development",
+  "install": {
+    "command": "npx skills add https://github.com/anthropics/skills --skill planning-with-files",
+    "check": "test -d ~/.claude/skills/planning-with-files && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "start": "为 {project} 创建开发计划，并保存到文件",
+    "progress": "更新当前任务的进度",
+    "review": "回顾计划执行情况，识别偏差",
+    "handoff": "生成任务交接文档"
+  },
+  "capabilities": [
+    "计划持久化 - 将规划写入 Markdown 文件",
+    "进度跟踪 - 每完成一步自动更新进度",
+    "知识积累 - 记录开发过程中的关键知识",
+    "防失忆 - 解决 Claude 长期任务上下文丢失问题",
+    "任务接力 - 支持跨会话任务继续"
+  ],
+  "dependencies": {
+    "platforms": [
+      "claude-code"
+    ]
+  },
+  "tips": "基于 Manus+ 的 Agent 方法编写，可以指导其他 Skill 工作。适合复杂、长期的开发任务，特别是需要跨会话继续的项目。",
+  "homepage": "https://github.com/anthropics/skills",
+  "repository": "https://github.com/anthropics/skills",
+  "use_case": "与 reasoning-skill 等配合使用，组成连招：planning-with-files(做计划) → reasoning-skill(执行)",
+  "tags": [
+    "规划",
+    "项目管理",
+    "需求",
+    "PRD"
+  ],
+  "scenarios": [
+    "coding",
+    "product-docs"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

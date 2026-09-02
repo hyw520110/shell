@@ -1,0 +1,57 @@
+{
+  "id": "github",
+  "name": "GitHub MCP",
+  "description": "GitHub代码管理集成，支持仓库访问、Issue管理、PR跟踪、代码同步操作",
+  "category": "development",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @modelcontextprotocol/server-github"
+  },
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-github"
+    ],
+    "transportType": "stdio",
+    "env": {
+      "GITHUB_TOKEN": "{{github_token}}"
+    }
+  },
+  "required_tools": [
+    "node",
+    "npm",
+    "gh"
+  ],
+  "status_check": [
+    {
+      "name": "检查 gh CLI",
+      "command": "gh --version 2>/dev/null || echo 'GitHub CLI 未安装'"
+    },
+    {
+      "name": "检查安装",
+      "command": "npm list -g @modelcontextprotocol/server-github --depth=0"
+    }
+  ],
+  "tags": [
+    "GitHub",
+    "Git",
+    "代码管理"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "product-docs",
+    "research"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://modelcontextprotocol.io",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "requires_env": [
+    "GITHUB_TOKEN"
+  ],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

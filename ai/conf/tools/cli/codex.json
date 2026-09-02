@@ -1,0 +1,62 @@
+{
+  "id": "codex",
+  "name": "OpenAI Codex CLI",
+  "description": "",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @openai/codex --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g @openai/codex"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @openai/codex --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.codex/config.toml",
+    "operations": {
+      "view": "cat $HOME/.codex/config.toml 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.codex/config.toml",
+      "reset": [
+        "cp $HOME/.codex/config.toml $HOME/.codex/config.toml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.codex/config.toml"
+      ]
+    }
+  },
+  "commands": {
+    "start": "codex",
+    "version": "codex --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "codex --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.codex/config.toml 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

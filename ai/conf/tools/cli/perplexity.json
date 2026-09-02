@@ -1,0 +1,62 @@
+{
+  "id": "perplexity",
+  "name": "Perplexity CLI",
+  "description": "",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g perplexity-cli --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g perplexity-cli"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g perplexity-cli --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.perplexity/config.json",
+    "operations": {
+      "view": "cat $HOME/.perplexity/config.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.perplexity/config.json",
+      "reset": [
+        "cp $HOME/.perplexity/config.json $HOME/.perplexity/config.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.perplexity/config.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "perplexity",
+    "version": "perplexity --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "perplexity --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.perplexity/config.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

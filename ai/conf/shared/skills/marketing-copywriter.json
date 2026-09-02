@@ -1,0 +1,31 @@
+{
+  "id": "marketing-copywriter",
+  "name": "Marketing Copywriter",
+  "description": "市场营销文案与社交媒体专家。擅长根据产品特性生成具有转化率和传播性的推文、软文、邮件营销(EDM)内容。",
+  "category": "ai",
+  "install": {
+    "type": "custom",
+    "command": "mkdir -p ~/.gemini/skills/marketing-copywriter && echo '已创建市场文案技能目录。'"
+  },
+  "commands": {
+    "start": "echo 'Skill 已激活。'"
+  },
+  "required_tools": [],
+  "status_check": [],
+  "tags": [
+    "营销运营",
+    "文案生成",
+    "社交媒体",
+    "用户增长"
+  ],
+  "scenarios": [
+    "marketing-ops",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/google/antigravity",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

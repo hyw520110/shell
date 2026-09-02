@@ -1,0 +1,61 @@
+{
+  "id": "career-ops",
+  "name": "Career-Ops Job Search Skill",
+  "description": "使用 Career-Ops 进行职位评估、简历定制、岗位扫描、求职管线管理、面试准备和谈薪脚本生成。",
+  "category": "productivity",
+  "scenarios": [
+    "productivity",
+    "agent-workbench",
+    "research"
+  ],
+  "tags": [
+    "求职",
+    "简历",
+    "职业发展",
+    "职位评估",
+    "PDF",
+    "Codex"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://career-ops.org",
+  "repository": "https://github.com/santifer/career-ops",
+  "prompts": {
+    "default": "在 Career-Ops 工作区中处理求职任务：先确认个人资料/CV是否已配置，再评估职位、生成建议和可验证产物。",
+    "evaluate": "使用 Career-Ops auto-pipeline 评估职位 URL 或 JD，输出结构化评分、匹配证据、风险和建议动作。",
+    "scan": "使用 Career-Ops scan 模式扫描目标公司/岗位门户，去重并更新求职 tracker。",
+    "pdf": "使用 Career-Ops pdf 模式为已评估职位生成个性化 CV/PDF，生成前必须让用户确认内容。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "node",
+      "npm",
+      "git"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "install-career-ops",
+      "name": "install-career-ops",
+      "description": "初始化 Career-Ops 到 ~/.local/share/ai-hub/career-ops",
+      "install": {
+        "default": "bash agent/career-ops/install-career-ops.sh"
+      },
+      "check": {
+        "paths": [
+          "~/.local/share/ai-hub/career-ops"
+        ]
+      }
+    }
+  ],
+  "instructions": {
+    "workflow": "先确认用户 CV、profile 和目标岗位偏好是否存在；没有则引导初始化。处理职位时先保存原始 JD/URL，再评估匹配、生成 tracker 更新，最后才生成 CV/PDF。",
+    "safety": "不要自动提交申请，不要编造履历，不要把个人 CV/联系方式发送到不必要的第三方服务。所有对外申请材料必须经用户确认。",
+    "privacy": "求职资料属于敏感个人数据，默认保存在本地 Career-Ops 工作区。输出时避免泄露身份证、住址、私人电话等非必要信息。"
+  },
+  "tips": "安装工具入口可运行: ./ai-hub.sh --install -t career-ops。使用时进入 ~/.local/share/ai-hub/career-ops 后启动 Codex/Claude。",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

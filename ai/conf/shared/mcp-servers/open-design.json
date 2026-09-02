@@ -1,0 +1,30 @@
+{
+  "id": "open-design",
+  "name": "Open Design MCP",
+  "description": "Open Design 的 MCP 服务，为 AI 客户端提供原型、图标、图片和设计系统能力。",
+  "category": "design",
+  "tags": ["设计", "原型", "MCP"],
+  "scenarios": ["design-prototype", "productivity"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://open-design.ai",
+  "repository": "https://github.com/nexu-io/open-design",
+  "install": {
+    "type": "brew",
+    "command": "brew install --cask open-design || true"
+  },
+  "config": {
+    "command": "od",
+    "args": ["mcp", "serve"],
+    "transportType": "stdio"
+  },
+  "required_tools": ["od"],
+  "status_check": [
+    {
+      "name": "检查 Open Design MCP",
+      "command": "od mcp --help >/dev/null 2>&1 && echo 'MCP 可用' || echo 'MCP 不可用'"
+    }
+  ],
+  "notes": "Open Design 的 CLI 工具定义位于 conf/tools/utility/open-design.json；本条目只描述其 MCP 服务。"
+}

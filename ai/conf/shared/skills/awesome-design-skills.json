@@ -1,0 +1,50 @@
+{
+  "id": "awesome-design-skills",
+  "name": "Awesome Design Skills",
+  "description": "67 种设计风格系统技能库 (Glassmorphism、Brutalism、Material 等)，通过 TypeUI CLI 一键拉取到项目中，为 AI 编码助手提供详细的设计令牌、组件规则和可访问性要求。",
+  "category": "design",
+  "install": {
+    "command": "echo 'TypeUI CLI 通过 npx 按需运行。用法: npx typeui.sh pull <风格名>' && echo '示例: npx typeui.sh pull glassmorphism'",
+    "check": "command -v npx"
+  },
+  "prompts": {
+    "pull": "拉取 {style} 设计风格到当前项目",
+    "generate": "交互式生成自定义设计系统",
+    "randomize": "随机生成一套本地设计系统",
+    "list": "列出所有可用的设计风格"
+  },
+  "capabilities": [
+    "67 种设计风格 - Glassmorphism、Brutalism、Neumorphism、Material、Minimal 等",
+    "一键拉取 - npx typeui.sh pull <slug> 直接写入项目",
+    "多 Agent 支持 - 兼容 35+ 种 AI 编码助手 (Cursor/Claude Code/Codex/Windsurf/Trae/Qoder 等)",
+    "SKILL.md 输出 - AI 指令含设计令牌、组件规则、可访问性要求、反模式、QA 清单",
+    "DESIGN.md 输出 - YAML 前置元数据 + 精简风格规范 (供人类参考)",
+    "交互式生成 - 自定义产品名和需求生成设计系统"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "node",
+      "npx"
+    ]
+  },
+  "tips": "所有风格安装到同一个 design-system/ 子目录，拉取新风格会覆盖旧风格。可用 --dry-run 预览。支持 DESIGN.md (项目根目录) 和 SKILL.md (Agent 目录) 两种输出格式。",
+  "homepage": "https://www.typeui.sh",
+  "repository": "https://github.com/bergside/awesome-design-skills",
+  "tags": [
+    "UI",
+    "设计系统",
+    "风格",
+    "TypeUI",
+    "Agent Skills"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

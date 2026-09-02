@@ -1,0 +1,45 @@
+{
+  "id": "headroom",
+  "name": "Headroom",
+  "description": "AI Agent 上下文压缩层，60-95% Token 节省。Library/Proxy/MCP 三种模式，支持 Claude/Codex/Cursor 等多种 Agent。",
+  "category": "context-optimizer",
+  "scenarios": [
+    "productivity",
+    "coding",
+    "context-optimizer"
+  ],
+  "tags": [
+    "上下文优化",
+    "Token优化",
+    "压缩",
+    "本地优先"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://headroom-docs.vercel.app/",
+  "repository": "https://github.com/chopratejas/headroom",
+  "prompts": {
+    "default": "使用 Headroom 压缩上下文，为 {task} 减少 Token 消耗，优先保留关键信息。",
+    "compress": "用 Headroom 压缩 {content}，目标节省 {percentage}% Token。",
+    "learn": "用 Headroom learn 分析当前会话，提取关键信息到 CLAUDE.md。"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "headroom"
+    ],
+    "system_commands": [
+      "python3",
+      "pip3",
+      "headroom"
+    ]
+  },
+  "install_check": "headroom --version",
+  "instructions": {
+    "workflow": "处理大量上下文时启用 Headroom 压缩；需要原始内容时使用 headroom_retrieve。",
+    "safety": "CCR 技术保证原始内容永不丢失，可安全压缩。"
+  },
+  "tips": "支持 Claude/Codex/Cursor/Copilot 等主流 Agent。可通过 headroom wrap claude 快速包装 Agent，或 headroom proxy --port 8787 作为代理。",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

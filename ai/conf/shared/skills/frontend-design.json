@@ -1,0 +1,49 @@
+{
+  "id": "frontend-design",
+  "name": "Frontend Design",
+  "description": "Claude 官方前端设计技能，内置成熟设计规范，生成代码干净、界面质感高级。彻底摆脱 AI 作图的廉价感，快速输出高可用 MVP 产品。",
+  "category": "design",
+  "install": {
+    "command": "npx skills add anthropics/skills --skill frontend-design",
+    "check": "test -d ~/.claude/skills/frontend-design && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "landing": "设计一个 {product} 的落地页，风格 {style}",
+    "dashboard": "设计一个 {app_type} 的管理后台界面",
+    "component": "设计一个 {component_name} 组件，要求 {requirements}",
+    "mvp": "快速生成 {product_idea} 的 MVP 原型"
+  },
+  "capabilities": [
+    "高质量 UI 生成 - 内置成熟设计规范",
+    "干净代码 - 生成可维护的前端代码",
+    "高级质感 - 摆脱 AI 作图的廉价感",
+    "MVP 快速输出 - 快速生成可用产品原型",
+    "响应式设计 - 自动适配多端"
+  ],
+  "dependencies": {
+    "platforms": [
+      "claude-code"
+    ],
+    "skills_registry": "anthropics/skills"
+  },
+  "tips": "Claude 官方出品，设计质量有保障。适合需要快速生成高质量前端界面的场景，特别是 MVP 开发和原型设计。",
+  "homepage": "https://github.com/anthropics/skills",
+  "repository": "https://github.com/anthropics/skills",
+  "tags": [
+    "前端",
+    "UI",
+    "原型",
+    "网页",
+    "页面设计图"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

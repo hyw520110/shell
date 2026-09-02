@@ -1,0 +1,44 @@
+{
+  "id": "gitnexus",
+  "name": "预计算代码助手 (GitNexus)",
+  "description": "基于离线索引的代码智能技能。利用预计算的代码逻辑图谱，为 Agent 提供极高准确率的重构、重命名和变更分析支持。",
+  "category": "coding",
+  "prompts": {
+    "nexus-analyze": "运行 gitnexus analyze 预计算当前代码库的所有依赖和调用关系。",
+    "rename-refactor": "使用 GitNexus 进行原子重命名：将 {old_name} 修改为 {new_name}，并确保更新所有引用。",
+    "impact-radius": "分析修改此核心逻辑的 'Blast Radius' (爆炸半径)，预测哪些功能点需要重新测试。"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "gitnexus"
+    ],
+    "system_commands": [
+      "gitnexus"
+    ]
+  },
+  "install_check": "gitnexus --version",
+  "instructions": {
+    "usage": "GitNexus 适合在复杂的、存在多层继承或深层回调的项目中使用。它通过 WebAssembly 本地索引，比基于 Embeddings 的语义搜索更精确（确定性逻辑）。",
+    "best_practices": [
+      "由于是本地索引，在进行大规模重构前，请务必先运行 'analyze' 以刷新图谱",
+      "结合 TDD 专家技能，利用 GitNexus 找出所有需要补写测试的调用方",
+      "对于开源库或大型组件，利用 'wiki' 命令生成可读性极高的交互式文档"
+    ]
+  },
+  "tags": [
+    "代码智能",
+    "精准重构",
+    "私有化",
+    "本地索引"
+  ],
+  "scenarios": [
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/abhigyanpatwari/GitNexus",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

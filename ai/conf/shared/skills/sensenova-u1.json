@@ -1,0 +1,68 @@
+{
+  "id": "sensenova-u1",
+  "name": "SenseNova-U1 多模态模型",
+  "description": "商汤开源的 8B 参数原生多模态统一模型，支持图文理解与生成功能。基于 NEO-Unify 架构，无需 VAE/VE 即可端到端生成高质量图像，特别适合信息图、流程图、示意图等场景。",
+  "category": "ai-multimodal",
+  "install": {
+    "command": "pip3 install torch torchvision transformers accelerate pillow -q && echo '依赖安装完成，请从 HuggingFace 下载模型: https://huggingface.co/sensenova/sensenova-u1'",
+    "check": "python3 -c 'import torch; import transformers; print(\"依赖已安装\")' 2>/dev/null || echo '未安装'"
+  },
+  "prompts": {
+    "infographic": "生成一张关于 {topic} 的信息图，要求专业美观，包含关键数据和可视化元素",
+    "diagram": "为 {concept} 创建一张流程图/示意图，清晰展示各个步骤和关系",
+    "illustration": "为 {content} 配一张插图，风格简洁专业",
+    "step_by_step": "分步骤讲解 {task} 并配图说明，每步一张图"
+  },
+  "capabilities": [
+    "图文理解 - 理解图像内容并回答问题",
+    "信息图生成 - 根据主题生成专业信息图",
+    "流程图生成 - 创建步骤说明和流程图",
+    "插图生成 - 为内容配图，风格简洁",
+    "端到端生成 - 无需 VAE，原生图像生成"
+  ],
+  "dependencies": {
+    "python_packages": [
+      "torch",
+      "torchvision",
+      "transformers",
+      "accelerate",
+      "pillow"
+    ],
+    "model_source": "https://huggingface.co/sensenova/sensenova-u1",
+    "hardware": {
+      "minimum": "8GB 显存 / 16GB 内存",
+      "recommended": "16GB 显存 / 32GB 内存",
+      "note": "8B 模型，量化后可在消费级 GPU 运行"
+    }
+  },
+  "tips": "SenseNova-U1 是端到端多模态模型，不是纯文本 LLM。使用时需要同时提供文本和图像处理能力。信息图生成效果优秀，适合制作专业图表、流程图、教学插图等场景。模型仅 8B 参数，但多模态能力强大。",
+  "homepage": "https://github.com/sensenova",
+  "repository": "https://github.com/sensenova",
+  "huggingface": "https://huggingface.co/sensenova/sensenova-u1",
+  "usage_examples": [
+    "生成一张关于 AI 发展趋势的信息图",
+    "为'如何冲泡咖啡'创建分步骤图文教程",
+    "创建一张展示公司组织架构的示意图",
+    "为技术文档生成配套架构图"
+  ],
+  "limitations": [
+    "不支持纯文本对话（非 LLM）",
+    "图像生成需要较大显存",
+    "vLLM 等推理引擎兼容性待验证",
+    "中文支持优秀，其他语言效果可能不同"
+  ],
+  "tags": [
+    "AI",
+    "编程助手",
+    "代码生成"
+  ],
+  "scenarios": [
+    "design-prototype",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

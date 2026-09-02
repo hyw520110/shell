@@ -1,0 +1,34 @@
+{
+  "id": "audit-skills",
+  "name": "Java/.NET/PHP Audit Skills",
+  "description": "面向 Java、.NET 和 PHP 的轻量化代码审计工作流，强调路由、鉴权、组件、漏洞有效性确认和只读安全边界。",
+  "category": "security",
+  "prompts": {
+    "route-auth": "使用 audit-skills 思路只读梳理源码路由、认证机制、权限配置和路由鉴权映射，输出 Markdown，并标记无法确认的部分。",
+    "vulnerability": "针对一个明确漏洞类型审计源码，例如 SQL 注入、反序列化或路径穿越；只报告真实代码可达且有证据的候选，不泛化到其他漏洞类型。",
+    "component": "检查源码中的 Java/.NET/PHP 中间件和组件版本风险，结合依赖文件和官方公告核对，不因版本号或指纹单独断言可利用漏洞。"
+  },
+  "capabilities": [
+    "Java/.NET/PHP 路由与鉴权梳理",
+    "组件漏洞和版本核对",
+    "反编译/反混淆结果的安全边界分析",
+    "漏洞有效性、影响和误报复核"
+  ],
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "instructions": {
+    "scope": "每次只审计用户指定的一类漏洞或一个审计问题；默认只读，不修改源码，不安装依赖，不执行利用。",
+    "evidence": "必须给出真实文件路径、行号、调用链、触发条件、影响边界和置信度；没有动态证据时明确标记为候选。",
+    "codex": "长任务可分轮执行并合并报告，但必须去重，列出已覆盖项、未覆盖项和审计盲区。"
+  },
+  "tags": ["安全", "代码审计", "Java", ".NET", "PHP", "白盒", "article-2026-security"],
+  "scenarios": ["security", "code-review"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/RuoJi6/audit-skills",
+  "repository": "https://github.com/RuoJi6/audit-skills",
+  "notes": "文章中的 java-audit-skills 已迁移/重定向到 RuoJi6/audit-skills；当前纳入的是只读工作流，不自动克隆或执行第三方脚本。"
+}

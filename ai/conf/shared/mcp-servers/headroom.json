@@ -1,0 +1,78 @@
+{
+  "id": "headroom",
+  "name": "Headroom",
+  "description": "AI Agent \u4e0a\u4e0b\u6587\u538b\u7f29\u5c42\uff0c\u652f\u6301 60-95% Token \u8282\u7701\u3002MCP/Library/Proxy \u4e09\u79cd\u6a21\u5f0f\uff0c\u652f\u6301 Claude/Codex/Cursor \u7b49\u591a\u79cd Agent\u3002",
+  "category": "ai",
+  "scenarios": [
+    "productivity",
+    "coding",
+    "context-optimizer"
+  ],
+  "tags": [
+    "\u4e0a\u4e0b\u6587\u4f18\u5316",
+    "Token\u4f18\u5316",
+    "MCP",
+    "\u538b\u7f29",
+    "\u672c\u5730\u4f18\u5148"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://headroom-docs.vercel.app/",
+  "repository": "https://github.com/chopratejas/headroom",
+  "install": {
+    "type": "bash",
+    "command": "bash \"${SCRIPT_DIR}/scripts/install_python_mcp.sh\" \"headroom-ai[all]\" \"--with\" \"opencv-python<=4.10.0.84\"",
+    "prerequisites": [
+      {
+        "name": "Python >= 3.10",
+        "check": "python3 -c 'import sys; exit(0 if sys.version_info >= (3, 10) else 1)'",
+        "install_hint": "brew install python@3.11 \u6216 uv python install 3.11"
+      }
+    ]
+  },
+  "config": {
+    "command": "sh",
+    "args": [
+      "-lc",
+      "headroom mcp serve"
+    ],
+    "transportType": "stdio",
+    "env": {}
+  },
+  "required_tools": [
+    "python3",
+    "headroom"
+  ],
+  "status_check": [
+    {
+      "name": "\u68c0\u67e5 Headroom CLI",
+      "command": "headroom --version >/dev/null 2>&1 && echo '\u5df2\u5b89\u88c5' || echo '\u672a\u5b89\u88c5'"
+    },
+    {
+      "name": "\u68c0\u67e5 MCP \u6a21\u5757",
+      "command": "headroom mcp --help >/dev/null 2>&1 && echo 'MCP \u53ef\u7528' || echo 'MCP \u4e0d\u53ef\u7528'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "headroom_compress",
+      "description": "\u538b\u7f29\u4e0a\u4e0b\u6587\u6d88\u606f\uff0c\u51cf\u5c11 Token \u6d88\u8017"
+    },
+    {
+      "name": "headroom_retrieve",
+      "description": "\u6309\u9700\u68c0\u7d22\u539f\u59cb\u538b\u7f29\u5185\u5bb9"
+    },
+    {
+      "name": "headroom_stats",
+      "description": "\u67e5\u770b\u538b\u7f29\u7edf\u8ba1\u4fe1\u606f"
+    },
+    {
+      "name": "headroom_learn",
+      "description": "\u4ece\u5931\u8d25\u4f1a\u8bdd\u4e2d\u5b66\u4e60\u5e76\u5199\u5165 CLAUDE.md/AGENTS.md"
+    }
+  ],
+  "notes": "Headroom \u652f\u6301\u4e09\u79cd\u6a21\u5f0f\uff1aLibrary\uff08\u5185\u8054\uff09\u3001Proxy\uff08\u4ee3\u7406\uff09\u3001MCP\uff08\u5de5\u5177\uff09\u3002\u9ed8\u8ba4\u914d\u7f6e\u4e3a MCP \u6a21\u5f0f\uff0c\u53ef\u901a\u8fc7 headroom wrap claude \u5305\u88c5\u5176\u4ed6 Agent\u3002",
+  "recommended_scenarios": "\u6839\u636e\u8be5\u5de5\u5177\u7279\u6027\u9002\u7528\u7684\u6700\u4f73\u573a\u666f\uff08\u5f85\u8865\u5145\uff09",
+  "unsuitable_scenarios": "\u4e0d\u63a8\u8350\u4f7f\u7528\u8be5\u5de5\u5177\u7684\u573a\u666f\u6216\u5c40\u9650\u6027\uff08\u5f85\u8865\u5145\uff09"
+}

@@ -1,0 +1,44 @@
+{
+  "id": "code-review-graph",
+  "name": "代码审查图谱 (Code Review Graph)",
+  "description": "基于代码语义图谱的智能 CR 技能。通过 Tree-sitter 分析变更的'影响半径'，仅向 AI 提供最相关的上下文，从而提高审查精度并节省 Token。",
+  "category": "coding",
+  "prompts": {
+    "review-delta": "使用 code-review-graph 分析我当前的 delta 变更，并根据受影响的调用链和依赖项生成 CR 建议。",
+    "architecture-bottleneck": "扫描项目图谱，识别代码库中存在的潜在架构瓶颈或过度耦合的模块。",
+    "init-graph": "在当前项目中初始化代码审查图谱：code-review-graph build"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "code-review-graph"
+    ],
+    "system_commands": [
+      "code-review-graph"
+    ]
+  },
+  "install_check": "code-review-graph --version",
+  "instructions": {
+    "usage": "推荐在大型项目中使用。在开始 CR 前，先运行 'code-review-graph build'。它会利用 SHA-256 缓存实现秒级的增量更新。",
+    "best_practices": [
+      "配合 PR-Agent 使用，可以让 PR-Agent 的建议更具架构高度",
+      "利用 'visualize' 命令生成的拓扑图来辅助人工代码审计",
+      "定期运行 'watch' 命令以保持本地图谱与代码同步"
+    ]
+  },
+  "tags": [
+    "代码智能",
+    "CR",
+    "Tree-sitter",
+    "性能优化"
+  ],
+  "scenarios": [
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/tirth8205/code-review-graph",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

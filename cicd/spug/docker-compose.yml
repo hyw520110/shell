@@ -1,0 +1,54 @@
+version: "3.3"
+
+services:
+  db:
+    image: ${DB_IMAGE:-registry.cn-hangzhou.aliyuncs.com/openspug/mariadb:10.8.2}
+    container_name: spug-db
+    restart: always
+    command: --port 3306 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    environment:
+      - MYSQL_DATABASE=spug
+      - MYSQL_USER=spug
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-spug.cc}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-spug.cc}
+    networks:
+      - spug-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-spug.cc}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  spug:
+    image: ${SPUG_IMAGE:-registry.cn-hangzhou.aliyuncs.com/openspug/spug-service}
+    container_name: spug
+    privileged: true
+    restart: always
+    volumes:
+      - ./data/service:/data/spug
+      - ./data/repos:/data/repos
+    ports:
+      - "${SPUG_PORT:-80}:80"
+    environment:
+      - MYSQL_DATABASE=spug
+      - MYSQL_USER=spug
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-spug.cc}
+      - MYSQL_HOST=db
+      - MYSQL_PORT=3306
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - spug-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+networks:
+  spug-network:
+    driver: bridge

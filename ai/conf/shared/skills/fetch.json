@@ -1,0 +1,49 @@
+{
+  "id": "fetch",
+  "name": "API 测试与接口验证",
+  "description": "使用 HTTP 请求进行 API 测试、接口验证和调试，支持 RESTful API 和 Webhook 测试",
+  "category": "development",
+  "prompts": {
+    "test_api": "测试 GET 请求 https://api.example.com/users",
+    "create_resource": "POST 创建新用户到 /api/users",
+    "update_data": "PUT 更新用户 ID 123 的信息",
+    "delete_resource": "DELETE 删除用户 ID 456",
+    "debug_webhook": "测试本地 Webhook 接收端点"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "fetch"
+    ],
+    "system_commands": [
+      "node",
+      "npm"
+    ]
+  },
+  "install_check": "npm list -g @kazuph/mcp-fetch --depth=0",
+  "instructions": {
+    "basics": "使用 fetch MCP 发送 HTTP 请求，支持 GET/POST/PUT/DELETE 方法",
+    "headers": "可在请求中自定义 Headers，如 Content-Type、Authorization 等",
+    "best_practices": [
+      "API 测试前先确认接口文档",
+      "使用环境变量存储敏感信息如 API Keys",
+      "测试 POST/PUT 前先用 GET 确认资源状态",
+      "保存常用请求作为测试用例"
+    ]
+  },
+  "tips": "配合 JSON 格式化工具使用，便于查看 API 响应",
+  "tags": [
+    "网络请求",
+    "API",
+    "数据获取"
+  ],
+  "scenarios": [
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/kazuph/mcp-fetch",
+  "repository": "https://github.com/kazuph/mcp-fetch",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

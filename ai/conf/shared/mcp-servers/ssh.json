@@ -1,0 +1,83 @@
+{
+  "id": "ssh",
+  "name": "SSH MCP Server",
+  "description": "通过 SSH 远程执行命令和管理服务器，支持远程文件操作、服务管理和系统监控",
+  "category": "ops",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @aiondadotcom/mcp-ssh"
+  },
+  "config": {
+    "command": "mcp-ssh",
+    "args": [],
+    "transportType": "stdio",
+    "env": {
+      "SSH_HOST": "${SSH_HOST:-}",
+      "SSH_PORT": "${SSH_PORT:-22}",
+      "SSH_USER": "${SSH_USER:-}",
+      "SSH_KEY_PATH": "${SSH_KEY_PATH:-~/.ssh/id_rsa}"
+    }
+  },
+  "required_tools": [
+    "node",
+    "npm",
+    "ssh"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查 SSH",
+      "command": "ssh -V 2>&1 | head -1 || echo 'SSH 未安装'"
+    },
+    {
+      "name": "检查安装",
+      "command": "npm list -g @aiondadotcom/mcp-ssh --depth=0 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "ssh_execute",
+      "description": "在远程服务器上执行命令"
+    },
+    {
+      "name": "ssh_upload",
+      "description": "上传文件到远程服务器"
+    },
+    {
+      "name": "ssh_download",
+      "description": "从远程服务器下载文件"
+    },
+    {
+      "name": "ssh_list",
+      "description": "列出远程目录内容"
+    },
+    {
+      "name": "ssh_read_file",
+      "description": "读取远程文件内容"
+    },
+    {
+      "name": "ssh_write_file",
+      "description": "写入内容到远程文件"
+    }
+  ],
+  "notes": "默认使用 @aiondadotcom/mcp-ssh。它会读取 ~/.ssh/config 和 ~/.ssh/known_hosts，适合多主机管理；如需单主机显式配置，可设置 SSH_HOST/SSH_USER 后由 ai-hub 写入环境变量。",
+  "tags": [
+    "SSH",
+    "远程连接",
+    "服务器管理"
+  ],
+  "scenarios": [
+    "coding"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/aiondadotcom/mcp-ssh",
+  "repository": "https://github.com/aiondadotcom/mcp-ssh",
+  "requires_env": [],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

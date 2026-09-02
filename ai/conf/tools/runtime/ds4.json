@@ -1,0 +1,64 @@
+{
+  "id": "ds4",
+  "name": "DS4 (DeepSeek V4 Flash)",
+  "description": "DeepSeek V4 Flash 本地推理引擎，支持 Metal/CUDA/ROCm，由 Redis 作者 antirez 开发。支持 2-bit/4-bit 量化，1M 上下文，磁盘 KV Cache。",
+  "category": "ai-runtime",
+  "tags": [
+    "ai",
+    "local",
+    "deepseek",
+    "inference",
+    "metal"
+  ],
+  "requirements": {
+    "memory": "96GB+ (2-bit量化), 256GB+ (4-bit量化)",
+    "platform": "macOS (Metal)",
+    "note": "针对 M4 Max 128GB 优化，建议使用 Q2-Imatrix 量化版"
+  },
+  "install": {
+    "methods": [
+      {
+        "name": "本地脚本安装 (针对 macOS 优化)",
+        "type": "bash",
+        "command": "bash runtime/ds4/install-ds4.sh install",
+        "check": "[ -x \"$HOME/ds4/ds4\" ]",
+        "uninstall": [
+          "bash runtime/ds4/install-ds4.sh uninstall"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "bash runtime/ds4/install-ds4.sh install",
+    "check": "[ -x \"$HOME/ds4/ds4\" ]"
+  },
+  "config": {
+    "path": "$HOME/ds4",
+    "operations": {
+      "view": "ls -la $HOME/ds4 2>/dev/null || echo 'DS4 目录不存在'",
+      "edit": "${EDITOR:-vim} $HOME/ds4/ds4.h",
+      "model-list": "bash runtime/ds4/install-ds4.sh version"
+    }
+  },
+  "commands": {
+    "start": "cd ~/ds4 && ./ds4",
+    "server": "cd ~/ds4 && ./ds4-server",
+    "version": "bash runtime/ds4/install-ds4.sh version",
+    "download-q2": "bash runtime/ds4/install-ds4.sh download q2-imatrix",
+    "download-q4": "bash runtime/ds4/install-ds4.sh download q4-imatrix"
+  },
+  "status_check": [
+    {
+      "name": "检查应用",
+      "command": "bash runtime/ds4/install-ds4.sh version"
+    }
+  ],
+  "notes": "DS4 是目前在 Mac Studio 上运行 DeepSeek V4 Flash 的最佳方案。128GB 内存请优先下载 Q2-Imatrix 版本。",
+  "post_install": [
+    {
+      "description": "模型下载指引",
+      "command": "echo '\nDS4 安装完成！\n请执行以下命令下载适合 128GB 内存的模型：\n  ./ai-hub.sh t ds4 -> 选择 download-q2\n或手动运行:\n  cd ~/ds4 && ./download_model.sh q2-imatrix\n'"
+    }
+  ]
+}

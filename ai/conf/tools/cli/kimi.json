@@ -1,0 +1,99 @@
+{
+  "id": "kimi",
+  "name": "Kimi CLI",
+  "description": "Kimi Code CLI - 终端 AI 助手，支持代码编辑、命令执行和自动化任务",
+  "category": "ai-coding",
+  "tags": ["ai", "coding", "bash", "china"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "官方脚本",
+        "type": "bash",
+        "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-kimi.XXXXXX\") && curl -LsSf 'https://code.kimi.com/install.sh' -o \"$tmp\" && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
+        "check": "command -v kimi",
+        "uninstall": [
+          "rm -f ~/.local/bin/kimi ~/.local/bin/kimi-cli",
+          "rm -rf ~/.config/kimi ~/.kimi"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-kimi.XXXXXX\") && curl -LsSf 'https://code.kimi.com/install.sh' -o \"$tmp\" && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
+    "check": "command -v kimi"
+  },
+
+  "post_install": [
+    {"description": "显示登录提示", "command": "echo -e '\\n首次使用需要运行 \\\"kimi /login\\\" 进行登录配置'"}
+  ],
+
+  "post_uninstall": [
+    {"description": "清理残留文件", "command": "rm -rf ~/.cache/kimi 2>/dev/null || true"}
+  ],
+
+  "config": {
+    "path": "$HOME/.config/kimi/config.json",
+    "operations": {
+      "view": "cat $HOME/.config/kimi/config.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.config/kimi/config.json",
+      "reset": [
+        "cp $HOME/.config/kimi/config.json $HOME/.config/kimi/config.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.config/kimi/config.json"
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "kimi",
+    "version": "kimi --version",
+    "login": "kimi /login",
+    "doctor": "kimi doctor",
+    "logs": "cat ~/.config/kimi/kimi.log 2>/dev/null || echo '日志不存在'"
+  },
+
+  "status_check": [
+    {"name": "检查进程", "command": "ps aux | grep kimi | grep -v grep"},
+    {"name": "检查版本", "command": "kimi --version 2>/dev/null || echo '未安装'"},
+    {"name": "检查配置", "command": "ls -la $HOME/.config/kimi/ 2>/dev/null || echo '配置目录不存在'"}
+  ],
+
+  "mcp_servers": {
+    "kimi-fetch": {
+      "name": "网页内容获取",
+      "type": "npm",
+      "install_command": "npm install -g @kazuph/mcp-fetch",
+      "config": {
+        "command": "npx",
+        "args": ["-y", "@kazuph/mcp-fetch"],
+        "transportType": "stdio"
+      }
+    }
+  },
+
+  "skills": {
+    "kimi-pdf": {
+      "name": "PDF 处理",
+      "description": "PDF文档读取、文本提取、格式转换能力",
+      "prompts": {
+        "extract": "提取PDF文件中的文本内容，保持原有结构和格式",
+        "summarize": "阅读并总结PDF文档的核心内容和关键信息",
+        "convert": "将PDF转换为{format}格式"
+      },
+      "dependencies": {
+        "system_commands": ["pdftotext"]
+      },
+      "install_check": "which pdftotext || which pandoc",
+      "tips": "安装 poppler-utils 可获得 pdftotext 命令用于PDF文本提取"
+    }
+  },
+
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": ["git"]
+  },
+
+  "notes": "首次使用需要运行 'kimi /login' 进行登录配置"
+}

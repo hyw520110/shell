@@ -1,0 +1,62 @@
+{
+  "id": "copilot",
+  "name": "GitHub Copilot",
+  "description": "",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @github/copilot --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g @github/copilot"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @github/copilot --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.github-copilot/settings.json",
+    "operations": {
+      "view": "cat $HOME/.github-copilot/settings.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.github-copilot/settings.json",
+      "reset": [
+        "cp $HOME/.github-copilot/settings.json $HOME/.github-copilot/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.github-copilot/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "copilot",
+    "version": "copilot --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "copilot --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.github-copilot/settings.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

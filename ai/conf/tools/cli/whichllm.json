@@ -1,0 +1,122 @@
+{
+  "id": "whichllm",
+  "name": "WhichLLM",
+  "description": "自动检测 GPU/CPU/RAM，从 HuggingFace 排名推荐最适合本地运行的 LLM 模型，支持 vLLM/Ollama/llama.cpp",
+  "category": "ai-coding",
+  "sort_key": "WhichLLM 02",
+  "tags": [
+    "ai",
+    "python",
+    "llm",
+    "model-recommendation",
+    "huggingface"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "uv tool 安装 (推荐)",
+        "type": "bash",
+        "command": "uv tool install whichllm",
+        "check": "command -v whichllm >/dev/null 2>&1 && whichllm --version",
+        "uninstall": [
+          "uv tool uninstall whichllm"
+        ]
+      },
+      {
+        "name": "pip 安装",
+        "type": "pip",
+        "command": "pip3 install whichllm",
+        "check": "pip3 show whichllm",
+        "uninstall": [
+          "pip3 uninstall -y whichllm"
+        ]
+      },
+      {
+        "name": "Homebrew 安装 (macOS)",
+        "type": "brew",
+        "command": "brew install andyyyy64/whichllm/whichllm",
+        "check": "command -v whichllm >/dev/null 2>&1 && whichllm --version",
+        "uninstall": [
+          "brew uninstall andyyyy64/whichllm/whichllm"
+        ],
+        "platform": "darwin"
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "uv tool upgrade whichllm || pip3 install --upgrade whichllm",
+    "check": "whichllm --version"
+  },
+  "config": {
+    "path": "",
+    "operations": {
+      "view": "whichllm --help",
+      "edit": "echo 'whichllm 无需配置文件，直接使用命令行参数'"
+    }
+  },
+  "commands": {
+    "start": "whichllm",
+    "version": "whichllm --version",
+    "hardware": "whichllm hardware",
+    "run": "whichllm run",
+    "snippet": "whichllm snippet",
+    "plan": "whichllm plan",
+    "upgrade": "whichllm upgrade"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "whichllm --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "硬件信息",
+      "command": "whichllm hardware 2>/dev/null || echo \"无法获取硬件信息\""
+    },
+    {
+      "name": "推荐模型",
+      "command": "whichllm --top 3 2>/dev/null || echo \"无法推荐模型\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "whichllm 自动检测 GPU/CPU/RAM，从 HuggingFace 排名推荐最适合本地运行的 LLM。国内使用需配置 HF_ENDPOINT=https://hf-mirror.com。常用命令：whichllm (推荐)、whichllm --gpu \"RTX 4090\" (模拟 GPU)、whichllm run (下载并对话)、whichllm snippet (生成代码)、whichllm plan \"llama 3 70b\" (规划所需硬件)、whichllm upgrade \"RTX 4090\" \"RTX 5090\" (对比升级)",
+  "post_install": [
+    "echo ''",
+    "echo '========================================'",
+    "echo '  WhichLLM 安装成功！'",
+    "echo '========================================'",
+    "echo ''",
+    "# 检测 HuggingFace 连通性并配置镜像",
+    "if ! curl -s --connect-timeout 5 https://huggingface.co >/dev/null 2>&1; then",
+    "  echo '[WARN] 无法直连 HuggingFace，需要配置镜像'",
+    "  if [ -z \"${HF_ENDPOINT:-}\" ]; then",
+    "    export HF_ENDPOINT=https://hf-mirror.com",
+    "    if command -v envs >/dev/null 2>&1; then",
+    "      envs add HF_ENDPOINT=https://hf-mirror.com >/dev/null 2>&1",
+    "      echo '[OK] 已通过 envs 配置 HF_ENDPOINT=https://hf-mirror.com'",
+    "    else",
+    "      echo 'export HF_ENDPOINT=\"https://hf-mirror.com\"' >> $HOME/.zshrc",
+    "      echo '[OK] 已添加 HF_ENDPOINT 到 ~/.zshrc'",
+    "    fi",
+    "    echo '请执行: source ~/.zshrc'",
+    "  fi",
+    "fi",
+    "echo ''",
+    "echo '常用命令：'",
+    "echo '  whichllm                    # 推荐本机最佳模型'",
+    "echo '  whichllm --gpu \"RTX 4090\"    # 模拟 GPU 查看推荐'",
+    "echo '  whichllm hardware           # 查看硬件信息'",
+    "echo '  whichllm run \"qwen 7b\"       # 下载并对话'",
+    "echo '  whichllm snippet \"qwen 7b\"   # 生成可运行代码'",
+    "echo '  whichllm plan \"llama 70b\"    # 规划所需硬件'",
+    "echo '  whichllm upgrade            # 对比硬件升级'",
+    "echo ''",
+    "whichllm --version 2>/dev/null || echo ''"
+  ],
+  "post_uninstall": []
+}

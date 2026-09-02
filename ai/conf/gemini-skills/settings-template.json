@@ -1,0 +1,54 @@
+{
+  "$schema": "gemini-settings-schema",
+  "mcpServers": {
+    "github": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "ghcr.io/github/github-mcp-server:latest"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/username/projects"]
+    },
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"]
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres"],
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}"
+      }
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    },
+    "codegraph": {
+      "command": "npx",
+      "args": ["-y", "@colbymchenry/codegraph", "serve", "--mcp"]
+    },
+    "ssh": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-ssh"],
+      "env": {
+        "SSH_HOST": "${SSH_HOST}",
+        "SSH_USER": "${SSH_USER}",
+        "SSH_KEY_PATH": "${SSH_KEY_PATH:-$HOME/.ssh/id_rsa}"
+      }
+    }
+  }
+}

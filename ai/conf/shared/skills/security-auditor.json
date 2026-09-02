@@ -1,0 +1,23 @@
+{
+  "id": "security-auditor",
+  "name": "Security Auditor",
+  "description": "白帽子安全审计专家。运用 Pentest MCP 工具链，进行自动化漏洞扫描、端口嗅探、SQL 注入与跨站脚本(XSS)检测分析。",
+  "category": "ops",
+  "install": {
+    "type": "custom",
+    "command": "mkdir -p ~/.gemini/skills/security-auditor"
+  },
+  "tags": [
+    "安全测试",
+    "渗透测试",
+    "漏洞审计"
+  ],
+  "scenarios": [
+    "qa-testing",
+    "ops-monitoring"
+  ],
+  "default_enabled": true,
+  "homepage": "https://github.com/google/antigravity",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

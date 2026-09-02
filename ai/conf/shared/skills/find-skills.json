@@ -1,0 +1,45 @@
+{
+  "id": "find-skills",
+  "name": "Find Skills",
+  "description": "Skill 搜索工具，Vercel Labs 出品。像'淘宝'一样搜索和发现 Claude Code Skills。安装量极高，帮助用户快速找到需要的技能。",
+  "category": "utility",
+  "install": {
+    "command": "npx skills add https://github.com/vercel-labs/skills --skill find-skills",
+    "check": "test -d ~/.claude/skills/find-skills && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "search": "帮我找 {count} 个用于 {use_case} 的 Skill",
+    "recommend": "推荐适合 {task} 的 Skills",
+    "compare": "比较 {skill1} 和 {skill2} 的优缺点",
+    "discover": "发现 {category} 类别下的热门 Skills"
+  },
+  "capabilities": [
+    "Skill 搜索 - 搜索和发现 Claude Code Skills",
+    "智能推荐 - 根据使用场景推荐合适的 Skill",
+    "对比分析 - 比较不同 Skill 的优缺点",
+    "分类浏览 - 按类别浏览热门 Skills",
+    "安装引导 - 提供一键安装命令"
+  ],
+  "dependencies": {
+    "platforms": [
+      "claude-code"
+    ],
+    "skills_registry": "vercel-labs/skills"
+  },
+  "tips": "Vercel Labs 出品，是 Skill 生态的'搜索引擎'。安装后可以直接让 Claude 帮你找需要的 Skill，如'帮我找3个用于 React 性能优化的 Skill'。",
+  "homepage": "https://github.com/vercel-labs/skills",
+  "repository": "https://github.com/vercel-labs/skills",
+  "downloads": "高安装量",
+  "tags": [
+    "技能发现",
+    "技能管理"
+  ],
+  "scenarios": [
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,53 @@
+{
+  "id": "openwolf",
+  "name": "OpenWolf",
+  "description": "Claude Code 项目记忆与 Token 跟踪中间件，通过 hooks 维护 .wolf 项目索引、记忆和 token ledger。",
+  "category": "ai-optimizer",
+  "sort_order": 400,
+  "sort_key": "OpenWolf",
+  "tags": [
+    "Claude Code",
+    "上下文记忆",
+    "Token优化",
+    "Hooks"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "NPM 全局安装",
+        "type": "npm",
+        "command": "npm install -g openwolf --registry {{npm_registry}}",
+        "check": "command -v openwolf",
+        "uninstall": [
+          "npm uninstall -g openwolf"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g openwolf --registry {{npm_registry}} --force",
+    "check": "command -v openwolf"
+  },
+  "commands": {
+    "start": "openwolf",
+    "version": "openwolf --version",
+    "init": "openwolf init"
+  },
+  "status_check": [
+    {
+      "name": "检查 OpenWolf",
+      "command": "openwolf --version 2>/dev/null || echo 'OpenWolf 未安装'"
+    },
+    {
+      "name": "检查项目 .wolf",
+      "command": "test -d .wolf && echo '.wolf 已初始化' || echo '当前项目未初始化 .wolf'"
+    }
+  ],
+  "references": {
+    "homepage": "https://github.com/cytostack/openwolf",
+    "github": "https://github.com/cytostack/openwolf",
+    "npm": "https://www.npmjs.com/package/openwolf"
+  },
+  "notes": "OpenWolf 偏 Claude Code 专用，会在项目内生成 .wolf 并接入 hooks。建议与 Context Mode、Token Savior 选择其一作为主上下文优化层。"
+}

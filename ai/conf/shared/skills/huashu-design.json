@@ -1,0 +1,53 @@
+{
+  "id": "huashu-design",
+  "name": "Huashu Design",
+  "description": "AI 驱动的设计技能包，一句话生成交付级设计。支持交互原型、演讲幻灯片、时间轴动画、信息图、设计评审等",
+  "category": "design",
+  "install": {
+    "command": "npx skills add alchaincyf/huashu-design",
+    "check": "test -f $HOME/.skills/alchaincyf/huashu-design/SKILL.md && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "prototype": "做一个{app_type}原型，{requirements}，要真能点击",
+    "slides": "做一份{topic}演讲PPT，推荐3个风格方向让我选",
+    "animation": "把这段逻辑做成{duration}秒动画，导出MP4和GIF",
+    "infographic": "把{data}做成信息图，印刷级排版",
+    "review": "对这个设计做一个5维度评审",
+    "direction": "我需要做一个{type}设计，推荐3个风格方向"
+  },
+  "capabilities": [
+    "交互原型（App/Web）- 单文件 HTML，可点击，Playwright 验证",
+    "演讲幻灯片 - HTML deck + 可编辑 PPTX",
+    "时间轴动画 - MP4/GIF 导出，支持 BGM",
+    "设计变体 - 3+ 并排对比，实时调参",
+    "信息图/可视化 - 印刷级排版，可导 PDF/PNG/SVG",
+    "设计方向顾问 - 5流派×20设计哲学推荐",
+    "5维度专家评审 - 雷达图 + Keep/Fix/Quick Wins"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "node",
+      "npx"
+    ]
+  },
+  "tips": "安装后直接在 Claude Code/Cursor 等 agent 中使用自然语言描述设计需求。支持品牌资产协议，避免 AI slop 视觉",
+  "homepage": "https://github.com/alchaincyf/huashu-design",
+  "repository": "https://github.com/alchaincyf/huashu-design",
+  "tags": [
+    "UI",
+    "交互设计",
+    "原型",
+    "页面原型"
+  ],
+  "scenarios": [
+    "productivity",
+    "product-docs",
+    "diagramming",
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

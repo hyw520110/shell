@@ -1,0 +1,217 @@
+# BanyanDB 配置文件
+# 此文件为默认配置模板，安装脚本会根据实际参数自动修改
+
+[server]
+# 服务端口
+port = 17912
+
+# gRPC 端口
+grpc-port = 17913
+
+# HTTP 端口
+http-port = 17914
+
+# 数据目录
+data-dir = "/opt/banyandb/data"
+
+# 日志目录
+log-dir = "/opt/banyandb/logs"
+
+# 日志级别 (debug, info, warn, error)
+log-level = "info"
+
+# 运行用户
+user = "banyandb"
+
+# 工作线程数 (0 表示自动检测)
+worker-threads = 0
+
+# 最大连接数
+max-connections = 1000
+
+# 连接超时时间
+connection-timeout = "30s"
+
+# 读写超时时间
+read-timeout = "60s"
+write-timeout = "60s"
+
+[storage]
+# 存储引擎配置
+engine = "rocksdb"
+
+# 最大内存使用
+max-memory = "2GB"
+
+# 写缓冲区大小
+write-buffer-size = "64MB"
+
+# 最大写缓冲区数量
+max-write-buffer-number = 3
+
+# 最小写缓冲区数量到合并
+min-write-buffer-number-to-merge = 1
+
+# Level0 文件停止写入的阈值
+level0-stop-writes-trigger = 12
+
+# Level0 文件慢触发阈值
+level0-slowdown-writes-trigger = 8
+
+# Level0 层文件数量
+level0-file-num-compaction-trigger = 4
+
+# 压缩线程数
+compaction-threads = 1
+
+# 是否启用压缩
+enable-compression = true
+
+# 压缩类型 (snappy, zlib, bz2, lz4, zstd)
+compression-type = "snappy"
+
+# 缓存大小
+cache-size = "256MB"
+
+# 缓存索引和过滤块
+cache-index-and-filter-blocks = true
+
+# 缓存压缩块
+cache-compressed-blocks = false
+
+[replication]
+# 副本数量
+replica-factor = 1
+
+# 同步超时时间
+sync-timeout = "30s"
+
+# 批量写入大小
+batch-size = "1MB"
+
+# 刷新间隔
+flush-interval = "1s"
+
+# 是否启用预写日志
+enable-wal = true
+
+# WAL 目录
+wal-dir = ""
+
+# WAL 文件大小阈值
+wal-size-limit = "1GB"
+
+# WAL TTL
+wal-ttl = "24h"
+
+[monitoring]
+# 启用监控
+enabled = true
+
+# Prometheus 指标端口
+metrics-port = 17915
+
+# 指标路径
+metrics-path = "/metrics"
+
+# 健康检查端口
+health-port = 17915
+
+# 健康检查路径
+health-path = "/health"
+
+# 启用 pprof
+enable-pprof = false
+
+# pprof 端口
+pprof-port = 17916
+
+[security]
+# 启用认证
+auth-enabled = false
+
+# TLS 证书路径 (如果启用 TLS)
+cert-file = ""
+key-file = ""
+ca-file = ""
+
+# 客户端 CA 文件
+client-ca-file = ""
+
+# 是否验证客户端证书
+verify-client = false
+
+# 允许的来源地址
+allowed-origins = ["*"]
+
+[logging]
+# 日志格式 (json, text)
+format = "text"
+
+# 日志输出 (stdout, file)
+output = "file"
+
+# 日志文件轮转
+enable-rotation = true
+
+# 日志文件最大大小
+max-size = "100MB"
+
+# 保留的日志文件数量
+max-files = 10
+
+# 日志文件压缩
+compress = true
+
+[cluster]
+# 集群名称
+name = "default"
+
+# 节点 ID (自动生成)
+node-id = ""
+
+# 发现方式 (static, etcd, consul)
+discovery = "static"
+
+# 静态节点列表
+static-nodes = []
+
+# etcd 配置
+[cluster.etcd]
+endpoints = ["http://127.0.0.1:2379"]
+username = ""
+password = ""
+timeout = "5s"
+
+# Consul 配置
+[cluster.consul]
+address = "127.0.0.1:8500"
+datacenter = "dc1"
+token = ""
+
+[performance]
+# 内存限制
+memory-limit = "2GB"
+
+# CPU 限制 (0 表示不限制)
+cpu-limit = 0
+
+# 批处理大小
+batch-size = 1000
+
+# 批处理超时
+batch-timeout = "100ms"
+
+# 并发查询数
+max-concurrent-queries = 100
+
+# 查询超时
+query-timeout = "30s"
+
+# 最大扫描行数
+max-scan-rows = 1000000
+
+[experimental]
+# 实验性功能开关
+enable-feature-x = false
+enable-feature-y = false

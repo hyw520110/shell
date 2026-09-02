@@ -1,0 +1,50 @@
+{
+  "id": "antigravity-ide",
+  "name": "Google Antigravity IDE",
+  "description": "Google 官方推出的 AI 原生 IDE，内置强大的 Antigravity Agent 和被动式补全体验",
+  "category": "ai-ide",
+  "tags": ["ai", "ide", "google", "antigravity"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "官方脚本安装",
+        "type": "bash",
+        "command": "curl -fsSL https://antigravity.google/ide/install.sh | bash",
+        "check": "[ -d '/Applications/Antigravity.app' ] || [ -d '/Applications/Google Antigravity.app' ]",
+        "uninstall": [
+          "echo '请手动在 /Applications 中删除 Antigravity 应用'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "curl -fsSL https://antigravity.google/ide/install.sh | bash",
+    "check": "[ -d '/Applications/Antigravity.app' ] || [ -d '/Applications/Google Antigravity.app' ]"
+  },
+
+  "config": {
+    "path": "$HOME/Library/Application Support/Antigravity/User/settings.json",
+    "operations": {
+      "view": "cat \"$HOME/Library/Application Support/Antigravity/User/settings.json\" 2>/dev/null || echo '配置文件不存在'",
+      "edit": "open -a Antigravity 2>/dev/null || echo '请在 IDE 中手动打开设置'"
+    }
+  },
+
+  "commands": {
+    "start": "open -a Antigravity"
+  },
+
+  "status_check": [
+    {
+      "name": "检查应用",
+      "command": "[ -d '/Applications/Antigravity.app' ] || [ -d '/Applications/Google Antigravity.app' ] && echo '已安装' || echo '未安装'"
+    }
+  ],
+
+  "mcp_servers": {},
+  "skills": {},
+  "notes": "Antigravity IDE 提供了 Sidebar Chat、Inline Command 和 Antigravity Tab (Autocomplete) 三种 AI 交互模式。"
+}

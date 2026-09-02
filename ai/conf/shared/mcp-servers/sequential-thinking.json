@@ -1,0 +1,53 @@
+{
+  "id": "sequential-thinking",
+  "name": "Sequential Thinking",
+  "description": "提供结构化的多步思考框架，增强 AI 的逻辑推理、动态修正和分支分析能力",
+  "category": "ai",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @modelcontextprotocol/server-sequential-thinking",
+    "post_install": [
+      {
+        "description": "缓存 npx 运行时避免首次超时",
+        "command": "npx -y @modelcontextprotocol/server-sequential-thinking --help >/dev/null 2>&1 || true"
+      }
+    ]
+  },
+  "config": {
+    "command": "mcp-server-sequential-thinking",
+    "args": [],
+    "transportType": "stdio"
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查安装",
+      "command": "npm list -g @modelcontextprotocol/server-sequential-thinking --depth=0 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "tags": [
+    "推理",
+    "逻辑",
+    "思维链",
+    "规划"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequential-thinking",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

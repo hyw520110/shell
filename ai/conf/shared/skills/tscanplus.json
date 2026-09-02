@@ -1,0 +1,39 @@
+{
+  "id": "tscanplus",
+  "name": "TscanPlus 安全侦察 Skill",
+  "description": "在明确授权范围内使用 TscanPlus/TscanClient 进行资产识别、URL 指纹、低影响 JS 收集和结果整理；可选连接 TscanPlus MCP。",
+  "category": "security",
+  "prompts": {
+    "authorized-recon": "仅对用户明确授权的资产进行 TscanPlus 侦察。先复述目标、范围、模块、并发与是否包含 POC；默认只用 url,js 或 ip_scan 的小端口集合，不启用 crack、默认口令、全端口、大网段或 poc_full。",
+    "web-triage": "使用 TscanPlus 对已授权 URL 做低影响指纹和 JS 信息收集，把信息发现、漏洞候选和已验证漏洞分开，不把版本暴露或组件识别直接称为漏洞。",
+    "report": "根据实际工具输出生成 Markdown 结果，记录目标授权依据、时间、模块、请求规模、证据、影响边界、误报排除和复核建议。"
+  },
+  "capabilities": [
+    "授权目标的端口/URL/技术指纹侦察",
+    "低影响 JS 接口与敏感信息线索收集",
+    "将 TscanPlus 结果与 Nuclei、ZAP、Burp 复核流程衔接",
+    "MCP/CLI 参数和结果的报告化整理"
+  ],
+  "dependencies": {
+    "mcp_servers": ["tscanplus"],
+    "system_commands": ["tscanclient"]
+  },
+  "instructions": {
+    "authorization": "没有明确书面授权时拒绝远程扫描；不得把公益 SRC 页面本身或搜索到的资产当作自动授权。",
+    "safe_defaults": [
+      "默认使用 url,js；目录枚举需单独说明并保持低并发",
+      "不调用 crack、pwd_crack、默认口令、poc_full、全端口、C 段和空间测绘",
+      "不自动利用、写入、删除、上传或提交漏洞",
+      "发现候选后必须通过独立证据和影响边界复核"
+    ],
+    "mcp": "优先使用 ip_scan、url_scan、js_scan；只有在授权实验室和用户明确指定时才讨论 poc_scan，且不把它作为默认流水线。"
+  },
+  "tags": ["安全", "资产侦察", "Web", "MCP", "TscanPlus", "article-2026-security"],
+  "scenarios": ["security", "qa-testing"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/TideSec/TscanPlus",
+  "repository": "https://github.com/TideSec/TscanPlus",
+  "notes": "官方 TscanPlus Skill 兼容 MCP/CLI，但其完整能力含 POC、弱口令和目录枚举；本条目仅定义保守工作流，安装前应审查官方 Skill 内容。"
+}

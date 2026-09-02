@@ -1,0 +1,63 @@
+{
+  "id": "flowise",
+  "name": "Flowise",
+  "description": "基于无代码/低代码拖拽界面的 LLM 工作流构建工具，可快速组装 LangChain 和 LlamaIndex 流程。",
+  "category": "ai-builder",
+  "sort_order": 2480,
+  "sort_key": "Flowise",
+  "tags": ["workbench", "langchain", "no-code", "npm"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "NPM 全局安装",
+        "type": "npm",
+        "package": "flowise",
+        "command": "npm install -g flowise",
+        "check": "command -v flowise >/dev/null 2>&1",
+        "uninstall": [
+          "npm uninstall -g flowise"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "npm update -g flowise",
+    "check": "command -v flowise >/dev/null 2>&1"
+  },
+
+  "config": {
+    "path": "$HOME/.flowise",
+    "operations": {
+      "view": "ls -l $HOME/.flowise 2>/dev/null || echo '配置目录不存在'",
+      "edit": "open $HOME/.flowise 2>/dev/null || echo '无法打开配置目录'"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "CLI 状态",
+      "command": "command -v flowise >/dev/null 2>&1 && flowise --version || echo '未安装或不在 PATH 中'"
+    },
+    {
+      "name": "服务进程",
+      "command": "pgrep -f flowise >/dev/null 2>&1 && echo '运行中' || echo '未运行'"
+    }
+  ],
+
+  "commands": {
+    "start": "npx flowise start",
+    "start_bg": "nohup npx flowise start > $HOME/.flowise/flowise.log 2>&1 & echo 'Flowise 已在后台启动 (端口 3000)'",
+    "stop": "pkill -f flowise || echo 'Flowise 未在运行'",
+    "logs": "tail -f $HOME/.flowise/flowise.log"
+  },
+
+  "prompts": {
+    "create_chain": "如何在 Flowise 中搭建一个结合搜索引擎和 LLM 的简单 LangChain 链？",
+    "integrate_api": "说明如何将 Flowise 搭建好的流程通过 API 暴露给其他应用使用。"
+  },
+
+  "notes": "Flowise 默认运行在 3000 端口。推荐使用 '操作 -> start_bg' 在后台运行它。如果要使用账号密码保护，可以在启动时设置 FLOWISE_USERNAME 和 FLOWISE_PASSWORD 环境变量。项目主页: https://github.com/FlowiseAI/Flowise"
+}

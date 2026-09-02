@@ -1,0 +1,17 @@
+version: '3'
+services:
+  openvpn:
+    build: .
+    ports:
+      - "1194:1194/udp"
+      - "443:443/tcp"
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./data:/etc/openvpn
+    networks:
+      - openvpn_network
+
+networks:
+  openvpn_network:
+    driver: bridge

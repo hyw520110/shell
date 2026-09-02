@@ -1,0 +1,49 @@
+{
+  "id": "filesystem",
+  "name": "File System MCP",
+  "description": "智能文件管理工具，安全的文件系统访问，智能文件搜索和目录结构分析",
+  "category": "utility",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @modelcontextprotocol/server-filesystem"
+  },
+  "config": {
+    "command": "sh",
+    "args": [
+      "-c",
+      "exec mcp-server-filesystem \"$HOME\""
+    ],
+    "transportType": "stdio",
+    "env": {}
+  },
+  "status_check": [
+    {
+      "name": "检查安装",
+      "command": "npm list -g @modelcontextprotocol/server-filesystem --depth=0"
+    }
+  ],
+  "tags": [
+    "文件系统",
+    "文件管理",
+    "数据存储"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "product-docs",
+    "diagramming",
+    "design-prototype",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://modelcontextprotocol.io",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

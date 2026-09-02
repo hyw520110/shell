@@ -1,0 +1,75 @@
+{
+  "id": "openmanus",
+  "name": "OpenManus",
+  "description": "开源通用 AI Agent 框架，支持 Computer Use、Browser Use、MCP 工具调用和多 Agent 协同。由 MetaGPT 团队开发，无需邀请码即可使用",
+  "category": "ai-agent",
+  "tags": ["ai", "agents", "computer-use", "browser-use", "mcp", "python"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "uv 安装（推荐）",
+        "type": "custom",
+        "command": "if ! command -v uv &>/dev/null; then curl -LsSf https://astral.sh/uv/install.sh | sh; fi && git clone https://github.com/FoundationAgents/OpenManus.git && cd OpenManus && uv venv --python 3.12 && source .venv/bin/activate && uv pip install -r requirements.txt && cp config/config.example.toml config/config.toml",
+        "check": "cd OpenManus && source .venv/bin/activate && python main.py --help 2>/dev/null",
+        "uninstall": ["rm -rf OpenManus"]
+      },
+      {
+        "name": "conda 安装",
+        "type": "custom",
+        "command": "conda create -n open_manus python=3.12 -y && conda activate open_manus && git clone https://github.com/FoundationAgents/OpenManus.git && cd OpenManus && pip install -r requirements.txt && cp config/config.example.toml config/config.toml",
+        "check": "cd OpenManus && python main.py --help 2>/dev/null",
+        "uninstall": ["rm -rf OpenManus", "conda remove -n open_manus --all -y"]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "cd OpenManus && git pull && source .venv/bin/activate && uv pip install -r requirements.txt",
+    "check": "cd OpenManus && source .venv/bin/activate && python main.py --help 2>/dev/null"
+  },
+
+  "post_install": [
+    {"description": "显示配置提示", "command": "echo -e '\\n请编辑 OpenManus/config/config.toml 配置 LLM API Key\\n推荐模型: gpt-4o / claude-sonnet-4-20250514\\n如使用本地 vLLM，设置 base_url 为 http://localhost:8000/v1'"},
+    {"description": "可选安装浏览器自动化", "command": "cd OpenManus && source .venv/bin/activate && playwright install 2>/dev/null || echo 'Playwright 安装跳过 (可选)'"}
+  ],
+
+  "post_uninstall": [],
+
+  "config": {
+    "path": "OpenManus/config/config.toml",
+    "operations": {
+      "view": "cat OpenManus/config/config.toml 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} OpenManus/config/config.toml",
+      "reset": [
+        "cp OpenManus/config/config.toml OpenManus/config/config.toml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "cp OpenManus/config/config.example.toml OpenManus/config/config.toml"
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "cd OpenManus && source .venv/bin/activate && python main.py",
+    "mcp_mode": "cd OpenManus && source .venv/bin/activate && python run_mcp.py",
+    "multi_agent": "cd OpenManus && source .venv/bin/activate && python run_flow.py",
+    "version": "cd OpenManus && git describe --tags 2>/dev/null || git log --oneline -1"
+  },
+
+  "status_check": [
+    {"name": "检查安装", "command": "ls -d OpenManus 2>/dev/null && echo '已安装' || echo '未安装'"},
+    {"name": "检查虚拟环境", "command": "ls OpenManus/.venv/bin/activate 2>/dev/null && echo 'venv 就绪' || echo 'venv 不存在'"},
+    {"name": "检查配置", "command": "ls OpenManus/config/config.toml 2>/dev/null && echo '配置已创建' || echo '配置未创建'"}
+  ],
+
+  "mcp_servers": {},
+
+  "skills": {},
+
+  "references": {
+    "shared_mcp_servers": ["fetch", "playwright", "umi-ocr"],
+    "shared_skills": ["umi-ocr"]
+  },
+
+  "notes": "需要配置 LLM API (GPT-4o / Claude 等)。可搭配本地 vLLM 服务使用。三种运行模式: 单 Agent (main.py)、MCP 模式 (run_mcp.py)、多 Agent 协同 (run_flow.py)"
+}

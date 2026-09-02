@@ -1,0 +1,64 @@
+{
+  "id": "antigravity",
+  "name": "Google Antigravity CLI",
+  "description": "Google Antigravity 官方命令行 AI Coding Agent，安装后提供 agy 命令。适合作为 Gemini CLI 之外的 Google 系 AI 编码代理入口。",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "coding",
+    "agent",
+    "google",
+    "antigravity",
+    "cli"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "官方安装脚本（安全下载后执行）",
+        "type": "bash",
+        "command": "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+        "check": "command -v agy >/dev/null 2>&1 || [ -x \"$HOME/.local/bin/agy\" ]",
+        "uninstall": [
+          {
+            "description": "删除 Antigravity CLI 二进制文件",
+            "command": "if [ -f \"$HOME/.local/bin/agy\" ]; then rm -f \"$HOME/.local/bin/agy\" && echo '已删除 ~/.local/bin/agy'; else echo '未发现 ~/.local/bin/agy'; fi"
+          }
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.gemini/config/mcp_config.json",
+    "operations": {
+      "view": "cat $HOME/.gemini/config/mcp_config.json 2>/dev/null || echo 'MCP 配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.gemini/config/mcp_config.json"
+    }
+  },
+  "commands": {
+    "start": "agy",
+    "version": "agy --version 2>/dev/null || $HOME/.local/bin/agy --version 2>/dev/null || echo '未安装'",
+    "help": "agy --help 2>/dev/null || $HOME/.local/bin/agy --help 2>/dev/null || echo '未安装'"
+  },
+  "status_check": [
+    {
+      "name": "检查 agy 命令",
+      "command": "command -v agy 2>/dev/null || [ -x \"$HOME/.local/bin/agy\" ] && echo 'agy 已安装' || echo 'agy 未安装'"
+    },
+    {
+      "name": "检查版本",
+      "command": "agy --version 2>/dev/null || $HOME/.local/bin/agy --version 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "Antigravity CLI 属于 AI Coding Agent/CLI 工具。agy 的运行设置位于 ~/.gemini/antigravity-cli/settings.json，MCP 配置位于 ~/.gemini/config/mcp_config.json，Skills 使用 ~/.gemini/skills。"
+}

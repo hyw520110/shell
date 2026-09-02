@@ -1,0 +1,65 @@
+{
+  "id": "goose",
+  "name": "Goose",
+  "description": "AAIF / Linux Foundation 下的本地开源 AI Agent，提供桌面 App、CLI 和 API，支持 15+ LLM Provider 和 70+ MCP 扩展。",
+  "category": "ai-agent",
+  "tags": [
+    "AI Agent",
+    "MCP",
+    "CLI",
+    "Desktop",
+    "AAIF"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "官方 CLI 安装脚本",
+        "type": "bash",
+        "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-goose.XXXXXX\") && curl -fsSL -o \"$tmp\" https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
+        "check": "goose --version"
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-goose.XXXXXX\") && curl -fsSL -o \"$tmp\" https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
+    "check": "goose --version"
+  },
+  "config": {
+    "path": "$HOME/.config/goose",
+    "operations": {
+      "view": "ls -la $HOME/.config/goose 2>/dev/null || echo 'Goose 配置目录不存在'",
+      "edit": "open $HOME/.config/goose 2>/dev/null || ${EDITOR:-vim} $HOME/.config/goose"
+    }
+  },
+  "commands": {
+    "start": "goose",
+    "version": "goose --version",
+    "help": "goose --help"
+  },
+  "status_check": [
+    {
+      "name": "检查 Goose CLI",
+      "command": "goose --version 2>/dev/null || echo 'Goose 未安装'"
+    },
+    {
+      "name": "检查配置目录",
+      "command": "ls -la $HOME/.config/goose 2>/dev/null || echo 'Goose 配置目录不存在'"
+    }
+  ],
+  "prompts": {
+    "start-agent": "使用 Goose 处理当前项目任务，并说明如何配置 Provider 和 MCP 扩展。",
+    "mcp-setup": "帮我把当前 AI Hub 已配置的 MCP 能力迁移或同步到 Goose。"
+  },
+  "notes": "安装后需要按 Goose 引导配置 LLM Provider。Goose 支持 MCP，适合作为本地通用 Agent 工作台。",
+  "homepage": "https://goose-docs.ai/",
+  "repository": "https://github.com/aaif-goose/goose",
+  "scenarios": [
+    "agent-workbench",
+    "productivity",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false
+}

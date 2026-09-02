@@ -1,0 +1,54 @@
+{
+  "id": "architecture-diagram-generator",
+  "name": "高级架构图生成 (Architecture Diagram Generator)",
+  "description": "基于 Cocoon AI 的高保真架构图生成技能。专门用于生成具有专业美感的暗黑风格（Dark Mode）系统架构图。支持导出为 HTML/SVG，能自动处理 Mermaid 渲染和布局优化。",
+  "category": "diagramming",
+  "tags": [
+    "架构图",
+    "设计",
+    "可视化",
+    "Mermaid",
+    "暗黑风格"
+  ],
+  "install": {
+    "command": "npx skills add Cocoon-AI/architecture-diagram-generator",
+    "check": "test -d ~/.claude/skills/architecture-diagram-generator -o -d ~/.cursor/rules/architecture-diagram-generator.mdc && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "system-arch": "为我的 {product_name} 生成一个高保真暗黑风格架构图。包含：入口网关、核心服务、缓存层和数据库集群。",
+    "cloud-native": "生成一个基于 Kubernetes 的云原生拓扑图，展示 Ingress, Service 负载均衡和跨区高可用方案。",
+    "security-zones": "绘制系统的网络安全分区图，重点展示 DMZ 区、内网区和堡垒机的连接关系。",
+    "sequence-diagram": "为 {transaction_flow} 绘制一个精美的时序图，确保遵循暗黑美学标准。"
+  },
+  "capabilities": [
+    "高保真暗黑主题 - 生成看起来像专业设计师制作的架构图",
+    "多格式渲染 - 支持 SVG 矢量导出和交互式 HTML 预览",
+    "Mermaid 语法增强 - 自动修复常见布局错位和连线重叠",
+    "云组件库 - 内置 AWS, GCP, Azure 及常用开源中间件的高质量图标映射"
+  ],
+  "dependencies": {
+    "platforms": [
+      "claude-code",
+      "cursor",
+      "gemini"
+    ],
+    "system_commands": [
+      "npx"
+    ]
+  },
+  "tips": "这是目前 AI 领域生成架构图效果最好的技能之一。相比原生的 Mermaid，它在色彩搭配和阴影细节上做了深度优化。建议在进行架构评审或编写技术文档时使用。",
+  "notes": "安装后，AI 助手将具备一种'架构师级'的审美眼光。它不仅能画出逻辑，还能画出艺术感。",
+  "homepage": "https://github.com/Cocoon-AI/architecture-diagram-generator",
+  "repository": "https://github.com/Cocoon-AI/architecture-diagram-generator",
+  "scenarios": [
+    "productivity",
+    "product-docs",
+    "diagramming",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "growth-hacker",
+  "name": "Growth Hacker",
+  "description": "增长黑客与全栈运营自动化专家。通过 n8n 或 Zapier 构建复杂的营销工作流，进行邮件滴灌、数据搜刮与自动分发。",
+  "category": "ai",
+  "install": {
+    "type": "custom",
+    "command": "mkdir -p ~/.gemini/skills/growth-hacker"
+  },
+  "tags": [
+    "自动化运营",
+    "增长黑客",
+    "n8n",
+    "RPA"
+  ],
+  "scenarios": [
+    "marketing-ops"
+  ],
+  "default_enabled": true,
+  "homepage": "https://github.com/google/antigravity",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

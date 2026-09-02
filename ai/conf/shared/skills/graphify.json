@@ -1,0 +1,43 @@
+{
+  "id": "graphify",
+  "name": "多模态图谱助手 (Graphify)",
+  "description": "基于知识图谱的深度代码理解技能。通过提取代码逻辑、SQL Schema 和相关文档的关联关系，为 AI 提供全局架构视野。",
+  "category": "coding",
+  "prompts": {
+    "graph-init": "使用 /graphify . 为当前工作区构建知识图谱，包含对 SQL 和文档的跨维度映射。",
+    "arch-query": "利用知识图谱回答：{question}。请结合模块依赖和调用链进行分析。",
+    "impact-map": "分析修改 {symbol} 导致的跨层级（API -> Service -> DB）的影响范围。",
+    "add-doc": "将此文档/链接加入图谱知识库：/graphify add {url}"
+  },
+  "dependencies": {
+    "system_commands": [
+      "graphify"
+    ]
+  },
+  "install_check": "graphify --version",
+  "instructions": {
+    "usage": "Graphify 是 CodeGraph 的多模态升级版。它不仅看代码，还能看数据库和业务文档。推荐在处理跨层级重构时启用。",
+    "best_practices": [
+      "在大型项目中，先运行 'graphify export callflow-html' 查看直观的可视化图",
+      "配合 Context Handoff 技能，可以将图谱摘要作为会话接力的核心上下文",
+      "利用其 'God Nodes' 识别功能来寻找代码库中的技术债集中点"
+    ]
+  },
+  "tags": [
+    "代码智能",
+    "图谱",
+    "架构",
+    "多模态"
+  ],
+  "scenarios": [
+    "coding",
+    "productivity",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/safishamsi/graphify",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

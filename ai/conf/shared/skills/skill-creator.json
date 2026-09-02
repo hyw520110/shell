@@ -1,0 +1,45 @@
+{
+  "id": "skill-creator",
+  "name": "Skill Creator",
+  "description": "创建新 Skill 的工具，37.4K 安装量。如果 find-skills 是'淘宝'，那 skill-creator 就是'工厂'。帮助用户快速创建符合规范的 Claude Code Skill。",
+  "category": "development",
+  "install": {
+    "command": "npx skills add https://github.com/vercel-labs/skills --skill skill-creator",
+    "check": "test -d ~/.claude/skills/skill-creator && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "create": "创建一个 {skill_name} Skill，功能是 {description}",
+    "template": "生成一个 {category} 类型的 Skill 模板",
+    "validate": "检查我的 Skill 是否符合规范",
+    "publish": "帮我准备发布 Skill 到 GitHub"
+  },
+  "capabilities": [
+    "Skill 创建 - 快速生成符合规范的 Skill 文件",
+    "模板生成 - 提供各类 Skill 模板",
+    "规范验证 - 检查 Skill 是否符合 Claude Code 规范",
+    "发布准备 - 帮助准备 Skill 发布到 GitHub",
+    "最佳实践 - 内置 Skill 编写最佳实践"
+  ],
+  "dependencies": {
+    "platforms": [
+      "claude-code"
+    ],
+    "skills_registry": "vercel-labs/skills"
+  },
+  "tips": "Vercel Labs 出品，安装量 37.4K。适合想要创建自定义 Skill 的开发者，可以快速生成符合规范的 Skill 文件。",
+  "homepage": "https://github.com/vercel-labs/skills",
+  "repository": "https://github.com/vercel-labs/skills",
+  "downloads": "37,400+",
+  "tags": [
+    "技能创建",
+    "工具开发"
+  ],
+  "scenarios": [
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

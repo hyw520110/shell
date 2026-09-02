@@ -1,0 +1,62 @@
+{
+  "id": "clawdbot",
+  "name": "Clawdbot",
+  "description": "",
+  "category": "ai-agent",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g clawdbot --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g clawdbot"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g clawdbot --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.clawdbot/settings.json",
+    "operations": {
+      "view": "cat $HOME/.clawdbot/settings.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.clawdbot/settings.json",
+      "reset": [
+        "cp $HOME/.clawdbot/settings.json $HOME/.clawdbot/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.clawdbot/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "clawdbot",
+    "version": "clawdbot --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "clawdbot --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.clawdbot/settings.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

@@ -1,0 +1,1920 @@
+#!/bin/bash
+
+# adl (Aria2 Downloader) - 并行下载加速与自动环境配置工具
+# 功能：
+#   - 自动安装 aria2，提供并行、断点续传下载
+#   - 检测代理端口，可用则配置代理，不可用则绕过
+#   - 下载失败自动重试（小文件有限次数，大文件无限重试）
+#   - 支持自动配置环境变量
+
+set -euo pipefail
+
+# === 颜色定义 ===
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly CYAN='\033[0;36m'
+readonly NC='\033[0m'
+
+# === 日志函数 ===
+log_info() { echo -e "${GREEN}[INFO]${NC} $*" >&2; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $*" >&2; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+success() { echo -e "${GREEN}[OK]${NC} $*" >&2; }
+
+# === 检测系统 ===
+detect_os() {
+    case "$(uname -s)" in
+        Darwin*) echo "macos" ;;
+        Linux*) echo "linux" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+# === 真实代理验证 - 使用实际请求测试 ===
+verify_proxy_available() {
+    local proxy_url="$1"
+    local test_url="${ADL_PROXY_TEST_URL:-https://github.com/favicon.ico}"
+    local timeout="${ADL_PROXY_TEST_TIMEOUT:-5}"
+
+    command -v curl >/dev/null 2>&1 || return 1
+
+    if env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy -u no_proxy -u NO_PROXY \
+        curl -f -L --connect-timeout "$timeout" --max-time "$timeout" \
+        --proxy "$proxy_url" \
+        -o /dev/null -s "$test_url" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    return 1
+}
+
+normalize_proxy_url() {
+    local proxy_str="$1"
+
+    if [[ "$proxy_str" != *"://"* ]]; then
+        proxy_str="http://${proxy_str}"
+    fi
+
+    printf '%s\n' "$proxy_str"
+}
+
+proxy_host_port() {
+    local proxy_url="$1"
+    local endpoint host port
+
+    endpoint="${proxy_url#*://}"
+    endpoint="${endpoint#*@}"
+    endpoint="${endpoint%%/*}"
+
+    [[ "$endpoint" == *:* ]] || return 1
+    host="${endpoint%:*}"
+    port="${endpoint##*:}"
+    [[ -n "$host" && "$port" =~ ^[0-9]+$ ]] || return 1
+
+    printf '%s\t%s\n' "$host" "$port"
+}
+
+is_interactive_terminal() {
+    [[ -t 0 && -t 1 ]]
+}
+
+tcp_port_open() {
+    local host="$1"
+    local port="$2"
+
+    command -v nc >/dev/null 2>&1 || return 1
+
+    nc -z -G 1 "$host" "$port" >/dev/null 2>&1 && return 0
+    nc -z -w 1 "$host" "$port" >/dev/null 2>&1 && return 0
+    return 1
+}
+
+# === 解析完整代理URL并验证 ===
+parse_and_verify_proxy() {
+    local proxy_str="$1"
+
+    proxy_str=$(normalize_proxy_url "$proxy_str")
+
+    if verify_proxy_available "$proxy_str"; then
+        printf '%s\n' "$proxy_str"
+        return 0
+    fi
+
+    return 1
+}
+
+clear_proxy_env() {
+    unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
+    export no_proxy="*"
+    export NO_PROXY="*"
+}
+
+set_proxy_env() {
+    local proxy_var="$1"
+    export http_proxy="$proxy_var"
+    export https_proxy="$proxy_var"
+    export HTTP_PROXY="$proxy_var"
+    export HTTPS_PROXY="$proxy_var"
+    export ALL_PROXY="$proxy_var"
+    export all_proxy="$proxy_var"
+    unset no_proxy NO_PROXY
+}
+
+confirm_lan_proxy_scan() {
+    local default="${ADL_LAN_PROXY_SCAN_DEFAULT:-yes}"
+    local prompt_suffix="[Y/n]"
+    local answer
+
+    [[ "${ADL_LAN_PROXY_SCAN:-ask}" != "ask" ]] && return 1
+    is_interactive_terminal || return 1
+
+    case "$default" in
+        0|false|False|FALSE|no|No|NO|n|N)
+            prompt_suffix="[y/N]"
+            ;;
+    esac
+
+    read -r -p "未检测到可用本地代理，是否探测局域网代理服务? ${prompt_suffix}: " answer
+    if [[ -z "$answer" ]]; then
+        answer="$default"
+    fi
+
+    case "$answer" in
+        y|Y|yes|Yes|YES|1|true|True|TRUE) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+get_lan_hosts() {
+    local ip=""
+    local prefix=""
+    local scan_full="${ADL_LAN_PROXY_SCAN_FULL:-1}"
+
+    if command -v ipconfig >/dev/null 2>&1; then
+        ip=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)
+    fi
+
+    if [[ -z "$ip" ]] && command -v hostname >/dev/null 2>&1; then
+        ip=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+    fi
+
+    if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        prefix="${ip%.*}"
+        if [[ "$scan_full" == "1" || "$scan_full" == "true" || "$scan_full" == "yes" ]]; then
+            local i
+            for i in $(seq 1 254); do
+                printf '%s\n' "${prefix}.${i}"
+            done
+        else
+            printf '%s\n' "${prefix}.1"
+            printf '%s\n' "${prefix}.2"
+            printf '%s\n' "${prefix}.100"
+            printf '%s\n' "${prefix}.254"
+        fi
+    fi
+
+    # 常见网关/宿主机地址，去重由调用方处理。
+    printf '%s\n' \
+        "192.168.0.1" "192.168.1.1" "192.168.2.1" \
+        "10.0.0.1" "172.16.0.1" \
+        "host.docker.internal"
+}
+
+find_lan_proxy() {
+    local ports=(
+        7890
+        7891
+        7897
+        1080
+        8118
+        10871
+    )
+    local schemes=("http" "socks5h")
+    local tmpdir
+    local pids=()
+    local seen_hosts=""
+    local max_wait_tenths="${ADL_LAN_PROXY_SCAN_WAIT_TENTHS:-80}"
+    local max_jobs="${ADL_LAN_PROXY_SCAN_JOBS:-64}"
+    local active_jobs=0
+
+    tmpdir=$(mktemp -d)
+    log_info "正在探测局域网常见代理服务..."
+
+    wait_for_scan_batch() {
+        local pid
+        for pid in "${pids[@]}"; do
+            wait "$pid" 2>/dev/null || true
+        done
+        pids=()
+        active_jobs=0
+    }
+
+    wait_for_scan_slot() {
+        while [[ "$active_jobs" -ge "$max_jobs" ]]; do
+            wait_for_scan_batch
+        done
+    }
+
+    while IFS= read -r host; do
+        [[ -n "$host" ]] || continue
+        case " $seen_hosts " in
+            *" $host "*) continue ;;
+        esac
+        seen_hosts="${seen_hosts} ${host}"
+
+        for port in "${ports[@]}"; do
+            wait_for_scan_slot
+            (
+                tcp_port_open "$host" "$port" || exit 0
+                printf '%s\t%s\n' "$host" "$port" >> "$tmpdir/open"
+            ) &
+            pids+=("$!")
+            active_jobs=$((active_jobs + 1))
+        done
+    done < <(get_lan_hosts)
+
+    wait_for_scan_batch
+
+    local proxy_var=""
+    local host port scheme proxy verified
+    if [[ -f "$tmpdir/open" ]]; then
+        while IFS=$'\t' read -r host port; do
+            for scheme in "${schemes[@]}"; do
+                proxy="${scheme}://${host}:${port}"
+                if verified=$(parse_and_verify_proxy "$proxy" 2>/dev/null); then
+                    proxy_var="$verified"
+                    break 2
+                fi
+            done
+        done < "$tmpdir/open"
+    fi
+
+    rm -rf "$tmpdir"
+
+    [[ -n "$proxy_var" ]] || return 1
+    log_info "检测到局域网代理: $proxy_var"
+    printf '%s\n' "$proxy_var"
+}
+
+find_available_proxy() {
+    # 常见的代理端口
+    local common_proxies=(
+        "http://127.0.0.1:7890"   # Clash/V2Ray 默认
+        "socks5h://127.0.0.1:7890" # Clash mixed/SOCKS，远端解析 DNS
+        "socks5://127.0.0.1:7890"
+        "http://127.0.0.1:7891"   # Clash Meta
+        "socks5h://127.0.0.1:7891"
+        "http://127.0.0.1:7897"   # Clash Verge/部分客户端
+        "socks5h://127.0.0.1:7897"
+        "socks5://127.0.0.1:1080"  # 通用代理
+        "socks5h://127.0.0.1:1080"
+        "http://127.0.0.1:8118"   # Privoxy
+        "socks5://127.0.0.1:10871"  # SOCKS
+        "socks5h://127.0.0.1:10871"
+    )
+
+    local proxy_var=""
+    local listened_proxies=()
+    local proxy_mode="${ADL_PROXY_MODE:-auto}"
+
+    # 显式指定代理优先级最高；ADL_PROXY_MODE=proxy 时允许跳过验证强制使用。
+    if [[ -n "${ADL_PROXY:-}" ]]; then
+        local explicit_proxy
+        explicit_proxy=$(normalize_proxy_url "$ADL_PROXY")
+        if verified=$(parse_and_verify_proxy "$explicit_proxy" 2>/dev/null); then
+            log_info "使用 ADL_PROXY 指定代理: $verified"
+            printf '%s\n' "$verified"
+            return 0
+        fi
+
+        if [[ "$proxy_mode" == "proxy" ]]; then
+            log_warn "ADL_PROXY 验证失败，但已按 ADL_PROXY_MODE=proxy 强制使用: $explicit_proxy"
+            printf '%s\n' "$explicit_proxy"
+            return 0
+        fi
+
+        log_warn "ADL_PROXY 验证失败，将继续检测其他代理: $explicit_proxy"
+    fi
+
+    # 先检查环境变量中的代理
+    for var in http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY; do
+        local val="${!var:-}"
+        if [[ -n "$val" ]]; then
+            local verified
+            if verified=$(parse_and_verify_proxy "$val" 2>/dev/null); then
+                log_info "检测到环境变量代理: $verified"
+                proxy_var="$verified"
+                break
+            elif [[ "$proxy_mode" == "proxy" ]]; then
+                local normalized
+                normalized=$(normalize_proxy_url "$val")
+                log_warn "$var 验证失败，但已按 ADL_PROXY_MODE=proxy 强制使用: $normalized"
+                proxy_var="$normalized"
+                break
+            fi
+        fi
+    done
+
+    # 如果环境变量没有，并行扫描常见端口
+    if [[ -z "$proxy_var" ]]; then
+        log_info "正在并行检测常见代理端口..."
+        local tmpdir
+        tmpdir=$(mktemp -d)
+        local pids=()
+
+        for proxy in "${common_proxies[@]}"; do
+            (
+                local verified
+                if verified=$(parse_and_verify_proxy "$proxy" 2>/dev/null); then
+                    printf '%s\n' "$verified" > "$tmpdir/ok"
+                else
+                    local hp host port
+                    if hp=$(proxy_host_port "$proxy" 2>/dev/null); then
+                        IFS=$'\t' read -r host port <<< "$hp"
+                        if tcp_port_open "$host" "$port"; then
+                            printf '%s\t%s\n' "$proxy" "listened" >> "$tmpdir/listened"
+                        fi
+                    fi
+                fi
+            ) &
+            pids+=("$!")
+        done
+
+        # 等待第一个成功的结果（最多3秒）
+        local waited=0
+        while [[ "$waited" -lt 30 ]]; do
+            if [[ -f "$tmpdir/ok" ]]; then
+                proxy_var=$(head -1 "$tmpdir/ok")
+                log_info "检测到代理: $proxy_var"
+                break
+            fi
+            sleep 0.1
+            waited=$((waited + 1))
+        done
+
+        # 清理后台进程
+        for pid in "${pids[@]}"; do
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+        done
+
+        # 收集监听的代理（用于提示）
+        if [[ -f "$tmpdir/listened" ]]; then
+            while IFS=$'\t' read -r proxy _; do
+                listened_proxies+=("$proxy")
+            done < "$tmpdir/listened"
+        fi
+
+        rm -rf "$tmpdir"
+
+        # 如果并行探测未找到但 proxy_mode=proxy，使用第一个监听的
+        if [[ -z "$proxy_var" && "${#listened_proxies[@]}" -gt 0 && "$proxy_mode" == "proxy" ]]; then
+            proxy_var="${listened_proxies[0]}"
+            log_warn "代理端口已监听但请求验证失败，按 ADL_PROXY_MODE=proxy 使用: $proxy_var"
+        fi
+    fi
+
+    if [[ -z "$proxy_var" && "${#listened_proxies[@]}" -gt 0 ]]; then
+        log_warn "检测到代理端口监听但验证请求失败: ${listened_proxies[*]}"
+        log_warn "如需强制使用，可设置: ADL_PROXY=${listened_proxies[0]} ADL_PROXY_MODE=proxy"
+    fi
+
+    if [[ -z "$proxy_var" ]]; then
+        case "${ADL_LAN_PROXY_SCAN:-ask}" in
+            1|true|True|TRUE|yes|Yes|YES|on|ON)
+                proxy_var=$(find_lan_proxy || true)
+                ;;
+            ask)
+                if confirm_lan_proxy_scan; then
+                    proxy_var=$(find_lan_proxy || true)
+                fi
+                ;;
+        esac
+    fi
+
+    [[ -n "$proxy_var" ]] || return 1
+    printf '%s\n' "$proxy_var"
+}
+
+measure_download_speed() {
+    local url="$1"
+    local mode="$2"
+    local proxy_var="${3:-}"
+    local timeout="${ADL_SPEED_TEST_SECONDS:-8}"
+    local bytes="${ADL_SPEED_TEST_BYTES:-1048576}"
+    local speed=""
+
+    command -v curl >/dev/null 2>&1 || { echo 0; return 0; }
+
+    if [[ "$mode" == "proxy" ]]; then
+        speed=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
+            curl -fL --range "0-$((bytes - 1))" --max-redirs 10 \
+            --connect-timeout 5 --max-time "$timeout" \
+            --proxy "$proxy_var" \
+            -o /dev/null -sS -w "%{speed_download}" "$url" 2>/dev/null || true)
+    else
+        speed=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
+            curl -fL --range "0-$((bytes - 1))" --max-redirs 10 \
+            --connect-timeout 5 --max-time "$timeout" \
+            --noproxy "*" \
+            -o /dev/null -sS -w "%{speed_download}" "$url" 2>/dev/null || true)
+    fi
+
+    awk -v s="${speed:-0}" 'BEGIN { if (s > 0) printf "%d\n", s; else print 0 }'
+}
+
+get_file_size_bytes() {
+    local file="$1"
+    [[ -f "$file" ]] || { echo 0; return 0; }
+
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        stat -f%z "$file" 2>/dev/null || echo 0
+    else
+        stat -c%s "$file" 2>/dev/null || echo 0
+    fi
+}
+
+get_remote_size_bytes() {
+    local url="$1"
+    local mode="$2"
+    local proxy_var="${3:-}"
+    local header=""
+
+    command -v curl >/dev/null 2>&1 || { echo 0; return 0; }
+
+    if [[ "$mode" == "proxy" ]]; then
+        header=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
+            curl -fIL --max-redirs 10 --connect-timeout 5 --max-time 10 \
+            --proxy "$proxy_var" "$url" 2>/dev/null || true)
+    else
+        header=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
+            curl -fIL --max-redirs 10 --connect-timeout 5 --max-time 10 \
+            --noproxy "*" "$url" 2>/dev/null || true)
+    fi
+
+    local size
+    size=$(awk '{
+            line=tolower($0)
+        }
+        line ~ /^content-length:/ {
+            gsub("\r", "", $2)
+            size=$2
+        }
+        line ~ /^content-range:/ {
+            gsub("\r", "", $0)
+            if (match($0, /\/[0-9]+$/)) size=substr($0, RSTART + 1)
+        }
+        END {if (size ~ /^[0-9]+$/) print size; else print 0}' <<< "$header")
+
+    if [[ "${size:-0}" -gt 0 ]]; then
+        echo "$size"
+        return 0
+    fi
+
+    # 部分代理或服务器对 HEAD 不返回 Content-Length；用 0-0 Range GET 兜底。
+    if [[ "$mode" == "proxy" ]]; then
+        header=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
+            curl -fsSL --range 0-0 -D - --max-redirs 10 --connect-timeout 5 --max-time 10 \
+            --proxy "$proxy_var" -o /dev/null "$url" 2>/dev/null || true)
+    else
+        header=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
+            curl -fsSL --range 0-0 -D - --max-redirs 10 --connect-timeout 5 --max-time 10 \
+            --noproxy "*" -o /dev/null "$url" 2>/dev/null || true)
+    fi
+
+    awk '{
+            line=tolower($0)
+        }
+        line ~ /^content-range:/ {
+            gsub("\r", "", $0)
+            if (match($0, /\/[0-9]+$/)) size=substr($0, RSTART + 1)
+        }
+        END {if (size ~ /^[0-9]+$/) print size; else print 0}' <<< "$header"
+}
+
+expected_size_bytes() {
+    if [[ "${ADL_EXPECTED_SIZE_BYTES:-0}" =~ ^[0-9]+$ && "${ADL_EXPECTED_SIZE_BYTES:-0}" -gt 0 ]]; then
+        echo "$ADL_EXPECTED_SIZE_BYTES"
+        return 0
+    fi
+    if [[ "${ADL_EXPECTED_SIZE_GB:-0}" =~ ^[0-9]+$ && "${ADL_EXPECTED_SIZE_GB:-0}" -gt 0 ]]; then
+        echo $((ADL_EXPECTED_SIZE_GB * 1024 * 1024 * 1024))
+        return 0
+    fi
+    echo 0
+}
+
+remote_size_is_suspicious() {
+    local url="$1"
+    local filename="$2"
+    local remote_size="$3"
+    local expected_size
+
+    [[ "$remote_size" =~ ^[0-9]+$ ]] || return 0
+    [[ "$remote_size" -gt 0 ]] || return 0
+
+    expected_size=$(expected_size_bytes)
+    if [[ "$expected_size" -gt 0 && "$remote_size" -lt $((expected_size / 10)) ]]; then
+        return 0
+    fi
+
+    # Hugging Face/Xet 的大文件 HEAD 有时只返回 LFS pointer/元数据大小。
+    if [[ "$filename" == *.gguf || "$url" == *"huggingface.co"* || "$url" == *"xethub.hf.co"* ]]; then
+        [[ "$remote_size" -lt $((1024 * 1024 * 1024)) ]] && return 0
+    fi
+
+    return 1
+}
+
+format_bytes() {
+    local bytes="${1:-0}"
+    awk -v b="$bytes" 'BEGIN {
+        if (b >= 1073741824) printf "%.2f GiB", b / 1073741824;
+        else if (b >= 1048576) printf "%.2f MiB", b / 1048576;
+        else if (b >= 1024) printf "%.1f KiB", b / 1024;
+        else printf "%d B", b;
+    }'
+}
+
+format_speed() {
+    local speed="${1:-0}"
+    awk -v s="$speed" 'BEGIN {
+        if (s >= 1048576) printf "%.2f MiB/s", s / 1048576;
+        else if (s >= 1024) printf "%.1f KiB/s", s / 1024;
+        else printf "%d B/s", s;
+    }'
+}
+
+should_skip_proxy_speed_test() {
+    local url="$1"
+    local dir="$2"
+    local filename="$3"
+    local proxy_var="$4"
+    local skip_bytes="${ADL_PROXY_SPEED_TEST_SKIP_BYTES:-67108864}"
+    local skip_seconds="${ADL_PROXY_SPEED_TEST_SKIP_SECONDS:-30}"
+    local assumed_speed="${ADL_PROXY_SPEED_TEST_ASSUME_BPS:-5242880}"
+    local remote_size=0
+    ADL_REMOTE_SIZE_MODE="direct"
+
+    remote_size=$(get_remote_size_bytes "$url" "direct")
+    if [[ "$remote_size" -eq 0 && -n "$proxy_var" ]]; then
+        remote_size=$(get_remote_size_bytes "$url" "proxy" "$proxy_var")
+        [[ "$remote_size" -gt 0 ]] && ADL_REMOTE_SIZE_MODE="proxy"
+    fi
+
+    [[ "$remote_size" -gt 0 ]] || return 1
+    if remote_size_is_suspicious "$url" "$filename" "$remote_size"; then
+        log_warn "远端大小探测结果异常: $(format_bytes "$remote_size")，将按大文件处理并继续测速。"
+        return 1
+    fi
+
+    local local_size remaining estimated_seconds
+    local_size=$(get_file_size_bytes "$dir/$filename")
+    if [[ "$local_size" -gt "$remote_size" ]]; then
+        local_size=0
+    fi
+    remaining=$((remote_size - local_size))
+    estimated_seconds=$(( (remaining + assumed_speed - 1) / assumed_speed ))
+
+    if [[ "$remaining" -le "$skip_bytes" ]]; then
+        log_info "剩余文件较小，跳过代理测速。"
+        return 0
+    fi
+
+    if [[ "$estimated_seconds" -le "$skip_seconds" ]]; then
+        log_info "预计下载时间较短，跳过代理测速。"
+        return 0
+    fi
+
+    return 1
+}
+
+# === 自动检测并配置代理 ===
+detect_and_config_proxy() {
+    local url="${1:-}"
+    local dir="${2:-}"
+    local filename="${3:-}"
+
+    if [[ "${ADL_NO_PROXY:-0}" == "1" || "${ADL_DISABLE_PROXY:-0}" == "1" || "${ADL_PROXY_MODE:-auto}" == "direct" ]]; then
+        log_info "已按配置禁用代理，将直连下载"
+        clear_proxy_env
+        return 0
+    fi
+
+    local proxy_var=""
+    proxy_var=$(find_available_proxy || true)
+
+    if [[ -z "$proxy_var" ]]; then
+        log_warn "未检测到可用代理，将直连下载"
+        clear_proxy_env
+        return 0
+    fi
+
+    if [[ "${ADL_PROXY_MODE:-auto}" == "proxy" ]]; then
+        set_proxy_env "$proxy_var"
+        log_info "已按 ADL_PROXY_MODE=proxy 强制使用代理: $proxy_var"
+        return 0
+    fi
+
+    if [[ -z "$url" || "${ADL_PROXY_SPEED_TEST:-1}" == "0" ]]; then
+        set_proxy_env "$proxy_var"
+        log_info "代理已配置: $proxy_var"
+        return 0
+    fi
+
+    if [[ -n "$dir" && -n "$filename" ]] && should_skip_proxy_speed_test "$url" "$dir" "$filename" "$proxy_var"; then
+        # 跳过测速时默认使用代理（未测速无法证明直连可用）
+        set_proxy_env "$proxy_var"
+        log_info "跳过测速，使用代理下载: $proxy_var"
+        return 0
+    fi
+
+    log_info "开始测速以选择直连或代理..."
+    local direct_speed proxy_speed
+    direct_speed=$(measure_download_speed "$url" "direct")
+    proxy_speed=$(measure_download_speed "$url" "proxy" "$proxy_var")
+    log_info "直连测速: $(format_speed "$direct_speed")；代理测速: $(format_speed "$proxy_speed")"
+
+    if [[ "$direct_speed" -gt 0 && "$direct_speed" -ge "$proxy_speed" ]]; then
+        clear_proxy_env
+        log_info "选择直连下载"
+    elif [[ "$proxy_speed" -gt 0 ]]; then
+        set_proxy_env "$proxy_var"
+        if [[ "$direct_speed" -eq 0 ]]; then
+            log_info "直连不可用，选择代理下载: $proxy_var"
+        else
+            log_info "选择代理下载: $proxy_var"
+        fi
+    else
+        clear_proxy_env
+        log_warn "直连和代理测速均失败，先尝试直连下载"
+    fi
+}
+
+# 只刷新当前进程 PATH，不写入 ~/.zshrc 或其他 shell 配置。
+refresh_homebrew_path() {
+    local brew_bin
+    for brew_bin in /opt/homebrew/bin /usr/local/bin /home/linuxbrew/.linuxbrew/bin; do
+        [[ -d "$brew_bin" ]] || continue
+        case ":${PATH:-}:" in
+            *":$brew_bin:"*) ;;
+            *)
+                if [[ -n "${PATH:-}" ]]; then
+                    PATH="$brew_bin:$PATH"
+                else
+                    PATH="$brew_bin"
+                fi
+                ;;
+        esac
+    done
+    export PATH
+}
+
+sudo_user_has_homebrew() {
+    local user="$1"
+    sudo -u "$user" bash -lc 'command -v brew >/dev/null 2>&1 || [[ -x /opt/homebrew/bin/brew || -x /usr/local/bin/brew || -x /home/linuxbrew/.linuxbrew/bin/brew ]]'
+}
+
+install_aria2_for_sudo_user() {
+    local user="$1"
+    sudo -u "$user" bash -lc '
+        if command -v brew >/dev/null 2>&1; then
+            brew install aria2
+        elif [[ -x /opt/homebrew/bin/brew ]]; then
+            /opt/homebrew/bin/brew install aria2
+        elif [[ -x /usr/local/bin/brew ]]; then
+            /usr/local/bin/brew install aria2
+        elif [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
+            /home/linuxbrew/.linuxbrew/bin/brew install aria2
+        else
+            exit 127
+        fi
+
+        command -v aria2c >/dev/null 2>&1 || [[ -x /opt/homebrew/bin/aria2c || -x /usr/local/bin/aria2c || -x /home/linuxbrew/.linuxbrew/bin/aria2c ]]
+    ' 2>&1
+}
+
+# === 安全的自动安装 Homebrew (macOS) ===
+ensure_homebrew() {
+    if [[ "${ADL_AUTO_INSTALL:-0}" != "1" ]]; then
+        log_info "ADL_AUTO_INSTALL=0，跳过自动安装 Homebrew"
+        return 1
+    fi
+
+    refresh_homebrew_path
+
+    if command -v brew &> /dev/null; then
+        local brew_version
+        brew_version=$(brew --version 2>/dev/null | head -1 || true)
+        if [[ -n "$brew_version" ]]; then
+            log_info "Homebrew 已安装: $brew_version"
+        else
+            log_info "Homebrew 已安装"
+        fi
+        return 0
+    fi
+
+    if [[ "$EUID" -eq 0 ]]; then
+        log_warn "检测到以 root 用户运行"
+        log_info "Homebrew 不支持以 root 用户安装"
+
+        if [[ -n "${SUDO_USER:-}" ]]; then
+            log_info "尝试通过 sudo 用户 $SUDO_USER 安装..."
+
+            if sudo_user_has_homebrew "$SUDO_USER"; then
+                log_info "Homebrew 在用户空间已安装"
+                return 0
+            fi
+
+            if curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | sudo -u "$SUDO_USER" env NONINTERACTIVE=1 /bin/bash 2>&1; then
+                log_info "Homebrew 安装完成"
+                refresh_homebrew_path
+                return 0
+            fi
+        fi
+
+        log_error "无法以 root 用户安装 Homebrew"
+        log_info "建议：以普通用户身份运行 adl，或手动安装 aria2"
+        return 1
+    fi
+
+    log_info "正在安装 Homebrew..."
+
+    # 使用国内镜像加速
+    export HOMEBREW_INSTALL_FROM_API=1
+    export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
+    export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
+
+    if curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | env NONINTERACTIVE=1 /bin/bash 2>&1; then
+        log_info "Homebrew 安装完成"
+        refresh_homebrew_path
+        if command -v brew &> /dev/null; then
+            return 0
+        fi
+        log_error "Homebrew 安装完成，但当前会话未找到 brew"
+        log_info "请手动执行 Homebrew 提示的 shellenv 命令后重试"
+        return 1
+    fi
+
+    log_error "Homebrew 安装失败"
+    return 1
+}
+
+# === 智能重试策略 ===
+# 小文件（<100MB）：有限次数重试
+# 大文件（≥100MB）：无限重试，利用断点续传
+smart_retry_logic() {
+    local attempt="$1"
+    local max_small_file_attempts="${ADL_MAX_RETRIES_SMALL:-5}"
+    local max_large_file_attempts="${ADL_MAX_RETRIES_LARGE:-0}"  # 0 表示无限
+    local remote_size="$2"
+    local small_file_threshold=$((100 * 1024 * 1024))  # 100MB
+
+    if [[ "$remote_size" -ge "$small_file_threshold" ]]; then
+        # 大文件：0 表示无限，否则最多 N 次
+        [[ "$max_large_file_attempts" -eq 0 ]] && return 0
+        [[ $attempt -le $max_large_file_attempts ]] && return 0
+    else
+        # 小文件：最多 N 次
+        [[ $attempt -le $max_small_file_attempts ]] && return 0
+    fi
+
+    return 1
+}
+
+# 计算重试等待时间（指数退避）
+get_retry_wait() {
+    local attempt="$1"
+    local base_wait="${ADL_RETRY_BASE_WAIT:-2}"
+    local max_wait="${ADL_RETRY_MAX_WAIT:-60}"
+
+    local wait=$((base_wait * (2 ** (attempt - 1))))
+    [[ $wait -gt $max_wait ]] && wait=$max_wait
+    echo $wait
+}
+
+# === aria2c 退出码诊断 ===
+aria2_exit_code_diag() {
+    local code="$1"
+    case "$code" in
+        0)  echo "下载成功" ;;
+        1)  echo "未知错误" ;;
+        2)  echo "超时" ;;
+        3)  echo "资源未找到 (404/403)" ;;
+        4)  echo "达到最大重试次数" ;;
+        5)  echo "下载未完成" ;;
+        6)  echo "服务器不支持断点续传" ;;
+        7)  echo "磁盘空间不足" ;;
+        8)  echo "文件已存在且大小一致" ;;
+        9)  echo "校验和验证失败" ;;
+        10) echo "下载目录不存在或不可写" ;;
+        11) echo "SSL/TLS 握手失败" ;;
+        12) echo "SSL/TLS 证书验证失败" ;;
+        13) echo "SSL/TLS 证书过期" ;;
+        14) echo "SSL/TLS 证书无效" ;;
+        15) echo "SSL/TLS 证书不受信任" ;;
+        16) echo "SSL/TLS 证书主机名不匹配" ;;
+        17) echo "SSL/TLS 证书自签名" ;;
+        18) echo "SSL/TLS 证书链不完整" ;;
+        19) echo "SSL/TLS 证书撤销" ;;
+        20) echo "SSL/TLS 证书无效日期" ;;
+        21) echo "SSL/TLS 证书扩展无效" ;;
+        22) echo "SSL/TLS 证书用途无效" ;;
+        23) echo "SSL/TLS 证书策略无效" ;;
+        24) echo "SSL/TLS 证书名称约束无效" ;;
+        *)  echo "aria2c 退出码: $code" ;;
+    esac
+}
+
+# === 智能镜像：自动为常见受限源添加镜像 ===
+auto_mirror() {
+    local url="$1"
+    local mirrors=()
+
+    # Hugging Face -> hf-mirror.com
+    if [[ "$url" == *"huggingface.co"* && "$url" != *"hf-mirror.com"* ]]; then
+        local mirror_url
+        mirror_url=$(echo "$url" | sed 's|huggingface\.co|hf-mirror.com|g')
+        mirrors+=("$mirror_url")
+        log_info "检测到 Hugging Face 源，自动添加镜像: hf-mirror.com"
+    fi
+
+    # GitHub Release -> ghproxy.com / ghps.cc
+    if [[ "$url" == *"github.com"* && "$url" == *"/releases/download/"* ]]; then
+        local mirror_url
+        mirror_url=$(echo "$url" | sed 's|https://github\.com|https://ghps.cc/https://github.com|g')
+        mirrors+=("$mirror_url")
+        log_info "检测到 GitHub Release，自动添加镜像: ghps.cc"
+    fi
+
+    # 避免空数组时 unbound variable 错误
+    if [[ ${#mirrors[@]} -gt 0 ]]; then
+        printf '%s\n' "${mirrors[@]}"
+    fi
+}
+
+# === 自动检测侧边校验和文件 ===
+auto_detect_checksum() {
+    local url="$1"
+    local dir="$2"
+    local filename="$3"
+
+    # 如果已手动设置 ADL_SHA256，跳过自动检测
+    [[ -n "${ADL_SHA256:-}" ]] && return 0
+
+    local base_url
+    base_url="${url%/*}"
+
+    local checksum_url=""
+    local checksum_type=""
+
+    # 尝试检测常见的校验和文件
+    for ext in .sha256 .sha256sum .SHA256SUMS .md5 .md5sum; do
+        local candidate="${base_url}/${filename}${ext}"
+        if curl -fL --max-redirs 5 --connect-timeout 5 --max-time 10 \
+            -o /dev/null -s "$candidate" 2>/dev/null; then
+            checksum_url="$candidate"
+            checksum_type="${ext#.}"
+            break
+        fi
+    done
+
+    # 也尝试检测目录级 SHA256SUMS 文件
+    if [[ -z "$checksum_url" ]]; then
+        local sums_url="${base_url}/SHA256SUMS"
+        if curl -fL --max-redirs 5 --connect-timeout 5 --max-time 10 \
+            -o /dev/null -s "$sums_url" 2>/dev/null; then
+            checksum_url="$sums_url"
+            checksum_type="sha256sums"
+        fi
+    fi
+
+    [[ -z "$checksum_url" ]] && return 0
+
+    log_info "检测到校验和文件: $checksum_url"
+
+    local checksum_content
+    checksum_content=$(curl -fL --max-redirs 5 --connect-timeout 5 --max-time 10 \
+        -s "$checksum_url" 2>/dev/null || true)
+
+    [[ -z "$checksum_content" ]] && return 0
+
+    local expected=""
+    case "$checksum_type" in
+        sha256|sha256sum)
+            expected=$(echo "$checksum_content" | awk '{print $1}' | head -1)
+            ;;
+        SHA256SUMS|sha256sums)
+            expected=$(echo "$checksum_content" | grep -F "$filename" | awk '{print $1}' | head -1)
+            ;;
+        md5|md5sum)
+            expected=$(echo "$checksum_content" | awk '{print $1}' | head -1)
+            ;;
+    esac
+
+    if [[ -n "$expected" ]]; then
+        expected=$(printf '%s' "$expected" | tr '[:upper:]' '[:lower:]')
+        if [[ "$expected" =~ ^[a-f0-9]{64}$ ]]; then
+            ADL_SHA256="$expected"
+            ADL_SHA256_AUTO=1
+            log_info "自动提取 SHA256: ${expected:0:16}..."
+        else
+            log_warn "校验和文件内容无效，跳过自动 SHA256 校验: ${expected:0:32}..."
+        fi
+    fi
+}
+
+# === 配置文件支持 ===
+load_adlrc() {
+    local rc_files=(
+        "${ADL_RC:-}"
+        "$HOME/.adlrc"
+        "${XDG_CONFIG_HOME:-$HOME/.config}/adl/config"
+        "/etc/adl.conf"
+    )
+
+    for rc in "${rc_files[@]}"; do
+        [[ -z "$rc" ]] && continue
+        [[ -f "$rc" ]] || continue
+
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            # 跳过注释和空行
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            [[ -z "${line// /}" ]] && continue
+
+            # 解析 KEY=VALUE
+            if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                local key="${line%%=*}"
+                local value="${line#*=}"
+                # 去除首尾引号
+                value="${value#\"}"
+                value="${value%\"}"
+                value="${value#\'}"
+                value="${value%\'}"
+
+                # 仅当环境变量未设置时才应用配置
+                if [[ -z "${!key:-}" ]]; then
+                    export "$key=$value"
+                fi
+            fi
+        done < "$rc"
+
+        log_info "已加载配置文件: $rc"
+        break
+    done
+}
+
+# === 安全的自动安装 aria2（默认不自动安装） ===
+ensure_aria2() {
+    refresh_homebrew_path
+
+    if command -v aria2c &> /dev/null; then
+        log_info "aria2 已安装: $(aria2c --version | head -1)"
+        return 0
+    fi
+
+    # 默认不自动安装
+    if [[ "${ADL_AUTO_INSTALL:-0}" != "1" ]]; then
+        log_info "ADL_AUTO_INSTALL=0，跳过自动安装 aria2"
+        log_info "提示: 手动安装 aria2 或设置 ADL_AUTO_INSTALL=1 启用自动安装"
+        return 1
+    fi
+
+    local os=$(detect_os)
+    log_info "正在自动安装 aria2..."
+
+    case "$os" in
+        macos)
+            # 先确保 Homebrew 已安装
+            ensure_homebrew || {
+                log_error "Homebrew 安装失败，无法自动安装 aria2"
+                return 1
+            }
+            refresh_homebrew_path
+            if command -v aria2c &> /dev/null; then
+                log_info "aria2 安装完成"
+                return 0
+            fi
+
+            if [[ "$EUID" -eq 0 ]] && [[ -n "${SUDO_USER:-}" ]] && sudo_user_has_homebrew "$SUDO_USER"; then
+                if install_aria2_for_sudo_user "$SUDO_USER"; then
+                    refresh_homebrew_path
+                    log_info "aria2 安装成功"
+                    return 0
+                fi
+                log_error "通过 sudo 用户安装 aria2 失败"
+                return 1
+            fi
+
+            if ! command -v brew &> /dev/null; then
+                log_error "未找到 brew，无法自动安装 aria2"
+                return 1
+            fi
+
+            if brew install aria2 2>&1; then
+                refresh_homebrew_path
+                log_info "aria2 安装成功"
+                return 0
+            fi
+
+            log_error "Homebrew 安装 aria2 失败"
+            return 1
+            ;;
+        linux)
+            if command -v apt-get &> /dev/null; then
+                if ! sudo apt-get update || ! sudo apt-get install -y aria2; then
+                    log_error "apt 安装 aria2 失败"
+                    return 1
+                fi
+            elif command -v yum &> /dev/null; then
+                if ! sudo yum install -y aria2; then
+                    log_error "yum 安装 aria2 失败"
+                    return 1
+                fi
+            elif command -v dnf &> /dev/null; then
+                if ! sudo dnf install -y aria2; then
+                    log_error "dnf 安装 aria2 失败"
+                    return 1
+                fi
+            else
+                log_error "不支持的包管理器，请手动安装 aria2"
+                return 1
+            fi
+            ;;
+        *)
+            log_error "不支持的操作系统"
+            return 1
+            ;;
+    esac
+
+    log_info "aria2 安装完成"
+}
+
+# === 自动配置环境变量（分离为独立命令） ===
+setup_env() {
+    set +u
+    refresh_homebrew_path
+    local script_dir
+    script_dir=$(cd "$(dirname "${BASH_SOURCE[0]:-./adl}")" && pwd) || return 1
+    local script_path="${script_dir}/$(basename "${BASH_SOURCE[0]:-adl}")"
+
+    # --- 1. 确定安装目录（优先已存在的有效链接） ---
+    local install_dir=""
+    local install_path=""
+    local candidate_dirs=()
+
+    # 已有软链接且指向正确 → 直接复用其所在目录
+    local existing_link
+    if existing_link=$(command -v adl 2>/dev/null); then
+        local link_target
+        link_target=$(readlink -f "$existing_link" 2>/dev/null || readlink "$existing_link" 2>/dev/null || true)
+        if [[ -n "$link_target" && "$link_target" == "$script_path" ]]; then
+            install_dir=$(cd "$(dirname "$existing_link")" && pwd)
+            install_path="$install_dir/adl"
+        fi
+    fi
+
+    # 按优先级选择候选目录
+    if [[ -z "$install_dir" ]]; then
+        for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+            candidate_dirs+=("$d")
+        done
+        for d in "${candidate_dirs[@]}"; do
+            if [[ -d "$d" && -w "$d" ]]; then
+                install_dir="$d"
+                install_path="$install_dir/adl"
+                break
+            fi
+        done
+    fi
+
+    # 兜底：~/.local/bin（不存在则创建）
+    if [[ -z "$install_dir" ]]; then
+        install_dir="$HOME/.local/bin"
+        install_path="$install_dir/adl"
+        mkdir -p "$install_dir" 2>/dev/null || true
+    fi
+
+    # --- 2. 检测并创建软链接 ---
+    local link_ok=false
+    if [[ -L "$install_path" ]]; then
+        local current_target
+        current_target=$(readlink -f "$install_path" 2>/dev/null || readlink "$install_path" 2>/dev/null || true)
+        if [[ "$current_target" == "$script_path" ]]; then
+            link_ok=true
+            log_info "adl 软链接已正确: $install_path -> $script_path"
+        fi
+    elif [[ -x "$install_path" ]]; then
+        # 存在可执行文件但不是软链接，检查是否同文件
+        if cmp -s "$install_path" "$script_path" 2>/dev/null; then
+            link_ok=true
+            log_info "adl 已安装: $install_path"
+        fi
+    fi
+
+    if [[ "$link_ok" != true ]]; then
+        mkdir -p "$install_dir" 2>/dev/null || true
+        if [[ -d "$install_dir" && -w "$install_dir" ]]; then
+            if ln -sf "$script_path" "$install_path" 2>/dev/null || cp "$script_path" "$install_path" 2>/dev/null; then
+                chmod +x "$install_path" 2>/dev/null || true
+                log_info "已配置 adl 系统路径链接: $install_path"
+            else
+                log_warn "无法写入 adl 系统路径链接: $install_path"
+            fi
+        else
+            log_warn "目录不可写: $install_dir，跳过软链接创建"
+        fi
+    fi
+
+    # --- 3. 检测 PATH 是否已包含安装目录 ---
+    if [[ ":${PATH}:" == *":${install_dir}:"* ]]; then
+        log_info "PATH 已包含 $install_dir, 无需配置"
+        hash -r 2>/dev/null || true
+        set -u
+        return 0
+    fi
+
+    # --- 4. 使用 envs 设置 PATH 环境变量 ---
+    local shell_rc="${HOME}/.zshrc"
+    if [[ -n "${SHELL:-}" ]] && [[ "${SHELL}" == *"/bash"* ]]; then
+        if [[ "${OSTYPE:-}" == "darwin"* ]]; then
+            shell_rc="${HOME}/.bash_profile"
+        else
+            shell_rc="${HOME}/.bashrc"
+        fi
+    fi
+
+    if command -v envs >/dev/null 2>&1; then
+        if envs add "PATH=${install_dir}" "$shell_rc" >/dev/null 2>&1; then
+            export PATH="${install_dir}:${PATH}"
+            hash -r 2>/dev/null || true
+            log_info "已通过 envs 配置 adl PATH: $install_dir"
+            set -u
+            return 0
+        fi
+        log_warn "envs 配置 adl PATH 失败，改用内置方式"
+    fi
+
+    # --- 5. 回退：直接写入 shell rc ---
+    export PATH="${install_dir}:${PATH}"
+
+    if [[ -f "$shell_rc" ]] && [[ -w "$shell_rc" ]]; then
+        if ! grep -q "$install_dir" "$shell_rc" 2>/dev/null; then
+            if echo -e "\n# adl (Aria2 Downloader) path\nexport PATH=\"${install_dir}:\$PATH\"" >> "$shell_rc" 2>/dev/null; then
+                log_info "已添加 adl 到 PATH: $shell_rc"
+            fi
+        fi
+    else
+        log_info "已将 ${install_dir} 添加到当前会话的 PATH"
+        log_info "如需永久生效，请手动添加以下行到 ~/.zshrc:"
+        echo "  export PATH=\"${install_dir}:\$PATH\""
+    fi
+    set -u
+}
+
+# === SHA256 校验函数 ===
+verify_sha256() {
+    local file="$1"
+    local expected_sha="${ADL_SHA256:-}"
+    local actual_sha=""
+
+    if [[ -z "$expected_sha" ]]; then
+        return 0
+    fi
+
+    expected_sha=$(printf '%s' "$expected_sha" | tr '[:upper:]' '[:lower:]')
+    if [[ ! "$expected_sha" =~ ^[a-f0-9]{64}$ ]]; then
+        if [[ "${ADL_SHA256_AUTO:-0}" == "1" ]]; then
+            log_warn "自动检测到的 ADL_SHA256 格式无效，跳过 SHA256 校验"
+            unset ADL_SHA256
+            return 0
+        fi
+        log_error "ADL_SHA256 格式无效，应为 64 位十六进制字符串"
+        return 1
+    fi
+
+    if command -v shasum &> /dev/null; then
+        actual_sha=$(shasum -a 256 "$file" 2>/dev/null | awk '{print $1}')
+    elif command -v sha256sum &> /dev/null; then
+        actual_sha=$(sha256sum "$file" 2>/dev/null | awk '{print $1}')
+    else
+        log_error "已设置 ADL_SHA256，但未找到 sha256 校验工具"
+        return 1
+    fi
+
+    actual_sha=$(printf '%s' "$actual_sha" | tr '[:upper:]' '[:lower:]')
+    if [[ "$actual_sha" != "$expected_sha" ]]; then
+        log_error "SHA256 校验失败"
+        log_error "期望: $expected_sha"
+        log_error "实际: $actual_sha"
+        return 1
+    fi
+
+    log_info "SHA256 校验通过"
+    return 0
+}
+
+# === 执行下载（带智能重试） ===
+do_download() {
+    local url="$1"
+    local dir="$2"
+    local filename="$3"
+    shift 3 2>/dev/null || true
+
+    local ua="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    # 确保目录存在
+    mkdir -p "$dir"
+
+    log_info "开始下载: $filename"
+
+    # 记录开始时间
+    local start_time
+    start_time=$(date +%s)
+
+    # 构建完整的 URL 列表（原始URL + 镜像）
+    local all_urls=("$url")
+    # 添加镜像（如果存在）
+    if [[ $# -gt 0 ]]; then
+        all_urls+=("$@")
+    fi
+
+    # 使用当前代理选择结果探测远端大小，避免直连 HEAD 失败后误判为小文件。
+    local probe_mode="direct"
+    local probe_proxy=""
+    if [[ "${no_proxy:-}" != "*" && "${NO_PROXY:-}" != "*" ]]; then
+        probe_proxy="${http_proxy:-${https_proxy:-${ALL_PROXY:-${all_proxy:-}}}}"
+        [[ -n "$probe_proxy" ]] && probe_mode="proxy"
+    fi
+
+    local small_file_threshold=$((100 * 1024 * 1024))  # 100MB
+    local remote_size=0
+    local retry_size=0
+    local remote_size_reliable=false
+    local expected_size=0
+    expected_size=$(expected_size_bytes)
+
+    if [[ "$expected_size" -gt 0 ]]; then
+        remote_size="$expected_size"
+        retry_size="$expected_size"
+        remote_size_reliable=true
+        log_info "使用配置的期望文件大小: $(format_bytes "$remote_size")"
+    else
+        local try_url probe_size size_mode
+        for try_url in "${all_urls[@]}"; do
+            probe_size=$(get_remote_size_bytes "$try_url" "$probe_mode" "$probe_proxy")
+            size_mode="$probe_mode"
+
+            if [[ "$probe_size" -eq 0 && "$probe_mode" == "proxy" ]]; then
+                probe_size=$(get_remote_size_bytes "$try_url" "direct")
+                size_mode="direct"
+            elif [[ "$probe_size" -eq 0 && "$probe_mode" == "direct" && -n "$probe_proxy" ]]; then
+                probe_size=$(get_remote_size_bytes "$try_url" "proxy" "$probe_proxy")
+                size_mode="proxy"
+            fi
+
+            if [[ "$probe_size" -gt 0 ]]; then
+                if remote_size_is_suspicious "$try_url" "$filename" "$probe_size"; then
+                    log_warn "远端大小探测结果异常: $(format_bytes "$probe_size")，不用于完整性校验。"
+                    retry_size="$small_file_threshold"
+                    continue
+                fi
+
+                remote_size="$probe_size"
+                retry_size="$probe_size"
+                remote_size_reliable=true
+                log_info "远程文件大小: $(format_bytes "$remote_size") (${size_mode})"
+                # 显示本地已有文件大小（断点续传进度）
+                local existing_size=0
+                existing_size=$(get_file_size_bytes "$dir/$filename")
+                if [[ "$existing_size" -gt 0 ]]; then
+                    local pct=0
+                    [[ "$remote_size" -gt 0 ]] && pct=$((existing_size * 100 / remote_size))
+                    log_info "本地已有: $(format_bytes "$existing_size") (${pct}%，将断点续传)"
+                fi
+                break
+            fi
+        done
+    fi
+
+    if [[ "$retry_size" -eq 0 ]]; then
+        retry_size="$remote_size"
+    fi
+
+    local is_large_file=false
+    [[ "$retry_size" -ge "$small_file_threshold" ]] && is_large_file=true
+
+    local retry_mode_suffix=""
+    $is_large_file && retry_mode_suffix=" (大文件模式)"
+
+    local max_large_file_attempts="${ADL_MAX_RETRIES_LARGE:-0}"
+    if $is_large_file; then
+        if [[ "$max_large_file_attempts" -eq 0 ]]; then
+            log_info "检测到大文件策略，将启用无限重试模式"
+        else
+            log_info "检测到大文件策略，最多重试 ${max_large_file_attempts} 次"
+        fi
+    elif [[ "$remote_size_reliable" != true ]]; then
+        log_warn "文件大小: 未知（HEAD/Range 未返回可用 Content-Length，可能是代理、重定向或分块传输导致；下载完成后仍会做本地文件校验）"
+    fi
+
+    local attempt=0
+
+    while true; do
+        attempt=$((attempt + 1))
+
+        # 检查是否需要继续重试
+        if ! smart_retry_logic "$attempt" "$retry_size"; then
+            log_error "已达到最大重试次数，下载失败"
+            return 1
+        fi
+
+        # 如果不是第一次尝试，等待后重试
+        if [[ $attempt -gt 1 ]]; then
+            local wait_time
+            wait_time=$(get_retry_wait "$attempt")
+            log_warn "第 $attempt 次尝试${retry_mode_suffix}，等待 ${wait_time}秒后重试..."
+            sleep "$wait_time"
+        fi
+
+        local download_success=false
+
+        # 尝试每个 URL
+        for try_url in "${all_urls[@]}"; do
+            # 提取域名用于日志
+            local domain=$(echo "$try_url" | sed -E 's|https?://([^/]+).*|\1|' )
+
+            # 构建证书校验参数
+            local check_cert_option="--check-certificate=true"
+            if [[ "${ADL_INSECURE:-0}" == "1" ]]; then
+                check_cert_option="--check-certificate=false"
+            fi
+
+            # 尝试 aria2c（带断点续传）
+            if command -v aria2c &> /dev/null; then
+                log_info "[$attempt] 尝试下载源: $domain (aria2c + 断点续传)"
+
+                # aria2c 自动支持断点续传
+                # 构建 aria2c 参数
+                local aria2_opts=()
+                aria2_opts+=(
+                    -s "${ADL_ARIA2_SPLIT:-16}"
+                    -x "${ADL_ARIA2_CONNECTIONS:-16}"
+                    -k "${ADL_ARIA2_PIECE_LENGTH:-1M}"
+                    --min-split-size="${ADL_MIN_SPLIT_SIZE:-1M}"
+                    -c
+                    --user-agent="$ua"
+                    "$check_cert_option"
+                    --disk-cache="${ADL_DISK_CACHE:-256M}"
+                    --summary-interval=0
+                    --max-file-not-found=0
+                    --max-tries=1
+                    --show-console-readout=false
+                    --async-dns="${ADL_ASYNC_DNS:-true}"
+                )
+
+                # 文件预分配策略：Linux ext4/xfs 用 falloc，其他用 none
+                local file_alloc="${ADL_FILE_ALLOCATION:-}"
+                if [[ -z "$file_alloc" ]]; then
+                    if [[ "$(uname -s)" == "Linux" ]]; then
+                        local fs_type
+                        fs_type=$(df -T "$dir" 2>/dev/null | awk 'NR==2 {print $2}')
+                        if [[ "$fs_type" == "ext4" || "$fs_type" == "xfs" || "$fs_type" == "btrfs" ]]; then
+                            file_alloc="falloc"
+                        else
+                            file_alloc="none"
+                        fi
+                    else
+                        file_alloc="none"
+                    fi
+                fi
+                aria2_opts+=(--file-allocation="$file_alloc")
+
+                # 终端模式显示进度
+                local aria2_exit=0
+                if [[ "${ADL_PROGRESS:-0}" == "1" || "${ADL_SHOW_PROGRESS:-0}" == "1" ]]; then
+                    aria2_opts+=(--show-console-readout=true)
+                    aria2c "${aria2_opts[@]}" -d "$dir" -o "$filename" "$try_url" || aria2_exit=$?
+                else
+                    aria2c "${aria2_opts[@]}" -d "$dir" -o "$filename" "$try_url" >/dev/null 2>&1 || aria2_exit=$?
+                fi
+
+                if [[ "$aria2_exit" -eq 0 ]]; then
+                    download_success=true
+                    break
+                else
+                    local diag
+                    diag=$(aria2_exit_code_diag "$aria2_exit")
+                    log_warn "aria2c 下载失败: $diag (退出码 $aria2_exit)"
+                fi
+            fi
+
+            # 回退到 curl（带断点续传 -C -）
+            if command -v curl &> /dev/null; then
+                log_info "[$attempt] 尝试下载源: $domain (curl + 断点续传)"
+
+                local curl_opts=(-f -L --max-redirs 10 -C -)
+                if [[ "${ADL_INSECURE:-0}" == "1" ]]; then
+                    curl_opts+=(-k)
+                fi
+                curl_opts+=(
+                    -A "$ua"
+                    --retry 1
+                    --connect-timeout 30
+                    --max-time 3600
+                    -o "$dir/$filename"
+                )
+
+                # -C - 自动检测并续传
+                if curl "${curl_opts[@]}" "$try_url" 2>&1; then
+                    download_success=true
+                    break
+                fi
+            fi
+
+            # 回退到 wget（带断点续传）
+            if command -v wget &> /dev/null; then
+                log_info "[$attempt] 尝试下载源: $domain (wget + 断点续传)"
+
+                local wget_opts=(-c --tries=1 "--user-agent=$ua" --timeout=60 -O "$dir/$filename")
+                if [[ "${ADL_INSECURE:-0}" == "1" ]]; then
+                    wget_opts+=(--no-check-certificate)
+                fi
+
+                # -c 断点续传
+                if wget "${wget_opts[@]}" "$try_url" 2>&1; then
+                    download_success=true
+                    break
+                fi
+            fi
+
+            log_warn "当前源下载失败，尝试下一个..."
+        done
+
+        # 检查下载结果
+        if [[ "$download_success" = true ]]; then
+            local local_file="$dir/$filename"
+            if [[ -f "$local_file" ]] && [[ -s "$local_file" ]]; then
+                local local_size=0
+                local_size=$(get_file_size_bytes "$local_file")
+
+                # 校验文件大小（仅在 Content-Length 或显式期望大小可靠时强校验）
+                local explicit_expected_size=0
+                explicit_expected_size=$(expected_size_bytes)
+                if [[ "$explicit_expected_size" -gt 0 && "$local_size" -lt "$explicit_expected_size" ]]; then
+                    log_warn "文件小于显式期望大小：本地 $(format_bytes "$local_size") vs 期望至少 $(format_bytes "$explicit_expected_size")"
+                    log_warn "文件可能不完整，将继续重试..."
+                    continue
+                elif [[ "$remote_size_reliable" = true && "$remote_size" -gt 0 && "$local_size" -ne "$remote_size" ]]; then
+                    log_warn "文件大小不匹配：本地 $(format_bytes "$local_size") vs 远端 $(format_bytes "$remote_size")"
+                    if [[ "$local_size" -lt "$remote_size" ]]; then
+                        log_warn "文件可能不完整，将继续重试..."
+                        continue
+                    fi
+                    log_error "本地文件大于远端大小，可能是旧文件残留或错误续传；请清理目标文件后重试"
+                    return 1
+                else
+                    if [[ "$explicit_expected_size" -gt 0 ]]; then
+                        log_info "显式期望大小校验通过: $(format_bytes "$local_size") >= $(format_bytes "$explicit_expected_size")"
+                    elif [[ "$remote_size_reliable" = true ]]; then
+                        log_info "文件大小校验通过: $(format_bytes "$local_size")"
+                    else
+                        log_warn "远端大小未知，跳过文件大小强校验: $(format_bytes "$local_size")"
+                    fi
+                fi
+
+                # SHA256 校验
+                if verify_sha256 "$local_file"; then
+                    :
+                else
+                    if [[ "${ADL_RETRY_ON_CHECKSUM:-0}" == "1" ]]; then
+                        log_warn "SHA256 校验失败，按 ADL_RETRY_ON_CHECKSUM=1 继续重试..."
+                        continue
+                    fi
+                    log_error "SHA256 校验失败，终止下载"
+                    return 1
+                fi
+
+                # 计算下载耗时和平均速度
+                local end_time
+                end_time=$(date +%s)
+                local duration=$((end_time - start_time))
+
+                local speed_display=""
+                if [[ "$duration" -gt 0 ]]; then
+                    local avg_speed
+                    avg_speed=$((local_size / duration))
+
+                    # 格式化速度显示（不使用 bc，使用整数除法）
+                    if [[ "$avg_speed" -ge 1048576 ]]; then
+                        local mbps=$((avg_speed / 1048576))
+                        local kbps_remain=$(((avg_speed % 1048576) / 10240))  # 保留一位小数
+                        speed_display="${mbps}.${kbps_remain} MB/s"
+                    elif [[ "$avg_speed" -ge 1024 ]]; then
+                        local kbps=$((avg_speed / 1024))
+                        local bps_remain=$(((avg_speed % 1024) * 10 / 1024))  # 保留一位小数
+                        speed_display="${kbps}.${bps_remain} KB/s"
+                    else
+                        speed_display="${avg_speed} B/s"
+                    fi
+                else
+                    speed_display="超高速 (< 1s)"
+                fi
+
+                # 格式化时间显示
+                local time_display=""
+                if [[ "$duration" -ge 60 ]]; then
+                    local mins=$((duration / 60))
+                    local secs=$((duration % 60))
+                    time_display="${mins}分${secs}秒"
+                else
+                    time_display="${duration}秒"
+                fi
+
+                log_info "✅ 下载成功！"
+                log_info "总耗时: ${time_display} (共尝试 ${attempt} 次)"
+                if [[ -n "$speed_display" ]]; then
+                    log_info "平均速度: ${speed_display}"
+                fi
+
+                # 清理 aria2 断点文件
+                if [[ -f "$dir/$filename.aria2" ]]; then
+                    rm -f "$dir/$filename.aria2"
+                    log_info "已清理断点文件: $filename.aria2"
+                fi
+
+                return 0
+            fi
+        fi
+
+        if $is_large_file; then
+            log_warn "第 $attempt 次尝试失败，大文件模式将继续重试..."
+        else
+            log_warn "第 $attempt 次尝试失败..."
+        fi
+
+        # 小文件在最后一次失败后退出
+        if ! $is_large_file && [[ $attempt -ge "${ADL_MAX_RETRIES_SMALL:-5}" ]]; then
+            log_error "所有下载尝试均失败"
+            return 1
+        fi
+
+        # 大文件继续重试
+    done
+}
+
+# === 显示帮助信息 ===
+show_help() {
+    cat << 'EOF'
+adl - Aria2 Downloader 并行下载加速工具
+
+用法: adl [选项] <URL> <保存目录> <文件名> [镜像1] [镜像2] ...
+       adl --repo <org/model> -o <目录> [--progress]   # 下载整个 HF 模型仓库
+       adl --setup-env
+
+选项:
+    -h, --help           显示此帮助信息
+    -m, --mirror <URL>   添加备用镜像源（可多次使用）
+    -o, --output <DIR>   --repo 模式的输出目录
+    --repo               下载整个 HuggingFace 模型仓库（并行多文件）
+    --progress           显示下载进度（终端模式）
+    --setup-env          配置环境变量（首次使用建议执行）
+    --install-deps       安装依赖（aria2）
+
+示例:
+    adl https://example.com/file.zip ~/Downloads file.zip
+    adl https://example.com/app.dmg ~/Downloads app.dmg https://mirror.com/app.dmg
+    adl -m https://backup.com/file.zip https://example.com/file.zip ~/Downloads file.zip
+    adl --setup-env
+
+功能:
+    - 自动检测并配置代理（ Clash/V2Ray 等）
+    - 智能重试策略：小文件有限重试，大文件无限重试
+    - 断点续传支持，下载中断后自动继续
+    - 优先使用 aria2 多线程加速
+    - 下载后校验文件大小，可选 SHA256 校验
+
+提示: 首次运行建议执行: adl --setup-env
+
+重试策略:
+    - 小文件 (<100MB): 最多重试 5 次
+    - 大文件 (≥100MB): 默认无限重试，可配置最大次数
+    - 指数退避等待: 2s → 4s → 8s → ... → 60s (最大)
+
+环境变量:
+    ADL_PROXY_MODE=auto          自动测速选择直连或代理（默认）
+    ADL_PROXY_MODE=direct        强制直连
+    ADL_PROXY_MODE=proxy         强制使用检测到的代理
+    ADL_PROXY=http://127.0.0.1:7890 显式指定代理；也支持 socks5h://127.0.0.1:7890
+    ADL_NO_PROXY=1               兼容开关：禁用代理检测和代理环境变量，强制直连
+    ADL_PROXY_SPEED_TEST=0       关闭测速；检测到代理时直接使用代理
+    ADL_SPEED_TEST_SECONDS=8     单次测速超时时间
+    ADL_SPEED_TEST_BYTES=1048576 测速读取字节数
+    ADL_PROXY_SPEED_TEST_SKIP_BYTES=67108864 剩余小于该字节数时跳过测速
+    ADL_PROXY_SPEED_TEST_SKIP_SECONDS=30 预计下载时间小于该秒数时跳过测速
+    ADL_PROXY_SPEED_TEST_ASSUME_BPS=5242880 估算下载时间使用的保守速度
+    ADL_EXPECTED_SIZE_BYTES=<n> 精确指定期望文件大小（字节）
+    ADL_EXPECTED_SIZE_GB=140    为 Hugging Face/大模型下载提供期望大小，避免 HEAD 误判
+    ADL_FILE_ALLOCATION=none     aria2 文件预分配策略（默认自动检测：Linux ext4/xfs 用 falloc）
+    ADL_ARIA2_SPLIT=16 / ADL_ARIA2_CONNECTIONS=16 aria2 并发参数
+    ADL_MIN_SPLIT_SIZE=1M        aria2 最小切分大小（默认 1M，确保中小文件多线程）
+    ADL_ASYNC_DNS=true           aria2 异步 DNS（默认开启）
+    ADL_PROGRESS=1               显示下载进度（等同于 --progress）
+    ADL_AUTO_MIRROR=1            自动为 Hugging Face/GitHub 添加镜像（默认开启）
+    ADL_AUTO_INSTALL=0           启用自动安装 Homebrew/aria2（默认不启用）
+    ADL_INSECURE=1               禁用 HTTPS 证书校验（不推荐）
+    ADL_SHA256=<hex>             校验下载文件的 SHA256 哈希
+    ADL_RETRY_ON_CHECKSUM=1      SHA256 校验失败后继续重试（默认失败即终止）
+    ADL_PROXY_TEST_URL=https://github.com/favicon.ico 代理验证测试URL
+    ADL_PROXY_TEST_TIMEOUT=5     代理验证超时时间(秒)
+    ADL_MAX_RETRIES_SMALL=5      小文件最大重试次数
+    ADL_MAX_RETRIES_LARGE=0      大文件最大重试次数（0=无限）
+    ADL_RETRY_BASE_WAIT=2        重试等待基础时间(秒)
+    ADL_RETRY_MAX_WAIT=60        重试等待最长时间(秒)
+
+配置文件:
+    ~/.adlrc                      用户级配置（KEY=VALUE 格式）
+    ~/.config/adl/config          XDG 配置目录
+    /etc/adl.conf                 系统级配置
+EOF
+}
+
+# === HF 模型仓库批量下载 (--repo 模式) ===
+# 用法: adl --repo Qwen/Qwen3.6-27B -o /path/to/dir [--progress]
+# 功能: 查询 HF API 获取文件列表，使用 aria2c 并行下载所有文件
+download_repo() {
+    local repo="$1"
+    local dest="${ADL_OUTPUT_DIR:-.}"
+    local progress="${ADL_PROGRESS:-0}"
+    local max_concurrent="${ADL_MAX_CONCURRENT:-4}"  # 同时下载文件数
+    local split="${ADL_ARIA2_SPLIT:-16}"               # 每文件并发连接数
+
+    log_info "批量下载 HF 仓库: ${repo}"
+    mkdir -p "$dest"
+    dest="$(cd "$dest" && pwd)"
+    local repo_dir="${repo//\//_}"
+    dest="${dest}/${repo_dir}"
+    log_info "目标目录: ${dest}"
+    log_info "并发: ${max_concurrent} 文件 × ${split} 连接/文件"
+
+    mkdir -p "$dest"
+
+    # 检测代理
+    detect_and_config_proxy "https://huggingface.co" "$dest" "repo"
+
+    # 确定镜像源
+    local mirror_base="https://huggingface.co"
+    if curl -sf --connect-timeout 3 "https://hf-mirror.com" >/dev/null 2>&1; then
+        mirror_base="https://hf-mirror.com"
+        log_info "使用镜像: hf-mirror.com"
+    fi
+
+    # 查询 HF API 获取文件列表
+    local api_url="${mirror_base}/api/models/${repo}"
+    log_info "查询文件列表: ${api_url}"
+
+    local api_response
+    api_response=$(curl -sL --connect-timeout 10 "$api_url" 2>/dev/null)
+    if [[ -z "$api_response" ]]; then
+        log_error "无法访问 HF API: ${api_url}"
+        return 1
+    fi
+
+    # 提取文件列表 (rfilename 字段)
+    local files=()
+    while IFS= read -r f; do
+        [[ -n "$f" ]] && files+=("$f")
+    done < <(echo "$api_response" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    for s in d.get('siblings', []):
+        name = s.get('rfilename', '')
+        if name:
+            print(name)
+except:
+    pass
+" 2>/dev/null)
+
+    if [[ ${#files[@]} -eq 0 ]]; then
+        log_error "未获取到任何文件。仓库可能不存在或需要授权。"
+        return 1
+    fi
+
+    log_info "共 ${#files[@]} 个文件待下载"
+
+    # 过滤已存在的文件
+    local pending_files=()
+    local skipped=0
+    for f in "${files[@]}"; do
+        local fdir
+        fdir=$(dirname "$f")
+        if [[ -f "$dest/$f" ]]; then
+            ((skipped++))
+            continue
+        fi
+        mkdir -p "$dest/$fdir" 2>/dev/null
+        pending_files+=("$f")
+    done
+
+    if [[ $skipped -gt 0 ]]; then
+        log_info "跳过已存在文件: ${skipped} 个"
+    fi
+    if [[ ${#pending_files[@]} -eq 0 ]]; then
+        success "所有文件已存在，无需下载。"
+        return 0
+    fi
+
+    log_info "待下载: ${#pending_files[@]} 个文件"
+
+    # 构建 aria2c 输入文件
+    local input_file
+    input_file=$(mktemp /tmp/adl-repo-XXXXXX.txt)
+    trap "rm -f '$input_file'" EXIT
+
+    for f in "${pending_files[@]}"; do
+        local url="${mirror_base}/${repo}/resolve/main/${f}"
+        local fdir
+        fdir=$(dirname "$f")
+        echo "$url" >> "$input_file"
+        echo "  dir=${dest}/${fdir}" >> "$input_file"
+        echo "  out=$(basename "$f")" >> "$input_file"
+    done
+
+    # 构建 aria2c 参数
+    local ua="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+    local aria2_opts=(
+        -i "$input_file"
+        --max-concurrent-downloads="$max_concurrent"
+        -s "$split" -x "$split"
+        -k 1M --min-split-size=1M
+        -c --max-tries=0 --retry-wait=3
+        --disk-cache=256M
+        --file-allocation=none
+        --user-agent="$ua"
+        --async-dns=true
+    )
+
+    if [[ "$progress" == "1" ]]; then
+        aria2_opts+=(--show-console-readout=true --summary-interval=10)
+    else
+        aria2_opts+=(--show-console-readout=false --summary-interval=0)
+    fi
+
+    # 执行下载
+    log_info "开始 aria2c 批量下载..."
+    local aria2_exit=0
+    aria2c "${aria2_opts[@]}" || aria2_exit=$?
+
+    if [[ $aria2_exit -eq 0 ]]; then
+        success "仓库下载完成: ${repo} -> ${dest}"
+        return 0
+    else
+        local diag
+        diag=$(aria2_exit_code_diag "$aria2_exit" 2>/dev/null || echo "exit code $aria2_exit")
+        log_warn "aria2c 返回: ${diag}"
+        # 检查是否部分成功
+        local missing=0
+        for f in "${files[@]}"; do
+            [[ ! -f "$dest/$f" ]] && ((missing++))
+        done
+        if [[ $missing -eq 0 ]]; then
+            success "所有文件已下载完成 (aria2c 有非致命警告)。"
+            return 0
+        else
+            log_error "仍有 ${missing} 个文件缺失。"
+            return 1
+        fi
+    fi
+}
+
+# === 主逻辑 ===
+main() {
+    # 加载配置文件（优先于环境变量，但环境变量优先级更高）
+    load_adlrc
+
+    # 解析参数
+    local mirrors=()
+    local show_help=false
+    local setup_env_only=false
+    local install_deps=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_help=true
+                shift
+                ;;
+    --setup-env)
+                setup_env_only=true
+                shift
+                ;;
+            --repo)
+                # --repo 模式: 下载整个 HuggingFace 模型仓库 (并行多文件)
+                # 用法: adl --repo Qwen/Qwen3.6-27B -o /path/to/dir
+                export ADL_REPO_MODE=1
+                shift
+                ;;
+            --install-deps)
+                install_deps=true
+                shift
+                ;;
+            --progress)
+                export ADL_PROGRESS=1
+                shift
+                ;;
+            -o|--output)
+                if [[ $# -lt 2 ]]; then
+                    log_error "参数错误: -o/--output 需要一个目录参数"
+                    exit 2
+                fi
+                export ADL_OUTPUT_DIR="$2"
+                shift 2
+                ;;
+            -m|--mirror)
+                if [[ $# -lt 2 ]]; then
+                    log_error "参数错误: -m/--mirror 需要一个 URL 参数"
+                    show_help
+                    exit 2
+                fi
+                mirrors+=("$2")
+                shift 2
+                ;;
+            -*)
+                log_error "未知参数: $1"
+                show_help
+                exit 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    # --setup-env 模式
+    if [[ "$setup_env_only" = true ]]; then
+        setup_env
+        exit 0
+    fi
+
+    # --install-deps 模式
+    if [[ "$install_deps" = true ]]; then
+        export ADL_AUTO_INSTALL=1
+        ensure_aria2
+        exit $?
+    fi
+
+    # --repo 模式: 下载整个 HF 仓库
+    if [[ "${ADL_REPO_MODE:-0}" == "1" ]]; then
+        if [[ $# -lt 1 ]]; then
+            log_error "--repo 需要一个仓库名参数，如: adl --repo Qwen/Qwen3.6-27B -o /path/to/dir"
+            exit 2
+        fi
+        ensure_aria2 || true
+        download_repo "$1"
+        exit $?
+    fi
+
+    # 无参数或仅 --help 时，显示帮助
+    if [[ "$show_help" = true ]] || [[ $# -lt 3 ]]; then
+        show_help
+        [[ "$show_help" = true ]] && exit 0 || exit 1
+    fi
+
+    local url="$1"
+    local dir="$2"
+    local filename="$3"
+    shift 3 || true
+
+    # 合并位置参数镜像到镜像列表
+    if [[ $# -gt 0 ]]; then
+        mirrors+=("$@")
+    fi
+
+    # 智能镜像：自动为常见受限源添加镜像
+    if [[ "${ADL_AUTO_MIRROR:-1}" == "1" ]]; then
+        local auto_mirrors
+        auto_mirrors=$(auto_mirror "$url")
+        if [[ -n "$auto_mirrors" ]]; then
+            while IFS= read -r m; do
+                [[ -n "$m" ]] && mirrors+=("$m")
+            done <<< "$auto_mirrors"
+        fi
+    fi
+
+    # 检测并配置代理
+    detect_and_config_proxy "$url" "$dir" "$filename"
+
+    # 确保 aria2 可用（默认不自动安装）
+    ensure_aria2 || true
+
+    # 自动检测侧边校验和文件
+    auto_detect_checksum "$url" "$dir" "$filename"
+
+    # 执行下载（不再自动修改 shell 配置）
+    do_download "$url" "$dir" "$filename" "${mirrors[@]:-}"
+}
+
+main "$@"

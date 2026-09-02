@@ -1,0 +1,62 @@
+{
+  "id": "fetch",
+  "name": "Fetch MCP Server",
+  "description": "HTTP 请求 MCP 服务器，支持 GET/POST/PUT/DELETE 等请求，用于 API 测试和接口验证",
+  "category": "ops",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @kazuph/mcp-fetch"
+  },
+  "config": {
+    "command": "mcp-fetch",
+    "args": [],
+    "transportType": "stdio"
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查安装",
+      "command": "npm list -g @kazuph/mcp-fetch --depth=0 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "fetch_get",
+      "description": "发送 HTTP GET 请求"
+    },
+    {
+      "name": "fetch_post",
+      "description": "发送 HTTP POST 请求"
+    },
+    {
+      "name": "fetch_put",
+      "description": "发送 HTTP PUT 请求"
+    },
+    {
+      "name": "fetch_delete",
+      "description": "发送 HTTP DELETE 请求"
+    }
+  ],
+  "tags": [
+    "网络请求",
+    "API",
+    "数据获取"
+  ],
+  "scenarios": [
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/kazuph/mcp-fetch#readme",
+  "repository": "https://github.com/kazuph/mcp-fetch",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

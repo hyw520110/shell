@@ -1,0 +1,62 @@
+{
+  "id": "together",
+  "name": "Together AI CLI",
+  "description": "Together AI 平台 CLI，支持 200+ 开源模型",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "pip"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "pip",
+        "command": "pip3 install together",
+        "check": true,
+        "uninstall": [
+          "pip3 uninstall -y together"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "pip3 install together",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.together/config.yaml",
+    "operations": {
+      "view": "cat $HOME/.together/config.yaml 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.together/config.yaml",
+      "reset": [
+        "cp $HOME/.together/config.yaml $HOME/.together/config.yaml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.together/config.yaml"
+      ]
+    }
+  },
+  "commands": {
+    "start": "together",
+    "version": "together --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "together --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.together/config.yaml 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

@@ -1,0 +1,36 @@
+{
+  "id": "pm-image2proto",
+  "name": "截图转HTML原型",
+  "description": "将UI截图转换为可运行的单文件HTML原型，支持迭代优化和学习记忆。适用于用户提供截图、设计稿、线框图并要求复刻为HTML原型的场景。",
+  "category": "prototyping",
+  "prompts": {
+    "create": "根据提供的UI截图，生成高保真的单文件HTML原型",
+    "modify": "修改已有原型，根据用户反馈进行迭代优化",
+    "refine": "优化原型的视觉效果和交互体验"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "tips": "首次使用时会进行onboarding，收集设计系统参考。输出单文件HTML，无外部依赖（除Mermaid CDN）",
+  "notes": "原名 space-image2proto，支持学习记忆以适应用户设计风格",
+  "tags": [
+    "原型",
+    "图片转原型",
+    "产品管理",
+    "页面原型"
+  ],
+  "scenarios": [
+    "productivity",
+    "product-docs",
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/zephyrwang6/pm-skills",
+  "repository": "https://github.com/zephyrwang6/pm-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,70 @@
+{
+  "id": "openhands",
+  "name": "OpenHands",
+  "description": "开源 AI 软件工程师（原 OpenDevin），可自主编写代码、调试程序、提交 PR。对标 Devin，支持沙箱环境执行",
+  "category": "ai-agent",
+  "tags": ["ai", "agents", "coding", "software-engineer", "python"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "pip 安装（推荐）",
+        "type": "pip",
+        "command": "pip3 install openhands",
+        "check": "pip3 show openhands",
+        "uninstall": ["pip3 uninstall -y openhands"]
+      },
+      {
+        "name": "Docker 运行（沙箱模式）",
+        "type": "custom",
+        "command": "docker pull docker.all-hands.dev/all-hands-ai/openhands:latest",
+        "check": "docker images | grep openhands",
+        "uninstall": ["docker rmi docker.all-hands.dev/all-hands-ai/openhands:latest"]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "pip3 install --upgrade openhands",
+    "check": "pip3 show openhands"
+  },
+
+  "post_install": [
+    {"description": "显示配置提示", "command": "echo -e '\\nOpenHands 已安装。启动方式:\\n  python -m openhands --help\\n\\n推荐配置:\\n  export LLM_MODEL=gpt-4o\\n  export LLM_BASE_URL=https://api.openai.com/v1\\n  export LLM_API_KEY=your_key\\n\\n也可搭配本地 vLLM 使用。'"}
+  ],
+
+  "post_uninstall": [],
+
+  "config": {
+    "path": "$HOME/.openhands/config.toml",
+    "operations": {
+      "view": "cat $HOME/.openhands/config.toml 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.openhands/config.toml",
+      "reset": [
+        "rm -rf $HOME/.openhands 2>/dev/null || true"
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "python -m openhands",
+    "version": "pip3 show openhands 2>/dev/null | grep Version"
+  },
+
+  "status_check": [
+    {"name": "检查安装", "command": "pip3 show openhands 2>/dev/null | grep Name || echo '未安装'"},
+    {"name": "检查 Docker 镜像", "command": "docker images | grep openhands 2>/dev/null || echo 'Docker 镜像未拉取'"}
+  ],
+
+  "mcp_servers": {},
+
+  "skills": {},
+
+  "references": {
+    "shared_mcp_servers": ["filesystem", "github", "fetch"],
+    "shared_skills": ["git", "karpathy-guidelines"]
+  },
+
+  "notes": "⭐ 64k Stars。原 OpenDevin，可自主完成软件开发全流程：理解需求→编写代码→调试→提交 PR。支持 Docker 沙箱隔离执行。需配置 LLM API，可搭配本地 vLLM。"
+}

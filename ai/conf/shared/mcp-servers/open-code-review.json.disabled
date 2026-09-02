@@ -1,0 +1,40 @@
+{
+  "id": "open-code-review",
+  "name": "Alibaba Open Code Review (MCP)",
+  "description": "阿里巴巴深度代码审查 MCP 服务器。让 Cursor, Claude Desktop 等 IDE 工具具备专家级 CR 能力。",
+  "category": "development",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @alibaba-group/open-code-review"
+  },
+  "config": {
+    "command": "ocr",
+    "args": [
+      "mcp"
+    ],
+    "transportType": "stdio"
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "ocr version 2>/dev/null || echo 'OCR 未安装'"
+    }
+  ],
+  "tags": [
+    "代码审查",
+    "质量保证",
+    "Alibaba"
+  ],
+  "scenarios": [
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/alibaba/open-code-review"
+}

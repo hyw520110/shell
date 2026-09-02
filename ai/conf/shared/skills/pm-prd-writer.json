@@ -1,0 +1,35 @@
+{
+  "id": "pm-prd-writer",
+  "name": "PRD 编写",
+  "description": "把模糊需求转化为可评审的产品需求文档（PRD）。适用于用户说'写个需求文档'、'帮我出PRD'、'这个功能怎么写需求'、'我有个想法想落地'、'把这个需求整理成文档'、'需求评审要用的PRD'等场景。",
+  "category": "product-management",
+  "prompts": {
+    "write": "根据用户提供的模糊需求描述，生成结构化的产品需求文档（PRD），包含需求背景、目标、功能规格、验收标准等",
+    "optimize": "对已有的PRD进行补全、优化、查漏补缺",
+    "review": "检查PRD的完整性和质量，提供改进建议"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "tips": "适用于产品需求撰写、功能说明书、需求评审文档等场景",
+  "notes": "原名 SPACE-prd-writer，将模糊需求转化为可评审的PRD",
+  "tags": [
+    "PRD",
+    "产品文档",
+    "需求",
+    "产品管理"
+  ],
+  "scenarios": [
+    "productivity",
+    "product-docs"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/zephyrwang6/pm-skills",
+  "repository": "https://github.com/zephyrwang6/pm-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

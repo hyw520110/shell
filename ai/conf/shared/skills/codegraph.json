@@ -1,0 +1,61 @@
+{
+  "id": "codegraph",
+  "name": "代码图谱 (CodeGraph)",
+  "description": "通过代码知识图谱实现智能代码探索 - 支持符号搜索、调用链追踪、影响分析，让 AI 更快理解代码库",
+  "category": "coding",
+  "prompts": {
+    "explore": "使用 CodeGraph 探索这个项目的整体架构",
+    "find_symbol": "搜索符号 'processData' 的定义和调用位置",
+    "call_chain": "追踪函数 'handleRequest' 的完整调用链",
+    "impact_analysis": "分析修改 'UserService' 类会影响哪些文件",
+    "init_project": "初始化 CodeGraph 索引当前项目"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "codegraph"
+    ],
+    "system_commands": [
+      "node",
+      "npm"
+    ]
+  },
+  "install_check": "npm list -g @colbymchenry/codegraph --depth=0",
+  "instructions": {
+    "main_session": "主会话可直接使用轻量级工具：codegraph_search（搜索符号）、codegraph_callers/callees（追踪调用）、codegraph_impact（影响分析）、codegraph_node（获取详情）",
+    "explore_agent": "探索类问题（如'这个系统如何工作'）必须派生 Explore Agent，让 Agent 使用 codegraph_explore 作为主要工具",
+    "initialization": "如果项目没有 .codegraph/ 目录，先运行 'codegraph init -i' 初始化索引",
+    "best_practices": [
+      "使用 codegraph_explore 时遵循工具描述的调用预算限制",
+      "不要重复读取 codegraph_explore 已返回的源代码",
+      "对于跨语言项目，CodeGraph 能自动处理语言边界"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "name": "init",
+      "description": "在当前项目初始化 CodeGraph 索引",
+      "command": "codegraph init -i"
+    },
+    {
+      "name": "index",
+      "description": "增量更新当前项目的代码索引",
+      "command": "codegraph index"
+    }
+  ],
+  "tips": "CodeGraph 支持 19+ 种语言：TypeScript, JavaScript, Python, Go, Rust, Java, C#, PHP, Ruby, C, C++, Swift, Kotlin, Dart, Svelte, Liquid, Pascal/Delphi",
+  "tags": [
+    "代码分析",
+    "代码图",
+    "代码可视化"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://www.npmjs.com/package/@colbymchenry/codegraph",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

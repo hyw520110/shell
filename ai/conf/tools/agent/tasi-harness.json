@@ -1,0 +1,50 @@
+{
+  "id": "tasi-harness",
+  "name": "Tasi Harness",
+  "description": "本地优先的桌面智能体。提供图形化界面，支持本地知识库检索与定时自动化，默认采用保守的本地安全策略。",
+  "category": "ai-agent",
+  "tags": [
+    "ai",
+    "npm",
+    "desktop",
+    "harness"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "源码安装",
+        "type": "npm",
+        "command": "git clone https://github.com/example/tasi-harness.git $HOME/tasi-harness && cd $HOME/tasi-harness && npm install",
+        "check": true,
+        "uninstall": [
+          "rm -rf $HOME/tasi-harness"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "cd $HOME/tasi-harness && git pull && npm install",
+    "check": true
+  },
+  "config": {
+    "path": "",
+    "operations": {}
+  },
+  "commands": {
+    "start": "cd $HOME/tasi-harness && npm run dev"
+  },
+  "status_check": [
+    {
+      "name": "检查代码库",
+      "command": "ls -la $HOME/tasi-harness/package.json 2>/dev/null || echo \"未安装 Tasi Harness\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "适合对安全性要求极高的本地开发场景。"
+}

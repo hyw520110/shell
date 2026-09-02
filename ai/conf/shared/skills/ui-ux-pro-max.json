@@ -1,0 +1,52 @@
+{
+  "id": "ui-ux-pro-max",
+  "name": "UI/UX Pro Max",
+  "description": "专业 UI/UX 设计智能引擎：161 条行业推理规则、67 种 UI 风格、161 套配色方案、57 组字体搭配、99 条 UX 准则、25 种图表类型，自动生成行业定制的设计系统。",
+  "category": "design",
+  "install": {
+    "command": "npm install -g uipro-cli",
+    "check": "command -v uipro"
+  },
+  "prompts": {
+    "design-system": "为 {industry} 行业生成完整设计系统",
+    "init": "初始化 UI/UX Pro Max 到 {assistant}",
+    "update": "更新 UI/UX Pro Max 到最新版本",
+    "search": "搜索 {query} 相关的设计模式"
+  },
+  "capabilities": [
+    "设计系统生成 - 按行业自动匹配 Pattern、Style、Colors、Typography",
+    "161 条推理规则 - 覆盖 Tech/SaaS、金融、医疗、电商、服务业、创意等",
+    "搜索引擎 - BM25 检索 67 种 UI 风格、161 套配色、57 组字体、25 种图表",
+    "18+ Agent 支持 - Claude Code、Cursor、Windsurf、Codex、Qoder、Gemini CLI 等",
+    "全局/项目级安装 - 支持 --global 用户级安装和项目级安装",
+    "离线模式 - --offline 使用内置资源，无需网络"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "node",
+      "npm",
+      "python3"
+    ]
+  },
+  "tips": "安装 CLI 后运行 uipro init --ai <assistant> 部署到具体 AI 编码助手。搜索引擎依赖 Python 3。支持 18 种 AI 编码助手，可用 --ai all 一键全部安装。",
+  "homepage": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+  "repository": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+  "tags": [
+    "UI",
+    "UX",
+    "设计系统",
+    "配色",
+    "字体",
+    "Agent Skills"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

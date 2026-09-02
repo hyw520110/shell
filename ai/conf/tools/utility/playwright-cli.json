@@ -1,0 +1,62 @@
+{
+  "id": "playwright-cli",
+  "name": "Playwright CLI",
+  "description": "跨浏览器自动化测试与爬虫 CLI。支持 Chromium, Firefox 和 WebKit。提供录制、代码生成和 Headless 模式，是 AI 代理执行网页任务的基础设施。",
+  "category": "ai-utility",
+  "tags": [
+    "浏览器",
+    "自动化",
+    "测试",
+    "爬虫"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "NPM 全局安装",
+        "type": "npm",
+        "command": "npm install -g @playwright/cli",
+        "check": "playwright --version",
+        "uninstall": [
+          "npm uninstall -g @playwright/cli"
+        ]
+      }
+    ],
+    "default_method": 0,
+    "prepare": "npx playwright install chromium"
+  },
+  "update": {
+    "command": "npm install -g @playwright/cli@latest",
+    "check": "playwright --version"
+  },
+  "commands": {
+    "codegen": "playwright codegen",
+    "screenshot": "playwright screenshot",
+    "pdf": "playwright pdf",
+    "version": "playwright --version"
+  },
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "playwright --version 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查浏览器",
+      "command": "npx playwright install --help >/dev/null 2>&1 && echo '浏览器环境就绪' || echo '未初始化'"
+    }
+  ],
+  "prompts": {
+    "auto-scrape": "使用 playwright codegen 录制我接下来的网页操作并生成 Python 爬虫脚本。",
+    "page-to-pdf": "将 URL '{url}' 转换为 PDF 文档：playwright pdf {url} output.pdf",
+    "headless-test": "在无头模式下运行 UI 自动化测试。"
+  },
+  "notes": "Playwright 是微软开发的顶级自动化工具。安装后，AI 助手将能通过其提供的底层指令精准控制浏览器。",
+  "homepage": "https://playwright.dev",
+  "scenarios": [
+    "productivity",
+    "coding",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false
+}

@@ -1,0 +1,68 @@
+{
+  "id": "brave-search",
+  "name": "Brave Search MCP Server",
+  "description": "Brave Search API MCP 服务器，支持网络搜索、竞品调研和技术信息检索",
+  "category": "ai",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @modelcontextprotocol/server-brave-search"
+  },
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-brave-search"
+    ],
+    "transportType": "stdio",
+    "env": {
+      "BRAVE_API_KEY": "${BRAVE_API_KEY:-}"
+    }
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查 API Key",
+      "command": "[[ -n \"${BRAVE_API_KEY:-}\" ]] && echo 'API Key 已配置' || echo 'API Key 未设置'"
+    },
+    {
+      "name": "检查安装",
+      "command": "npm list -g @modelcontextprotocol/server-brave-search --depth=0 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "brave_web_search",
+      "description": "执行网络搜索"
+    },
+    {
+      "name": "brave_local_search",
+      "description": "执行本地搜索"
+    }
+  ],
+  "notes": "需要申请 Brave Search API Key: https://brave.com/search/api/",
+  "tags": [
+    "搜索",
+    "网络搜索",
+    "信息检索"
+  ],
+  "scenarios": [
+    "research"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://brave.com/search/api/",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "requires_env": [
+    "BRAVE_API_KEY"
+  ],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

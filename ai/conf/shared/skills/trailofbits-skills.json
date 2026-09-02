@@ -1,0 +1,56 @@
+{
+  "id": "trailofbits-skills",
+  "name": "Trail of Bits Security Skills",
+  "description": "集成 Trail of Bits 官方 Codex Skills，用于本地代码库、提交差异和审计准备的安全审查与证据化报告。",
+  "category": "security",
+  "prompts": {
+    "differential-review": "使用 Trail of Bits differential-review 审查当前分支相对基线的安全相关代码变更，只报告有证据支持的问题。",
+    "audit-prep": "使用 Trail of Bits audit-prep-assistant 检查当前代码库的审计准备情况，输出缺口、风险和可执行改进项。",
+    "secure-workflow": "使用 Trail of Bits secure-workflow-guide 为授权代码库制定安全审查工作流，并明确范围、威胁模型、证据和残余风险。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "git"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "install-trailofbits-skills",
+      "name": "install-trailofbits-skills",
+      "description": "注册 Trail of Bits 官方插件市场，并安装适合代码安全审查的 Codex 插件",
+      "install": {
+        "default": "base=\"$HOME/.codex\"; repo=\"$base/trailofbits-skills\"; mkdir -p \"$base\"; if [ -d \"$repo/.git\" ]; then git -C \"$repo\" pull --ff-only; else git clone https://github.com/trailofbits/skills.git \"$repo\"; fi; if ! codex plugin marketplace list --json | rg -q '\"name\"[[:space:]]*:[[:space:]]*\"trailofbits\"'; then codex plugin marketplace add \"$repo\"; fi; codex plugin add differential-review@trailofbits; codex plugin add supply-chain-risk-auditor@trailofbits"
+      },
+      "check": {
+        "paths": [
+          "~/.codex/trailofbits-skills/.claude-plugin/marketplace.json"
+        ]
+      }
+    }
+  ],
+  "instructions": {
+    "workflow": "仅对用户拥有或明确授权的代码库工作；先确定范围、基线和威胁模型，再收集可复核证据，最后生成报告。",
+    "safety": "不把未经授权的公网扫描、生产环境攻击测试或漏洞提交作为默认动作；发现问题时先确认影响和授权边界。",
+    "reporting": "每个 finding 应包含文件/行号或可复现实验、影响、严重度、置信度、修复建议和残余风险。"
+  },
+  "tags": [
+    "Trail of Bits",
+    "安全审计",
+    "差异审查",
+    "代码审查",
+    "供应链安全"
+  ],
+  "scenarios": [
+    "coding",
+    "qa-testing",
+    "agent-workbench"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/trailofbits/skills",
+  "repository": "https://github.com/trailofbits/skills",
+  "recommended_scenarios": "本地代码安全审查、PR 差异审查、审计准备和安全报告生成",
+  "unsuitable_scenarios": "未经授权的公网扫描、生产环境自动化攻击测试和无证据的漏洞提交"
+}

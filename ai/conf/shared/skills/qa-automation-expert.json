@@ -1,0 +1,32 @@
+{
+  "id": "qa-automation-expert",
+  "name": "QA Automation Expert",
+  "description": "自动化测试脚本编写专家。熟练掌握 Playwright, Jest, Cypress 等框架，能将自然语言测试用例转化为高可用、可维护的自动化测试代码。",
+  "category": "development",
+  "install": {
+    "type": "custom",
+    "command": "mkdir -p ~/.gemini/skills/qa-automation-expert && echo '已创建 QA 自动化技能目录。'"
+  },
+  "commands": {
+    "start": "echo 'Skill 已激活。'"
+  },
+  "required_tools": [],
+  "status_check": [],
+  "tags": [
+    "QA",
+    "自动化测试",
+    "Playwright",
+    "脚本生成"
+  ],
+  "scenarios": [
+    "qa-testing",
+    "coding",
+    "web-automation"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/google/antigravity",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

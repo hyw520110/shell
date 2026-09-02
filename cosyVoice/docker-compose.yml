@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  cosyvoice:
+    # 使用当前目录的 Dockerfile 构建镜像
+    build:
+      context: .  # 构建上下文路径
+      dockerfile: Dockerfile  # Dockerfile 文件名（可省略，因默认即为 Dockerfile）
+      args:
+        - BUILD_ENV=production  # 可选：传递构建参数
+    image: cosyvoice:local  # 构建后的镜像名称
+    container_name: cosyvoice  # 自定义容器名称
+    ports:
+      - "7860:7860"  # 映射 WebUI 端口
+    volumes:
+      - ./pretrained_models:/app/pretrained_models  # 挂载模型目录
+      - ./output:/app/output  # 挂载输出目录
+    environment:
+      - MODEL_DIR=/app/pretrained_models/CosyVoice-300M  # 指定模型路径
+    working_dir: /app  # 容器内工作目录
+    command: ["python3", "webui.py", "--port", "7860"]  # 覆盖默认启动命令
+    # depends_on:  # 如果有依赖服务，如数据库

@@ -1,0 +1,45 @@
+{
+  "id": "best-minds",
+  "name": "Best Minds",
+  "description": "汇聚各领域顶尖专家思维模型的 Skill 集合。让 Claude 模拟专家思维，提供专业视角的分析和建议。适合需要深度思考和专家级洞察的场景。",
+  "category": "reasoning",
+  "install": {
+    "command": "npx skills add https://github.com/anthropics/skills --skill best-minds",
+    "check": "test -d ~/.claude/skills/best-minds && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "analyze": "用 {expert} 的思维模型分析 {problem}",
+    "decide": "从 {expert1} 和 {expert2} 的视角评估 {decision}",
+    "brainstorm": "用专家思维头脑风暴 {topic}",
+    "review": "请 {expert} 审查 {work}"
+  },
+  "capabilities": [
+    "专家思维模拟 - 模拟各领域顶尖专家的思维方式",
+    "多视角分析 - 从不同专家视角分析问题",
+    "决策支持 - 提供专家级的决策建议",
+    "创意激发 - 用专家思维激发创意",
+    "深度洞察 - 提供专业级别的洞察"
+  ],
+  "dependencies": {
+    "platforms": [
+      "claude-code"
+    ]
+  },
+  "tips": "适合需要深度思考和专家视角的场景。可以让 Claude 模拟商业专家、技术专家、设计专家等不同领域的思维方式。",
+  "homepage": "https://github.com/anthropics/skills",
+  "repository": "https://github.com/anthropics/skills",
+  "tags": [
+    "思维模式",
+    "专家系统",
+    "最佳实践"
+  ],
+  "scenarios": [
+    "productivity",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

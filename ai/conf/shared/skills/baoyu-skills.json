@@ -1,0 +1,47 @@
+{
+  "id": "baoyu-skills",
+  "name": "Baoyu Skills",
+  "description": "宝玉维护的日常工作效率 Skills 集合，面向 Claude Code、Codex 等 AI Agents，覆盖内容生成、AI 后端、Markdown/HTML 转换、图像生成和实用工具。",
+  "category": "productivity",
+  "install": {
+    "command": "npx skills add jimliu/baoyu-skills",
+    "check": "npx skills find baoyu 2>/dev/null | grep -qi baoyu"
+  },
+  "prompts": {
+    "content": "使用 Baoyu Skills 辅助完成 {content_task}，优先考虑内容生成、图文排版或 Markdown/HTML 工作流。",
+    "discover": "从 JimLiu/baoyu-skills 中为 {task} 选择合适的具体 skill，并说明是否需要单独安装。"
+  },
+  "capabilities": [
+    "20+ 个日常工作效率 Skills",
+    "内容生成、信息图、Markdown/HTML、图像生成和实用工具",
+    "支持 npx skills 安装，也支持 Claude Code 插件 marketplace"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "node",
+      "npx"
+    ]
+  },
+  "tips": "该仓库包含多个 skill。仓库 README 建议按需安装，避免一次性加载过多上下文。",
+  "homepage": "https://github.com/JimLiu/baoyu-skills",
+  "repository": "https://github.com/JimLiu/baoyu-skills",
+  "tags": [
+    "Skill 集合",
+    "内容创作",
+    "信息图",
+    "Markdown",
+    "HTML",
+    "效率工具",
+    "Agent Skills"
+  ],
+  "scenarios": [
+    "productivity",
+    "product-docs",
+    "design-prototype"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "app-qa-automation",
+  "name": "App QA Automation",
+  "description": "移动端自动化测试专家。精通 Appium 等框架，用于编写 iOS/Android 跨平台自动化测试用例与执行脚本。",
+  "category": "automation",
+  "install": {
+    "type": "custom",
+    "command": "mkdir -p ~/.gemini/skills/app-qa-automation"
+  },
+  "tags": [
+    "QA",
+    "移动端",
+    "Appium",
+    "自动化测试"
+  ],
+  "scenarios": [
+    "qa-testing"
+  ],
+  "default_enabled": true,
+  "homepage": "https://github.com/google/antigravity",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

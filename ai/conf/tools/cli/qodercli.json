@@ -1,0 +1,62 @@
+{
+  "id": "qodercli",
+  "name": "Qoder CLI",
+  "description": "",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @qoder-ai/qodercli --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g @qoder-ai/qodercli"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @qoder-ai/qodercli --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.qodercli/settings.json",
+    "operations": {
+      "view": "cat $HOME/.qodercli/settings.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.qodercli/settings.json",
+      "reset": [
+        "cp $HOME/.qodercli/settings.json $HOME/.qodercli/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.qodercli/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "qodercli",
+    "version": "qodercli --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "qodercli --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.qodercli/settings.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

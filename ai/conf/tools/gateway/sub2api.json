@@ -1,0 +1,54 @@
+{
+  "id": "sub2api",
+  "name": "Sub2API Gateway",
+  "description": "本地部署的 AI 接口转换网关，支持将各种订阅格式转换为标准 OpenAI 接口",
+  "category": "ai-gateway",
+  "tags": ["gateway", "proxy", "openai"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "Docker 部署",
+        "type": "bash",
+        "command": "cd gateway/sub2api && bash startup.sh",
+        "check": "docker ps --format '{{.Names}}' | grep -q 'sub2api'",
+        "uninstall": [
+          "cd gateway/sub2api && docker compose down || docker-compose down"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "cd gateway/sub2api && bash startup.sh",
+    "check": "docker ps | grep sub2api"
+  },
+
+  "config": {
+    "path": "gateway/sub2api/.env",
+    "operations": {
+      "view": "cat gateway/sub2api/.env 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} gateway/sub2api/.env"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "Docker 容器状态",
+      "command": "docker ps --filter 'name=sub2api' --format '{{.Status}}'"
+    },
+    {
+      "name": "服务可用性",
+      "command": "curl -fsS http://localhost:8080 >/dev/null 2>&1 && echo '服务正常' || echo '服务未响应'"
+    }
+  ],
+
+  "commands": {
+    "start": "open http://localhost:8080",
+    "status": "cd gateway/sub2api && bash startup.sh status",
+    "logs": "cd gateway/sub2api && docker compose logs -f"
+  },
+
+  "notes": "Sub2API 通常通过 Docker 运行。默认访问地址为 http://localhost:8080。请确保本地已安装 Docker 和 Docker-compose。"
+}

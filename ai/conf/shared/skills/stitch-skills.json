@@ -1,0 +1,52 @@
+{
+  "id": "stitch-skills",
+  "name": "Stitch Skills",
+  "description": "Google Labs 出品的 AI Agent UI 设计技能套件 (14 个技能)：代码转设计稿、设计稿生成、设计系统管理、React/React Native 组件生成、Remotion 视频生成等。需配合 Stitch MCP Server 使用。",
+  "category": "design",
+  "install": {
+    "command": "npx skills add google-labs-code/stitch-skills -g",
+    "check": "npx skills find stitch 2>/dev/null | grep -qi stitch"
+  },
+  "prompts": {
+    "code-to-design": "把这段 {framework} 代码转成 Stitch 设计稿",
+    "generate": "生成一个 {screen_type} 页面，风格 {style}",
+    "react": "把这个 Stitch 设计稿转成 React 组件系统",
+    "react-native": "把这个 HTML 设计转成 React Native 组件",
+    "video": "用 Remotion 从这个 Stitch 项目生成演示视频"
+  },
+  "capabilities": [
+    "代码转设计 - 前端代码 (React/Vue 等) 转 Stitch Design",
+    "设计生成 - 从文本或图片生成新屏幕和变体",
+    "设计系统管理 - 上传 DESIGN.md 并应用主题",
+    "React 组件 - Stitch 屏幕转 React 组件系统",
+    "React Native - HTML 设计转 React Native 组件",
+    "Remotion 视频 - 从 Stitch 项目生成演示视频",
+    "shadcn/ui - shadcn/ui 组件集成指导"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "node",
+      "npx"
+    ]
+  },
+  "tips": "包含 3 个插件包：stitch-design (6 个技能)、stitch-build (4 个技能)、stitch-utilities (4 个技能)。使用前需配置 Stitch MCP Server: https://stitch.withgoogle.com/docs/mcp/setup/",
+  "homepage": "https://stitch.withgoogle.com",
+  "repository": "https://github.com/google-labs-code/stitch-skills",
+  "tags": [
+    "UI",
+    "设计系统",
+    "React",
+    "Agent Skills",
+    "Google"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

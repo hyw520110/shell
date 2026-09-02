@@ -1,0 +1,118 @@
+{
+  "id": "last30days-skill",
+  "name": "Last30Days - AI Agent 调研搜索引擎",
+  "description": "31K Star 热门技能。AI Agent 驱动的搜索引擎，自动搜索过去 30 天内 Reddit、X、YouTube、TikTok、Hacker News、Polymarket、GitHub 等 10+ 平台内容，按真实用户互动（点赞、投票、金钱）评分，AI 合成为一份简报。支持智能搜索、HTML 简报导出、竞品对比、GitHub 人物模式、ELI5 模式。",
+  "category": "research",
+  "tags": [
+    "调研",
+    "搜索",
+    "信息聚合",
+    "竞品分析",
+    "市场研究",
+    "热点追踪"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "npx 安装 (推荐)",
+        "type": "npx",
+        "command": "npx skills add mvanhorn/last30days-skill -g"
+      },
+      {
+        "name": "Claude Code 插件市场",
+        "type": "claude-plugin",
+        "command": "/plugin marketplace add mvanhorn/last30days-skill && /plugin install last30days"
+      },
+      {
+        "name": "手动克隆",
+        "type": "git",
+        "command": "git clone https://github.com/mvanhorn/last30days-skill.git"
+      }
+    ],
+    "default_method": 0,
+    "post_install": [
+      "echo '1. 零配置即可使用 Reddit、HN、Polymarket、GitHub'",
+      "echo '2. 运行一次后设置向导解锁 X、YouTube、TikTok 等平台'",
+      "echo '3. 使用 /last30days <话题> 开始调研'"
+    ]
+  },
+  "sources": {
+    "free_no_key": [
+      "Reddit (upvotes + comments)",
+      "Hacker News (points + comments)",
+      "Polymarket (odds)",
+      "GitHub (PRs, stars, releases)"
+    ],
+    "optional_key": [
+      "X / Twitter (likes, retweets)",
+      "YouTube (transcripts)",
+      "TikTok (engagement)",
+      "Instagram Reels (transcripts)",
+      "Threads, Pinterest, Bluesky"
+    ],
+    "paid_opt_in": [
+      "Perplexity Sonar (grounded web search)",
+      "YouTube/TikTok comments (extra API calls)"
+    ]
+  },
+  "features": {
+    "intelligent_search": "v3 引擎先理解话题，自动解析相关人物/社区/标签再搜索",
+    "html_brief": "生成可分享的 HTML 简报（暗色模式、可打印、无 JS）",
+    "github_person_mode": "查看 GitHub 用户的 PR 速率、仓库星标、发布记录",
+    "eli5_mode": "切换通俗语言模式（eli5 on/off）",
+    "competitor_comparison": "自动发现竞品并生成对比报告（--competitors）",
+    "best_takes": "提取最有趣/最病毒式的引用和金句",
+    "cross_source_merge": "跨平台相同故事自动合并",
+    "single_pass_comparison": "单次运行完成多实体对比（3 分钟 vs 12+ 分钟）"
+  },
+  "examples": [
+    {
+      "task": "人物调研",
+      "prompt": "/last30days Peter Steinberger"
+    },
+    {
+      "task": "竞品对比",
+      "prompt": "/last30days Claude Code vs Cursor vs Windsurf"
+    },
+    {
+      "task": "热点追踪",
+      "prompt": "/last30days AI Agent Skills"
+    },
+    {
+      "task": "HTML 简报",
+      "prompt": "/last30days OpenAI --emit=html"
+    },
+    {
+      "task": "通俗模式",
+      "prompt": "/last30days 量子计算 eli5 on"
+    }
+  ],
+  "requirements": {
+    "agent": "支持 Agent Skills 标准的 Agent (Claude Code, Codex CLI, Cursor, Copilot, Gemini CLI 等 50+ 宿主)"
+  },
+  "compatibility": {
+    "claude_code": true,
+    "codex": true,
+    "cursor": true,
+    "copilot": true,
+    "gemini_cli": true,
+    "openclaw": true
+  },
+  "references": {
+    "github": "https://github.com/mvanhorn/last30days-skill",
+    "skill_spec": "https://github.com/mvanhorn/last30days-skill/blob/main/skills/last30days/SKILL.md"
+  },
+  "notes": "零配置即可使用 Reddit/HN/Polymarket/GitHub。X/YouTube/TikTok 需要 ScrapeCreators API Key。Perplexity 需要 OpenRouter API Key（付费，按需开启）。建议全局安装 (-g)，所有项目通用。",
+  "license": "MIT",
+  "scenarios": [
+    "research",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/mvanhorn/last30days-skill",
+  "repository": "https://github.com/mvanhorn/last30days-skill",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

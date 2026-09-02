@@ -1,0 +1,24 @@
+{
+  "id": "performance-tester",
+  "name": "Performance Tester",
+  "description": "性能与压测架构师。擅长分析系统瓶颈，并基于 k6/JMeter 编写高并发负载测试用例，输出详细的吞吐量(RPS)与延迟分析报告。",
+  "category": "ops",
+  "install": {
+    "type": "custom",
+    "command": "mkdir -p ~/.gemini/skills/performance-tester"
+  },
+  "tags": [
+    "性能测试",
+    "QA",
+    "压力测试",
+    "k6"
+  ],
+  "scenarios": [
+    "qa-testing",
+    "ops-monitoring"
+  ],
+  "default_enabled": true,
+  "homepage": "https://github.com/google/antigravity",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

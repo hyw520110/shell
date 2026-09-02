@@ -1,0 +1,71 @@
+{
+  "id": "open-webui",
+  "name": "Open WebUI",
+  "description": "本地 Web UI 与 OpenAI 兼容前端服务，可接入 Ollama、DS4、OpenAI 兼容 API 等后端",
+  "category": "ai-runtime",
+  "tags": [
+    "ai",
+    "runtime",
+    "webui",
+    "openai-compatible",
+    "ollama"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "自动安装 (Docker 优先)",
+        "type": "bash",
+        "command": "bash runtime/open-webui/install-open-webui.sh install",
+        "check": "docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^open-webui$' || pgrep -f 'open-webui|open_webui.main:app' >/dev/null 2>&1",
+        "uninstall": [
+          "bash runtime/open-webui/install-open-webui.sh uninstall"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "bash runtime/open-webui/install-open-webui.sh install",
+    "check": "docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^open-webui$' || pgrep -f 'open-webui|open_webui.main:app' >/dev/null 2>&1"
+  },
+  "config": {
+    "path": "$HOME/open-webui/.open-webui.env",
+    "operations": {
+      "view": "cat $HOME/open-webui/.open-webui.env 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/open-webui/.open-webui.env",
+      "reset": [
+        "cp $HOME/open-webui/.open-webui.env $HOME/open-webui/.open-webui.env.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/open-webui/.open-webui.env"
+      ]
+    }
+  },
+  "commands": {
+    "start": "bash runtime/open-webui/install-open-webui.sh start",
+    "stop": "bash runtime/open-webui/install-open-webui.sh stop",
+    "status": "bash runtime/open-webui/install-open-webui.sh status",
+    "version": "bash runtime/open-webui/install-open-webui.sh status"
+  },
+  "status_check": [
+    {
+      "name": "检查状态",
+      "command": "bash runtime/open-webui/install-open-webui.sh status"
+    },
+    {
+      "name": "检查容器",
+      "command": "docker ps --filter 'name=open-webui' --format '{{.Names}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || echo \"未检测到 Docker 容器\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/open-webui/.open-webui.env 2>/dev/null || echo \"配置文件不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "脚本位于 ai/runtime/open-webui。默认优先使用 Docker/Docker Compose，Docker 不可用时回退主机安装。",
+  "post_install": [],
+  "post_uninstall": []
+}

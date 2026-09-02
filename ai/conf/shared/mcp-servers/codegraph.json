@@ -1,0 +1,103 @@
+{
+  "id": "codegraph",
+  "name": "CodeGraph",
+  "description": "代码知识图谱 MCP 服务器，为 AI 编码工具提供语义代码智能 - 支持符号搜索、调用链分析、影响分析等",
+  "category": "development",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @colbymchenry/codegraph",
+    "post_install": [
+      {
+        "description": "建议执行索引初始化",
+        "command": "echo -e '\\n[建议] 在项目根目录运行: codegraph init -i\\n以启用完整的语义搜索和调用链分析。'"
+      }
+    ]
+  },
+  "config": {
+    "command": "codegraph",
+    "args": [
+      "serve",
+      "--mcp"
+    ],
+    "transportType": "stdio",
+    "env": {
+      "MCP_SEMANTIC_WARMUP_LIMIT": "0",
+      "CODEGRAPH_WATCH_DEBOUNCE_MS": "5000"
+    }
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查 CodeGraph",
+      "command": "codegraph --version 2>/dev/null || echo 'CodeGraph 未安装'"
+    },
+    {
+      "name": "检查索引状态",
+      "command": "[ -d .codegraph ] && echo '已初始化索引' || echo '未初始化索引 (.codegraph 目录不存在)'"
+    },
+    {
+      "name": "检查安装",
+      "command": "npm list -g @colbymchenry/codegraph --depth=0 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "codegraph_search",
+      "description": "按名称搜索符号（函数、类、变量等）"
+    },
+    {
+      "name": "codegraph_context",
+      "description": "获取指定任务的智能上下文（入口点、相关符号、代码片段）"
+    },
+    {
+      "name": "codegraph_callers",
+      "description": "查找指定符号的所有调用者"
+    },
+    {
+      "name": "codegraph_callees",
+      "description": "查找指定符号调用的所有函数"
+    },
+    {
+      "name": "codegraph_impact",
+      "description": "分析修改指定符号的影响范围"
+    },
+    {
+      "name": "codegraph_node",
+      "description": "获取单个符号的详细信息"
+    },
+    {
+      "name": "codegraph_explore",
+      "description": "探索代码库，返回相关文件和代码片段（Explore Agent 专用）"
+    },
+    {
+      "name": "codegraph_status",
+      "description": "检查 CodeGraph 索引状态"
+    },
+    {
+      "name": "codegraph_files",
+      "description": "列出已索引的文件"
+    }
+  ],
+  "tags": [
+    "代码分析",
+    "代码图",
+    "代码可视化"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://www.npmjs.com/package/@colbymchenry/codegraph",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

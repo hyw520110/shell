@@ -1,0 +1,62 @@
+{
+  "id": "coze",
+  "name": "Coze CLI",
+  "description": "字节 Coze 平台 CLI，用于 AI 智能体/组件开发，免费使用",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @coze/cli --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g @coze/cli"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @coze/cli --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.coze/config.json",
+    "operations": {
+      "view": "cat $HOME/.coze/config.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.coze/config.json",
+      "reset": [
+        "cp $HOME/.coze/config.json $HOME/.coze/config.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.coze/config.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "coze",
+    "version": "coze --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "coze --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.coze/config.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

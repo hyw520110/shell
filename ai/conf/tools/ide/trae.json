@@ -1,0 +1,52 @@
+{
+  "id": "trae",
+  "name": "Trae IDE",
+  "description": "字节跳动推出的自适应 AI IDE，具备强大的 AI 编程助手功能",
+  "category": "ai-ide",
+  "tags": ["ai", "ide", "bytedance"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "官方 dmg 安装 (via 脚本)",
+        "type": "bash",
+        "command": "bash ../ide/install-trae.sh",
+        "check": "[ -d '/Applications/Trae.app' ] || [ -d '/Applications/TRAE SOLO CN.app' ] || ls -d /Applications/*Trae*.app &>/dev/null",
+        "uninstall": [
+          "echo '请手动在 /Applications 中删除 Trae 应用'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash ../ide/install-trae.sh",
+    "check": "[ -d '/Applications/Trae.app' ]"
+  },
+
+  "config": {
+    "path": "$HOME/Library/Application Support/Trae/User/settings.json",
+    "operations": {
+      "view": "cat \"$HOME/Library/Application Support/Trae/User/settings.json\" 2>/dev/null || echo '配置文件不存在'",
+      "edit": "open -a Trae 2>/dev/null || echo '请在 IDE 中手动打开设置'"
+    }
+  },
+
+  "commands": {
+    "start": "open -a \"$(ls -d /Applications/*Trae*.app | head -1)\""
+  },
+
+  "status_check": [
+    {
+      "name": "检查应用",
+      "command": "ls -d /Applications/*Trae*.app &>/dev/null && echo '已安装' || echo '未安装'"
+    }
+  ],
+
+  "mcp_servers": {},
+
+  "skills": {},
+
+  "notes": "Trae 是字节跳动官方出品的 AI IDE。该工具将通过调用本地 ide 目录下的脚本进行安装。"
+}

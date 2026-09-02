@@ -1,0 +1,210 @@
+// http://www.ioo.cool/posts/fa563716f116/#post
+// 动态联动参数 https://plugins.jenkins.io/uno-choice/
+properties([
+  parameters([
+  	//[$class: 'git-parameter',type: 'PT_BRANCH',description: '选择分支',name: 'branch',defaultValue: 'master',branchFilter: 'origin/(.*)',quickFilterEnabled: true,selectedValue: 'DEFAULT',sortMode: 'DESCENDING'],
+  	gitParameter(name: 'branch', defaultValue: 'master', branchFilter: 'origin/(.*)',tagFilter: '*',quickFilterEnabled: true,selectedValue: 'DEFAULT', sortMode: 'DESCENDING', type: 'PT_BRANCH', description: '选择分支'),
+    [$class: 'ChoiceParameter',name: 'profile',choiceType: 'PT_SINGLE_SELECT',description: '选择构建环境',script: [$class: 'GroovyScript',script: [classpath: [],sandbox: true,script:'return["dev","test","prod"]']]],
+    [$class: 'CascadeChoiceParameter',name: 'SSH_SERVER',choiceType: 'PT_RADIO',referencedParameters: 'profile',script: [$class: 'GroovyScript',script: [classpath: [],sandbox: true,script:''' 
+    	devServers = ['dev-40:selected','dev-57','dev-85']
+		testServers = ['test-96:selected','test-98']
+		prodServers = ['jumpserver:selected']
+    	if (profile.equals("dev")){return  devServers }
+		else if(profile.equals("test")){return testServers }
+        else if(profile.equals("prod")){return prodServers }
+		''']]
+    ],
+    booleanParam(name: 'fast_mode', defaultValue: true, description: '此操作将会跳过单元测试以及代码质量检查。'),
+    extendedChoice(name: 'builder', type:'PT_RADIO', value: 'mvnd,mvn', descriptionPropertyValue: 'mvnd,maven', defaultValue: 'mvnd', multiSelectDelimiter: ',', description: '选择构建工具')
+ ])
+])
+
+pipeline {
+    agent any
+    options {
+        ansiColor('xterm')
+        timestamps()  // 在日志中打印时间
+        buildDiscarder(logRotator(numToKeepStr: '7', artifactNumToKeepStr: '14', daysToKeepStr: '10'))
+        timeout(time: 12, unit: 'MINUTES') // 流水线超时设置
+        // skipDefaultCheckout()  删除隐式的checkout scm 语句
+        // disableConcurrentBuilds()  // 禁止并行
+    }
+    environment {
+        JAVA_HOME = "${tool 'jdk1.8'}"
+        GIT_URL="http://dev1.shangjinuu.com/Biyou/lianxin-mngserver.git"
+    }
+    tools {
+    	//必须和jenkins工具配置名称一致，mvnd配置了两个版本：mvnd、mvnd_0.8.1
+        maven 'mvnd'
+        maven 'maven3.8'
+        jdk 'jdk1.8'
+    }
+	 // 参数化构建配置，已过期，被动态联动参数取代
+    //parameters {
+            //gitParameter(name: 'branch', defaultValue: 'origin/master', branchFilter: '.*',quickFilterEnabled: true,selectedValue: 'DEFAULT', sortMode: 'DESCENDING', type: 'PT_BRANCH', description: '选择分支') 
+            // choice choices: ['dev', 'test', 'prod'], name: 'profile'
+            // extendedChoice(name: 'SSH_SERVER', type:'PT_RADIO', value: 'test-96,dev-40,jumpserver', descriptionPropertyValue: 'test-10.1.120.96,dev-10.1.120.40,jumpserver', defaultValue: 'dev-40', multiSelectDelimiter: ',', description: '选择部署服务器')
+            //booleanParam(name: 'fast_mode', defaultValue: true, description: '此操作将会跳过单元测试以及代码质量检查。')
+            //extendedChoice(name: 'builder', type:'PT_RADIO', value: 'mvnd,mvn', descriptionPropertyValue: 'mvnd,maven', defaultValue: 'mvnd', multiSelectDelimiter: ',', description: '选择构建工具')
+            //choice(name: 'ACTION', choices: ['deploy','rollback'], description: 'deploy:发布，rollback：回滚')
+    //} 
+    stages {
+    	stage('清理') {
+            steps {
+              cleanWs(cleanWhenAborted: true,cleanWhenFailure: true,cleanWhenNotBuilt: true,cleanWhenSuccess: true,cleanWhenUnstable: true,cleanupMatrixParent: true,disableDeferredWipeout: true,deleteDirs: true)
+          	}
+        }
+        stage("拉取"){
+            steps {
+            	 wrap([$class: 'BuildUser']) {
+	                script{
+	                    checkout([$class: 'GitSCM', branches: [[name: '$branch']], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'CloneOption', noTags: true, reference: '', shallow: true]], gitTool: 'Default', submoduleCfg: [], userRemoteConfigs: [[url: "${env.GIT_URL}"]]])
+	                    // 获取git提交id ，简短：git rev-parse --short HEAD
+	                    env.COMMIT_ID = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
+	                    // TODO 显示N条(20)git日志，只显示了第一条 
+	                    env.GIT_LOG = sh(returnStdout: true, script:  "git log -n 20  --pretty=format:'%Cred%h%Creset %d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit")
+	                    env.GIT_COMMITER = sh(returnStdout: true, script:  ''' git show --raw|grep Author|awk '{print $2}' ''')
+	                    echo "开始构建..."
+	                    sh "echo JOB_NAME : ${env.JOB_NAME}-${env.BUILD_NUMBER}"
+	                    sh "echo workspace : ${env.WORKSPACE}"
+	                    sh "echo git branch : ${env.branch}"
+	                    sh "echo Current commit id: : ${env.COMMIT_ID}"
+	                    echo "git log: ${env.GIT_LOG}"
+	                    echo sh(script: 'env|sort', returnStdout: true)
+	                    currentBuild.displayName = "#${BUILD_NUMBER}*${env.BUILD_USER}-${branch}-$profile-${env.GIT_COMMITER}"
+	                	currentBuild.description = "#${BUILD_NUMBER}:${env.BUILD_USER}-${env.JOB_NAME},profile:$profile, git branch:${branch},comitter:${env.GIT_COMMITER},ssh server:${SSH_SERVER}"
+	                }
+                 }
+            }
+        } 
+        stage("测试&报告"){
+            when{
+                expression {
+                    params.fast_mode == false
+                }
+            }
+           steps{
+                script {
+                    echo "开始运行测试"
+                    sh "$builder clean test jacoco:report"
+                }
+           }
+        }
+        stage('编译构建') { 
+          // when { environment name: 'ACTION', value: 'deploy' }
+          // TODO 1、并行任务 2、docker镜像构建 
+        	parallel { 
+            	stage('打包') {
+        			steps {
+						script {
+			           		if ( "" == "$SSH_SERVER") { 
+			           			currentBuild.result = 'ABORTED'
+			           			return 
+			           		}
+				            if (params.fast_mode) {
+					            sh '$builder clean package -Dmaven.test.skip=true -P$profile' 
+				            } else {
+				                sh '$builder clean package -P$profile'  
+				            }
+		            	}
+        			}
+                }
+        	    stage('代码检查') {
+      		 		//when{
+		            //    expression {
+		            //        params.fast_mode == false
+		            //    }
+		            //}
+    		 		steps {
+    		 			timestamps {
+    		 				echo "code check..."   
+    		 			}
+		                //withSonarQubeEnv( installationName: 'sonar_server') {
+		                //    sh '$builder sonar:sonar'
+		                //}
+		                // 检查结果分析
+		                //timeout(time: 1, unit: 'MINUTES') {
+		                //    waitForQualityGate abortPipeline: true
+		                //}
+		            }
+                }
+       		}       
+       } 
+       stage('发布部署') {
+        	// when { environment name: 'ACTION', value: 'deploy' }
+            steps {
+            	script {
+            	    // timeout (“${env.TIMEOUT?:15}")
+        		 	// configName 必须和jenkins系统设置中的ssh server name一致
+            		if ( "dev-40" == "$SSH_SERVER") { 
+	                	sshPublisher(publishers: [sshPublisherDesc(configName: '10.1.120.40', transfers: [sshTransfer(cleanRemote: false, excludes: '',execCommand: '''/opt/shell/deploy.sh dev $JOB_NAME ''', execTimeout: 520000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: 'target', sourceFiles: '**/*.tar.gz')], usePromotionTimestamp: false, useWorkspaceInPromotion: true, verbose: true)])     
+            		} else if  ( "dev-57" == "$SSH_SERVER") {
+            			sshPublisher(publishers: [sshPublisherDesc(configName: '10.1.120.57', transfers: [sshTransfer(cleanRemote: false, excludes: '',execCommand: '''/opt/shell/deploy.sh dev $JOB_NAME ''', execTimeout: 520000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: 'target', sourceFiles: '**/*.tar.gz')], usePromotionTimestamp: false, useWorkspaceInPromotion: true, verbose: true)])
+            		} else if  ( "test-96" == "$SSH_SERVER") {
+            			sshPublisher(publishers: [sshPublisherDesc(configName: '10.1.120.96', transfers: [sshTransfer(cleanRemote: false, excludes: '',execCommand: '''/opt/shell/deploy.sh dev $JOB_NAME ''', execTimeout: 520000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: 'target', sourceFiles: '**/*.tar.gz')], usePromotionTimestamp: false, useWorkspaceInPromotion: true, verbose: true)])
+            		} else if  ( "jumpserver" == "$SSH_SERVER") {
+            			sshPublisher(publishers: [sshPublisherDesc(configName: 'jumpserver-47.99.88.56', transfers: [sshTransfer(cleanRemote: false, excludes: '',execCommand: '''/opt/shell/jump_scp.sh pip4 $JOB_NAME ''', execTimeout: 520000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: 'target', sourceFiles: '**/*.tar.gz')], usePromotionTimestamp: false, useWorkspaceInPromotion: true, verbose: true)])
+            		} else { 
+            		    echo "$SSH_SERVER has no sshPublisher configuration"
+            		    currentBuild.result = 'ABORTED'
+            		}
+            	}
+            }
+       }
+    }
+    post {
+	        success {
+	        	wrap([$class: 'BuildUser']) {
+	                dingtalk(
+	                    robot: '连信通知群',
+	                    type: 'MARKDOWN',
+	                    title: "构建成功: ${JOB_NAME}",
+	                    text: ["### <font color=#008000>构建信息</font>",
+	                        '---',
+	                        "- 构建任务: <font color=#008000>${JOB_NAME}-${BUILD_ID}</font>",
+	                        "- 任务名: [${currentBuild.displayName}](${env.BUILD_URL})",
+	                        "- 构建状态: **<font color=#008000>${currentBuild.result}</font>**",
+	                        "- 项目地址: ${env.GIT_URL}",
+	                        "- 构建分支: ${branch}-${env.COMMIT_ID}",
+	                        "- 构建环境: ${profile} -> ${SSH_SERVER}",
+	                        "- 构建工具: ${builder}",
+	                        "- git日志: ${env.GIT_LOG}",
+	                        "",
+	                        '---',
+	                        "### 执行人",
+	                        '---',
+	                        "- ${env.BUILD_USER}",
+	                        "",
+	                        '---',
+	                        "### 持续时间",
+	                        '---',
+	                        "- ${currentBuild.durationString}".split("and counting")[0],
+	                        "",
+	                        '---']
+	                )
+            	}
+	        }   
+	        // 其他状态 always、unstable、changed、fixed、regression、aborted、cleanup
+	        failure{
+	        	wrap([$class: 'BuildUser']) {
+	                dingtalk (
+	                    robot: '连信通知群',
+	                    type:'ACTION_CARD',
+	                    atAll: false,
+	                    title: "构建失败：${env.JOB_NAME}",
+	                    //messageUrl: 'xxxx',
+	                    text: [
+	                        "应用:[${env.JOB_NAME}](${env.JOB_URL})", 
+	                        "- 构建状态  <font color=#EE0000 >失败</font>！",
+	                        "- 任务名 ：[${currentBuild.displayName}](${env.BUILD_URL})",
+	                        "- 耗时：${currentBuild.durationString}".split("and counting")[0],
+	                        "- 执行人： ${BUILD_USER}",
+	                        "- 构建工具: ${builder}",
+	                        "- git日志：  ${env.GIT_LOG}",
+	                    ]
+	                )
+                }
+            }
+    } 
+}
+

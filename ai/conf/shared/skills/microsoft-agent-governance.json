@@ -1,0 +1,36 @@
+{
+  "id": "microsoft-agent-governance",
+  "name": "Microsoft Agent Governance Toolkit",
+  "description": "微软开源的 AI 智能体治理工具包，专注策略执行、零信任身份与执行沙盒，全面防御 OWASP 十大安全威胁。",
+  "category": "security",
+  "scenarios": [
+    "ops",
+    "architecture",
+    "security"
+  ],
+  "tags": [
+    "安全",
+    "治理",
+    "微软",
+    "沙盒",
+    "零信任"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/microsoft/agent-governance-toolkit",
+  "repository": "https://github.com/microsoft/agent-governance-toolkit",
+  "prompts": {
+    "default": "应用 Microsoft Agent Governance Toolkit 对当前的 Agent 架构进行零信任与安全沙盒加固。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "instructions": {
+    "workflow": "集成该安全框架作为 Agent 访问敏感系统和工具的统一代理与边界拦截器。"
+  },
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

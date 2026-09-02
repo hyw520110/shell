@@ -1,0 +1,64 @@
+{
+  "id": "umi-ocr",
+  "name": "离线 OCR 文字识别 (Umi-OCR)",
+  "description": "基于 Umi-OCR 的离线文字识别技能，支持截图 OCR、批量图片识别、PDF 文档提取、二维码识别与生成、公式识别。完全离线运行，支持中英日韩等多语言",
+  "category": "vision",
+  "prompts": {
+    "screenshot_ocr": "识别这张截图中的所有文字内容，保持原始排版",
+    "batch_ocr": "批量识别以下目录中的所有图片文字: /path/to/images",
+    "pdf_extract": "提取这个 PDF 文件中的全部文字内容",
+    "qrcode_read": "识别这张图片中的二维码内容",
+    "qrcode_generate": "生成一个包含以下文本的二维码: https://example.com",
+    "formula_ocr": "识别这张图片中的数学公式并转换为 LaTeX 格式",
+    "scan_document": "将这份扫描件转换为可编辑文本，保留表格结构"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "umi-ocr"
+    ],
+    "system_commands": [],
+    "setup": [
+      "下载 Umi-OCR: https://github.com/hiroi-sora/Umi-OCR/releases/latest",
+      "解压后启动 Umi-OCR.exe (Windows) 或 umi-ocr.sh (Linux)",
+      "在设置中开启 HTTP 服务 (端口 1224)"
+    ]
+  },
+  "install_check": "curl -s http://localhost:1224/api/ocr -X POST -H 'Content-Type: application/json' -d '{\"base64\":\"\"}' 2>/dev/null | head -c 50",
+  "instructions": {
+    "basics": "使用 umi-ocr MCP 调用本地 Umi-OCR HTTP API 进行文字识别，所有处理在本地完成，数据不离开设备",
+    "supported_formats": {
+      "input_images": "jpg, jpeg, jfif, png, webp, bmp, tif, tiff",
+      "input_documents": "pdf, xps, epub, mobi, fb2, cbz",
+      "output_text": "txt, jsonl, md, csv",
+      "qrcode_protocols": "QRCode, DataMatrix, PDF417, Aztec, Code128 等 19 种"
+    },
+    "ocr_engines": {
+      "rapid": "RapidOCR 引擎，兼容性好，推荐默认使用",
+      "paddle": "PaddleOCR 引擎，速度稍快，需额外安装"
+    },
+    "best_practices": [
+      "截图识别时确保图片清晰，避免模糊或反光",
+      "批量识别前可设置忽略区域排除水印和页眉页脚",
+      "PDF 识别可选择输出为双层可搜索 PDF",
+      "多语言混合文本（中英日韩）自动检测，无需手动切换",
+      "长图或大图需调高图像边长限制设置"
+    ]
+  },
+  "tips": "Umi-OCR 完全离线运行，适合处理敏感文档。支持命令行和 HTTP 接口两种调用方式。",
+  "tags": [
+    "OCR",
+    "文字识别",
+    "图片处理"
+  ],
+  "scenarios": [
+    "research",
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/hiroi-sora/Umi-OCR",
+  "repository": "https://github.com/hiroi-sora/Umi-OCR",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

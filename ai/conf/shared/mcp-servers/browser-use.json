@@ -1,0 +1,70 @@
+{
+  "id": "browser-use",
+  "name": "Browser Use MCP Server",
+  "description": "Browser Use (Playwright-based) 浏览器自动化 MCP 服务器，允许 AI 代理控制真实浏览器进行网页导航、点击、表单填写和数据抓取。",
+  "category": "automation",
+  "install": {
+    "type": "bash",
+    "command": "bash \"${SCRIPT_DIR}/scripts/install_python_mcp.sh\" mcp-server-browser-use"
+  },
+  "compatibility": {
+    "check": "command -v uv >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 && python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'",
+    "reason": "browser-use 官方当前支持 macOS Intel/x86-64，但需要 uv 和 Python 3.11+；首次启动还需要配置 LLM API，并下载 Playwright 浏览器。"
+  },
+  "config": {
+    "command": "mcp-server-browser-use",
+    "args": [],
+    "transportType": "stdio",
+    "env": {
+      "MCP_LLM_PROVIDER": "${MCP_LLM_PROVIDER:-openai}",
+      "MCP_LLM_API_KEY": "${MCP_LLM_API_KEY:-}"
+    }
+  },
+  "required_tools": [
+    "uv",
+    "python3"
+  ],
+  "status_check": [
+    {
+      "name": "检查 uv",
+      "command": "uv --version 2>/dev/null || echo 'uv 工具未安装，请先安装 uv'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "navigate",
+      "description": "导航到指定的 URL"
+    },
+    {
+      "name": "click",
+      "description": "点击网页上的指定元素"
+    },
+    {
+      "name": "fill_form",
+      "description": "在网页表单中输入数据"
+    },
+    {
+      "name": "extract_data",
+      "description": "从网页提取结构化数据"
+    }
+  ],
+  "notes": "该服务器需要 Python 3.11+ 和 uv 包管理器。npm 目前没有可用的 browser-use MCP 包；macOS Intel/x86-64 可使用，但依赖安装和首次浏览器下载可能耗时。",
+  "tags": [
+    "浏览器",
+    "自动化",
+    "RPA",
+    "爬虫"
+  ],
+  "scenarios": [
+    "web-automation",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://browser-use.com",
+  "repository": "https://github.com/browser-use/browser-use",
+  "requires_env": [],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

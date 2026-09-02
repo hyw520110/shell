@@ -1,0 +1,60 @@
+{
+  "id": "skill-seekers",
+  "name": "Skill Seekers Skill/RAG Builder",
+  "description": "使用 Skill Seekers 将文档站点、GitHub 仓库、PDF、视频、Notebook、OpenAPI 等来源转换为 AI Skills、RAG 文档和多平台上下文资产。",
+  "category": "knowledge",
+  "scenarios": [
+    "coding",
+    "agent-workbench",
+    "research"
+  ],
+  "tags": [
+    "Skills",
+    "RAG",
+    "知识库",
+    "文档处理",
+    "MCP",
+    "Python"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://skillseekersweb.com/",
+  "repository": "https://github.com/yusufkaraaslan/Skill_Seekers",
+  "prompts": {
+    "default": "使用 Skill Seekers 将输入来源转换为结构化 AI Skill/RAG 资产，并说明生成目录、质量检查和打包目标。",
+    "create": "运行 skill-seekers create 处理给定 URL/仓库/PDF/目录，然后检查输出的 SKILL.md 和 references。",
+    "package": "运行 skill-seekers package 将输出打包为 claude/openai/gemini/langchain/llama-index 等目标格式。",
+    "scan": "运行 skill-seekers scan 扫描当前项目，生成框架配置和 codebase 配置。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "python3",
+      "pip3"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "install-skill-seekers",
+      "name": "install-skill-seekers",
+      "description": "安装 Skill Seekers CLI",
+      "install": {
+        "default": "export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$PATH\"; if command -v uv >/dev/null 2>&1; then uv tool install --upgrade skill-seekers; else python3 - <<'PY'\nimport sys\nraise SystemExit(0 if sys.version_info >= (3, 10) else 1)\nPY\npython3 -m pip install --user -U skill-seekers; fi"
+      },
+      "check": {
+        "commands": [
+          "skill-seekers"
+        ]
+      }
+    }
+  ],
+  "instructions": {
+    "workflow": "先确认来源类型和目标平台；生成后检查 SKILL.md 是否包含准确范围、示例和引用；需要联网抓取时说明来源和缓存目录。",
+    "quality": "对生成的 Skill 做最小可用验证：目录存在、SKILL.md 存在、引用文件可读、目标包生成成功。",
+    "safety": "处理私有仓库、PDF 或聊天导出时，先确认用户允许本地索引；不要上传敏感文件到第三方服务，除非用户明确授权。"
+  },
+  "tips": "常用命令：skill-seekers create <source>；skill-seekers package output/<name> --target claude；skill-seekers scan . --out ./configs/scanned/",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

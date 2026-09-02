@@ -1,0 +1,64 @@
+{
+  "id": "trivy",
+  "name": "Trivy",
+  "description": "Aqua Security 开源漏洞、密钥、IaC、容器镜像和依赖扫描 CLI。适合在提交、发布和安全审计前快速发现供应链风险。",
+  "category": "ai-utility",
+  "tags": [
+    "安全",
+    "漏洞扫描",
+    "SBOM",
+    "容器",
+    "IaC"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Homebrew 安装",
+        "type": "brew",
+        "command": "brew install trivy",
+        "check": "trivy --version",
+        "uninstall": [
+          "brew uninstall trivy"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "brew upgrade trivy || brew install trivy",
+    "check": "trivy --version"
+  },
+  "commands": {
+    "version": "trivy --version",
+    "scan-fs": "trivy fs .",
+    "scan-config": "trivy config .",
+    "scan-repo": "trivy repo .",
+    "scan-secrets": "trivy fs --scanners secret ."
+  },
+  "status_check": [
+    {
+      "name": "检查 Trivy CLI",
+      "command": "trivy --version 2>/dev/null || echo 'Trivy 未安装'"
+    },
+    {
+      "name": "检查漏洞库缓存",
+      "command": "ls -la $HOME/Library/Caches/trivy/db 2>/dev/null || ls -la $HOME/.cache/trivy/db 2>/dev/null || echo '漏洞库缓存不存在，首次扫描会自动下载'"
+    }
+  ],
+  "prompts": {
+    "audit-current-project": "使用 trivy fs . 扫描当前项目依赖、密钥和配置风险，并按严重度给出修复建议。",
+    "audit-iac": "使用 trivy config . 审计当前仓库的 IaC/Kubernetes/Docker 配置风险。",
+    "sbom": "为当前项目生成 SBOM，并说明高风险依赖。"
+  },
+  "notes": "Trivy 首次扫描会下载漏洞库。macOS 推荐 Homebrew 安装；Linux 可参考官方安装文档选择 apt/yum/apk 或二进制包。",
+  "homepage": "https://trivy.dev/",
+  "repository": "https://github.com/aquasecurity/trivy",
+  "scenarios": [
+    "coding",
+    "qa-testing",
+    "ops-monitoring"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false
+}

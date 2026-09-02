@@ -1,0 +1,62 @@
+{
+  "id": "vecli",
+  "name": "veCLI",
+  "description": "火山引擎 CLI，支持 Doubao 系列模型（含 Doubao-Seed-Code），个人用户免费额度 50 万 tokens",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @volcengine/vecli --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g @volcengine/vecli"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @volcengine/vecli --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.vecli/settings.json",
+    "operations": {
+      "view": "cat $HOME/.vecli/settings.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.vecli/settings.json",
+      "reset": [
+        "cp $HOME/.vecli/settings.json $HOME/.vecli/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.vecli/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "vecli",
+    "version": "vecli --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "vecli --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.vecli/settings.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

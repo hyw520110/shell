@@ -1,0 +1,42 @@
+{
+  "id": "travisvn-awesome-claude-skills",
+  "name": "Awesome Claude Skills (travisvn)",
+  "description": "travisvn 维护的 Claude Skills、资源和工具精选索引，重点面向 Claude Code 工作流，汇总官方 Skills、社区 Skills、安装方式和最佳实践。",
+  "category": "knowledge",
+  "install": {
+    "command": "echo '这是精选索引仓库，不建议整体安装。请打开 https://github.com/travisvn/awesome-claude-skills 按需选择具体 Skill。'",
+    "check": "true"
+  },
+  "prompts": {
+    "discover": "根据我的 Claude Code 任务 {task}，从 travisvn/awesome-claude-skills 中筛选合适的 Skills、资源或工具。",
+    "compare": "对比官方 Skills 与社区 Skills，帮我为 {workflow} 选择更合适的安装方案。"
+  },
+  "capabilities": [
+    "发现官方与社区 Claude Skills",
+    "按 Claude Code 使用场景筛选资源",
+    "辅助评估 Skills 安装和安全风险"
+  ],
+  "dependencies": {
+    "system_commands": []
+  },
+  "tips": "该仓库是精选索引，不是单一 Skill。与 ComposioHQ 同名仓库通过 id/name 中的 owner 区分。",
+  "homepage": "https://github.com/travisvn/awesome-claude-skills",
+  "repository": "https://github.com/travisvn/awesome-claude-skills",
+  "tags": [
+    "Claude Skills",
+    "Skill 集合",
+    "精选索引",
+    "Claude Code",
+    "开发工具"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "research"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

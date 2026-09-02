@@ -1,0 +1,31 @@
+{
+  "id": "seo-optimizer",
+  "name": "SEO Optimizer",
+  "description": "SEO 结构优化专家。提供 TDK(标题/描述/关键词)优化、结构化数据分析(JSON-LD)、网站内容重写以提升搜索引擎收录和排名。",
+  "category": "design",
+  "install": {
+    "type": "custom",
+    "command": "mkdir -p ~/.gemini/skills/seo-optimizer && echo '已创建 SEO 技能目录。'"
+  },
+  "commands": {
+    "start": "echo 'Skill 已激活。'"
+  },
+  "required_tools": [],
+  "status_check": [],
+  "tags": [
+    "SEO",
+    "市场运营",
+    "网站优化",
+    "搜索引擎"
+  ],
+  "scenarios": [
+    "marketing-ops",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/google/antigravity",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,32 @@
+{
+  "id": "pm-tracking-spec-writer",
+  "name": "埋点方案设计",
+  "description": "埋点与指标设计方案生成器。从产品需求/核心链路出发，输出完整的埋点方案文档（事件、字段、触发时机、口径说明、QA校验清单）。适用于用户提到'埋点'、'tracking'、'事件设计'、'数据采集'等关键词。",
+  "category": "data-engineering",
+  "prompts": {
+    "design": "根据产品需求或用户链路，设计完整的埋点方案，包含事件定义、字段设计、触发时机",
+    "validate": "生成埋点方案的QA校验SQL和验收清单"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "tips": "输出可视化HTML埋点方案文档，内嵌Markdown格式方案",
+  "notes": "原名 tracking-spec-writer，生成埋点与指标设计方案",
+  "tags": [
+    "埋点",
+    "数据追踪",
+    "产品管理"
+  ],
+  "scenarios": [
+    "product-docs"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/zephyrwang6/pm-skills",
+  "repository": "https://github.com/zephyrwang6/pm-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

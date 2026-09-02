@@ -1,0 +1,41 @@
+{
+  "id": "openwolf",
+  "name": "OpenWolf",
+  "description": "Claude Code 项目第二大脑 Skill，使用 .wolf 文件保存项目结构、偏好、bug 记忆和 token 账本。",
+  "category": "context-optimizer",
+  "scenarios": [
+    "coding",
+    "context-optimizer"
+  ],
+  "tags": [
+    "Claude Code",
+    "上下文记忆",
+    "Token优化",
+    "Hooks"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/cytostack/openwolf",
+  "repository": "https://github.com/cytostack/openwolf",
+  "prompts": {
+    "default": "在 Claude Code 项目中使用 OpenWolf 维护项目结构、记忆和 token 账本。",
+    "init": "在当前项目执行 openwolf init，并说明生成的 .wolf 文件用途。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "node",
+      "npm",
+      "openwolf"
+    ]
+  },
+  "install_check": "openwolf --version",
+  "instructions": {
+    "workflow": "只在 Claude Code 深度使用项目中启用；初始化前确认是否允许生成 .wolf 并接入 hooks。",
+    "safety": "不要与多个上下文优化 hook 同时启用，避免规则互相覆盖。"
+  },
+  "tips": "适合长期维护的 Claude Code 项目，不适合临时仓库默认启用。",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

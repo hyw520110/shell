@@ -1,0 +1,38 @@
+{
+  "id": "security-sentinel",
+  "name": "安全哨兵 (Security Sentinel)",
+  "description": "强制 AI 在生成代码时进行实时安全审计。识别常见的漏洞模式（如 SQL 注入、硬编码密钥、越权访问等），并确保生成的代码符合 OWASP Top 10 标准。",
+  "category": "coding-best-practices",
+  "prompts": {
+    "audit-changes": "在提交或应用我的变更之前，请先对这些代码进行一次深度安全审计。检查是否存在敏感信息泄露、输入验证缺失或不安全的依赖。列出潜在风险并给出修复方案。",
+    "secure-coding-plan": "我正准备实现 {feature}。请为我起草一份符合安全最佳实践的架构方案，重点说明如何处理数据加密、身份验证和错误屏蔽。",
+    "check-secrets": "扫描我当前的所有变更，检查是否误写了任何硬编码的 API Key、私钥、密码或环境变量。如果发现，必须立即停止并发出警告。"
+  },
+  "capabilities": [
+    "实时漏洞拦截 - 在代码进入 Git 之前发现问题",
+    "凭据泄露预防 - 强制性检查硬编码密钥",
+    "合规性自检 - 确保逻辑符合企业级安全标准"
+  ],
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "docs": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequential-thinking",
+  "install_check": "true",
+  "tips": "对于涉及用户数据、支付或公共 API 的项目，这是必装技能。它能显著弥补 LLM 偶尔为了'简洁'而忽略安全性带来的隐患。",
+  "tags": [
+    "安全",
+    "审计",
+    "最佳实践",
+    "OWASP"
+  ],
+  "scenarios": [
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

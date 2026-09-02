@@ -1,0 +1,24 @@
+{
+  "id": "financial-analyst",
+  "name": "Financial Analyst",
+  "description": "财务与商业模型分析师。提供 SaaS 定价策略(Pricing)、烧钱率(Burn Rate)、客户终身价值(LTV/CAC)计算与财报数据解读。",
+  "category": "utility",
+  "install": {
+    "type": "custom",
+    "command": "mkdir -p ~/.gemini/skills/financial-analyst"
+  },
+  "tags": [
+    "财务分析",
+    "定价策略",
+    "商业模型",
+    "数据分析"
+  ],
+  "scenarios": [
+    "biz-ops",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "homepage": "https://github.com/google/antigravity",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,37 @@
+{
+  "id": "handoff-assistant",
+  "name": "状态同步助手 (Context Handoff)",
+  "description": "生成高密度、结构化的 session 摘要。用于在不同的 AI 助手（如从 Cursor 切换到 Claude Code）、不同的开发设备或不同的工作会话之间无缝接力。",
+  "category": "workflow-optimization",
+  "prompts": {
+    "generate-handoff": "为当前会话生成一个 Handoff 摘要。包含：1) 当前任务的确切状态。2) 已完成的关键决策和代码变更。3) 下一步的明确行动计划。4) 待解决的遗留问题或阻碍。5) 关键文件的路径。格式必须简洁且能被另一个 AI Agent 快速解析。",
+    "resume-session": "这是我从上一个会话带过来的 Handoff 摘要：{summary}。请阅读并确认你已理解当前状态，然后准备开始执行下一步计划。"
+  },
+  "capabilities": [
+    "零上下文丢失 - 解决长对话导致的内存溢出或 Token 浪费",
+    "跨平台接力 - 轻松在 IDE 插件与 CLI 助手之间同步进度",
+    "决策追踪 - 强制总结为什么做出特定技术选型"
+  ],
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "docs": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequential-thinking",
+  "install_check": "true",
+  "tips": "建议在每次会话结束前运行 'generate-handoff'，并将其保存到项目的 MEMORY.md 或临时文件中。这能节省大量的 Token 并防止 AI 在新会话中'失忆'。",
+  "tags": [
+    "工作流",
+    "效率",
+    "上下文管理"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

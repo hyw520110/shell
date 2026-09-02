@@ -1,0 +1,49 @@
+{
+  "id": "code-review-graph",
+  "name": "Code Review Graph (MCP)",
+  "description": "基于 Tree-sitter 的代码库智能映射 MCP 服务器。提供精确的影响范围分析，大幅降低 AI 审查时的上下文开销。",
+  "category": "ai",
+  "install": {
+    "type": "bash",
+    "command": "bash \"${SCRIPT_DIR}/scripts/install_python_mcp.sh\" code-review-graph",
+    "prerequisites": [
+      {
+        "name": "Python >= 3.10",
+        "check": "python3 -c 'import sys; exit(0 if sys.version_info >= (3, 10) else 1)'",
+        "install_hint": "brew install python@3.11 或 uv python install 3.11"
+      }
+    ]
+  },
+  "config": {
+    "command": "code-review-graph",
+    "args": [
+      "serve"
+    ],
+    "transportType": "stdio"
+  },
+  "required_tools": [
+    "python3",
+    "pip"
+  ],
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "code-review-graph --version 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "tags": [
+    "代码智能",
+    "图谱",
+    "MCP"
+  ],
+  "scenarios": [
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/tirth8205/code-review-graph",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

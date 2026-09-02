@@ -1,0 +1,33 @@
+{
+  "id": "monkey-code",
+  "name": "MonkeyCode",
+  "description": "长亭科技推出的企业级 AI 研发平台，支持规格驱动开发 (SDD) 和云端隔离沙箱",
+  "category": "ai-agent",
+  "tags": ["platform", "sdd", "sandbox", "security"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "在线版本 (推荐)",
+        "type": "bash",
+        "command": "echo '正在打开 MonkeyCode 官网...' && open https://monkeycode-ai.com",
+        "check": "echo 'true'",
+        "uninstall": ["echo '在线版无需卸载'"]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "status_check": [
+    {
+      "name": "平台状态",
+      "command": "curl -s -o /dev/null -w '%{http_code}' https://monkeycode-ai.com | grep 200 >/dev/null && echo '在线' || echo '不可达'"
+    }
+  ],
+
+  "commands": {
+    "start": "open https://monkeycode-ai.com"
+  },
+
+  "notes": "MonkeyCode 特别适合处理复杂的 PRD、架构设计和受控的代码实现。目前推荐直接使用其成熟的 SaaS 版本。"
+}

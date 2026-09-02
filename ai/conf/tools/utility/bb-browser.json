@@ -1,0 +1,57 @@
+{
+  "id": "bb-browser",
+  "name": "bb-browser",
+  "description": "AI \u4ee3\u7406\u6d4f\u89c8\u5668\u63a7\u5236\u5de5\u5177\u3002\u590d\u7528\u771f\u5b9e\u6d4f\u89c8\u5668\uff08Chrome\uff09\u7684\u767b\u5f55\u6001\u548c Cookie\uff0c\u652f\u6301 36+ \u4e3b\u6d41\u5e73\u53f0\u7684\u81ea\u52a8\u5316\u64cd\u4f5c\u3002\u65e0\u9700\u91cd\u590d\u767b\u5f55\uff0c\u76f4\u63a5\u8ba9 Agent \u7ee7\u627f\u60a8\u7684\u8eab\u4efd\u3002",
+  "category": "ai-utility",
+  "tags": [
+    "\u6d4f\u89c8\u5668",
+    "\u81ea\u52a8\u5316",
+    "\u767b\u5f55\u6001",
+    "\u722c\u866b",
+    "Agent"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "NPM \u5168\u5c40\u5b89\u88c5",
+        "type": "npm",
+        "command": "npm install -g bb-browser",
+        "check": "bb-browser --version",
+        "uninstall": [
+          "npm uninstall -g bb-browser"
+        ]
+      }
+    ],
+    "default_method": 0,
+    "prepare": "bash scripts/mcp/prepare-bb-browser.sh"
+  },
+  "update": {
+    "command": "npm install -g bb-browser@latest",
+    "check": "bb-browser --version"
+  },
+  "commands": {
+    "start": "bb-browser start",
+    "status": "bb-browser status",
+    "version": "bb-browser --version"
+  },
+  "status_check": [
+    {
+      "name": "\u68c0\u67e5 CLI",
+      "command": "bb-browser --version 2>/dev/null || echo '\u672a\u5b89\u88c5'"
+    }
+  ],
+  "prompts": {
+    "login-reuse": "\u4f7f\u7528 bb-browser \u8bbf\u95ee GitHub\u3002\u7531\u4e8e\u5b83\u590d\u7528\u4e86\u6211\u7684 Chrome \u767b\u5f55\u6001\uff0c\u8bf7\u76f4\u63a5\u5217\u51fa\u6211\u7684\u79c1\u6709\u4ed3\u5e93\u5217\u8868\u3002",
+    "platform-automation": "\u5728\u77e5\u4e4e\u4e0a\u641c\u7d22\u5173\u4e8e 'AI Engineering' \u7684\u5185\u5bb9\u5e76\u70b9\u8d5e\u7b2c\u4e00\u4e2a\u56de\u7b54\u3002\u5229\u7528 bb-browser \u7684\u5df2\u767b\u5f55\u73af\u5883\u6267\u884c\u3002",
+    "browser-control": "\u542f\u52a8 bb-browser \u63a7\u5236\u53f0\u5e76\u4fdd\u6301\u5f85\u547d\u3002"
+  },
+  "notes": "bb-browser \u7684\u5f3a\u5927\u4e4b\u5904\u5728\u4e8e\u5b83\u80fd\u540c\u6b65\u60a8\u672c\u5730 Chrome \u7684 Session\u3002\u5728\u4f7f\u7528\u524d\uff0c\u8bf7\u786e\u4fdd\u60a8\u7684 Chrome \u5df2\u7ecf\u5b89\u88c5\u4e86\u5bf9\u5e94\u7684\u63d2\u4ef6\u5e76\u5904\u4e8e\u767b\u5f55\u72b6\u6001\u3002",
+  "homepage": "https://github.com/better-browser/bb-browser",
+  "scenarios": [
+    "productivity",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false
+}

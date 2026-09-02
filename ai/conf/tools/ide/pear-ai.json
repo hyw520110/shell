@@ -1,0 +1,26 @@
+{
+  "id": "pear-ai",
+  "name": "PearAI",
+  "description": "开源的 AI 代码编辑器，完全兼容 VS Code 插件生态，是 Cursor 的强力竞争对手",
+  "category": "ai-ide",
+  "tags": ["ide", "open-source", "vscode-based"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "官方 dmg 安装",
+        "type": "bash",
+        "command": "echo '请前往 https://trypear.ai 下载最新版 dmg' && open https://trypear.ai",
+        "check": "[ -d '/Applications/PearAI.app' ]",
+        "uninstall": ["echo '请手动在 /Applications 中删除 PearAI.app'"]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "status_check": [
+    {"name": "检查应用", "command": "[ -d '/Applications/PearAI.app' ] && echo '已安装' || echo '未安装'"}
+  ],
+
+  "notes": "PearAI 主打开源和隐私，如果您不想被商业软件绑定，这是一个非常好的选择。"
+}

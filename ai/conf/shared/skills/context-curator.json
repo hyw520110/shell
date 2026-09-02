@@ -1,0 +1,40 @@
+{
+  "id": "context-curator",
+  "name": "上下文策展人 (Context Curator)",
+  "description": "帮助 AI 筛选、整理和压缩项目上下文。解决 LLM 在面对超大型代码库时由于无关信息干扰而导致的'认知负荷'过重问题。",
+  "category": "workflow-optimization",
+  "prompts": {
+    "prune-context": "分析我当前的 context 窗口。识别并列出与当前任务无关的、可以移除的文件内容或对话记录，以释放 Token 空间。",
+    "architectural-map": "为项目生成一个轻量级的'架构导航地图'。仅包含核心模块、数据流向和关键 API 定义，不要包含具体实现细节。我将把这张图长期放在上下文窗口中。",
+    "summarize-dependency": "深入阅读 {file_path} 及其导入的模块，总结该文件的外部协议和公共接口，然后请你清理掉我的 context 中关于该文件具体实现的原始代码。"
+  },
+  "capabilities": [
+    "Token 成本控制 - 显著延长 AI 的'有效思考'时间",
+    "干扰消除 - 提高 AI 生成代码的相关性和准确性",
+    "大型项目漫游 - 通过高抽象摘要快速理解未知模块"
+  ],
+  "dependencies": {
+    "mcp_servers": [
+      "codegraph"
+    ],
+    "system_commands": []
+  },
+  "docs": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequential-thinking",
+  "install_check": "true",
+  "tips": "在进行大规模功能开发前，先运行 'architectural-map'。当你觉得 AI 开始胡言乱语或变慢时，运行 'prune-context' 往往能立即见效。",
+  "tags": [
+    "上下文优化",
+    "Token优化",
+    "架构"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "context-optimizer"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

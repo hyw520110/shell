@@ -1,0 +1,34 @@
+{
+  "id": "addyosmani-agent-skills",
+  "name": "Production-Grade Agent Skills",
+  "description": "生产级的 Agent 技能配置规范，大幅降低了多模态与工具调用的集成成本。",
+  "category": "ai",
+  "scenarios": [
+    "coding",
+    "architecture"
+  ],
+  "tags": [
+    "配置",
+    "规范",
+    "生产级",
+    "Harness"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/addyosmani/agent-skills",
+  "repository": "https://github.com/addyosmani/agent-skills",
+  "prompts": {
+    "default": "按照 addyosmani/agent-skills 规范优化当前的 Agent 技能配置。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "instructions": {
+    "workflow": "引入该规范的最佳实践，设计一套适用于团队协作的 Agent 配置模板。"
+  },
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

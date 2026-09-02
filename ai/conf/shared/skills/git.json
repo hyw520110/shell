@@ -1,0 +1,39 @@
+{
+  "id": "git",
+  "name": "Git 增强",
+  "description": "Git操作增强，代码仓库管理，PR/Issue管理",
+  "category": "development",
+  "prompts": {
+    "review": "审查当前分支的代码变更，提供改进建议",
+    "commit": "根据代码变更生成规范的commit message",
+    "pr": "为当前分支创建Pull Request描述",
+    "changelog": "生成版本变更日志"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "github"
+    ],
+    "system_commands": [
+      "git",
+      "gh"
+    ]
+  },
+  "install_check": "which git",
+  "tips": "安装 GitHub CLI (gh) 可获得更多 GitHub 操作能力",
+  "tags": [
+    "Git",
+    "版本控制",
+    "代码管理"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/modelcontextprotocol/servers",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

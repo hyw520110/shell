@@ -1,0 +1,53 @@
+{
+  "id": "fireworks-tech-graph",
+  "name": "技术绘图 (Fireworks)",
+  "description": "自然语言生成技术架构图、流程图和 UML 图，支持 7 种视觉风格（扁平/暗黑/蓝图/Notion/玻璃态/Claude/OpenAI）",
+  "category": "diagram",
+  "install": {
+    "command": "npx skills add yizhiyanhua-ai/fireworks-tech-graph",
+    "check": "test -d ~/.claude/skills/fireworks-tech-graph && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "rag_flow": "画一张 style 1（扁平图标风）的 RAG 流水线流程图",
+    "microservice_arch": "画一张 style 2（暗黑极客风）的微服务架构图",
+    "tool_call_flow": "画一张 style 3（工程蓝图风）的工具调用流程图",
+    "memory_arch": "画一张 style 4（Notion 极简风）的 Mem0 记忆架构图",
+    "multi_agent": "画一张 style 5（玻璃态卡片风）的 Multi-Agent 协作图",
+    "system_design": "画一张 style 6（Claude 官方风格）的系统架构图",
+    "api_flow": "画一张 style 7（OpenAI 官方风格）的 API 集成流程图"
+  },
+  "dependencies": {
+    "system_commands": [
+      "node",
+      "npx"
+    ],
+    "system_packages": [
+      "librsvg"
+    ]
+  },
+  "capabilities": [
+    "7 种视觉风格 - 从扁平图标到暗黑 Neon 到磨砂玻璃",
+    "14 种 UML 图类型 - 类图、序列图、活动图、状态机等",
+    "AI/Agent 领域 Pattern - RAG、Agentic Search、Mem0、Multi-Agent、Tool Call",
+    "语义形状词汇表 - LLM(双边框)、Agent(六边形)、Vector Store(圆柱)",
+    "SVG + PNG 双输出 - SVG 可编辑，1920px PNG 可直接发布"
+  ],
+  "tips": "安装依赖：macOS: brew install librsvg, Ubuntu: sudo apt install librsvg2-bin。触发词：画图/生成图/架构图/流程图/可视化一下",
+  "homepage": "https://github.com/yizhiyanhua-ai/fireworks-tech-graph",
+  "repository": "https://github.com/yizhiyanhua-ai/fireworks-tech-graph",
+  "tags": [
+    "技术图",
+    "架构图",
+    "可视化",
+    "业务架构图"
+  ],
+  "scenarios": [
+    "productivity",
+    "diagramming"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

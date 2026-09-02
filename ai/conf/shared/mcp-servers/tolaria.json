@@ -1,0 +1,81 @@
+{
+  "id": "tolaria",
+  "name": "Tolaria - AI \u539f\u751f\u77e5\u8bc6\u5e93 MCP Server",
+  "description": "\u5f00\u6e90 AI \u539f\u751f\u77e5\u8bc6\u7ba1\u7406\u5de5\u5177\uff08Markdown + Git \u9a71\u52a8\u684c\u9762\u5e94\u7528\uff09\u3002\u5185\u7f6e MCP Server\uff0c\u8ba9 Claude Code/Codex CLI \u7b49 AI Agent \u76f4\u63a5\u67e5\u8be2\u4f60\u7684\u672c\u5730\u77e5\u8bc6\u5e93\u3002\u6570\u636e\u5b8c\u5168\u672c\u5730\u5316\uff0c\u4e0d\u5185\u7f6e AI \u6a21\u578b\uff0c\u901a\u8fc7\u6807\u51c6 MCP \u534f\u8bae\u4e0e\u5916\u90e8 AI \u4ea4\u4e92\u3002",
+  "category": "ai",
+  "scenarios": [
+    "research",
+    "productivity"
+  ],
+  "tags": [
+    "\u77e5\u8bc6\u5e93",
+    "\u77e5\u8bc6\u7ba1\u7406",
+    "Markdown",
+    "MCP",
+    "\u672c\u5730\u77e5\u8bc6"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/refactoringhq/tolaria",
+  "repository": "https://github.com/refactoringhq/tolaria",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g github:scharf-black/tolaria-mcp"
+  },
+  "config": {
+    "command": "tolaria-mcp",
+    "args": [],
+    "transportType": "stdio",
+    "env": {
+      "TOLARIA_WORK_PATH": "${TOLARIA_WORK_PATH:-$HOME/Documents/Tolaria}"
+    }
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "requires_env": [
+    {
+      "name": "TOLARIA_VAULT_PATH",
+      "description": "Tolaria \u77e5\u8bc6\u5e93 (Vault) \u8def\u5f84",
+      "required": false,
+      "default": "$HOME/Documents/Tolaria"
+    }
+  ],
+  "status_check": [
+    {
+      "name": "\u68c0\u67e5 Tolaria \u5b89\u88c5",
+      "command": "command -v tolaria 2>/dev/null || ls /Applications/Tolaria.app 2>/dev/null || echo '\u672a\u5b89\u88c5'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "search_vault",
+      "description": "\u641c\u7d22\u77e5\u8bc6\u5e93\u4e2d\u7684\u7b14\u8bb0"
+    },
+    {
+      "name": "read_note",
+      "description": "\u8bfb\u53d6\u6307\u5b9a\u7b14\u8bb0\u5185\u5bb9"
+    },
+    {
+      "name": "list_notes",
+      "description": "\u5217\u51fa\u77e5\u8bc6\u5e93\u4e2d\u7684\u7b14\u8bb0"
+    },
+    {
+      "name": "query_graph",
+      "description": "\u67e5\u8be2\u77e5\u8bc6\u56fe\u8c31\u5173\u7cfb"
+    }
+  ],
+  "features": {
+    "mcp_server": "\u5185\u7f6e MCP Server\uff0cAI Agent \u53ef\u76f4\u63a5\u67e5\u8be2\u77e5\u8bc6\u5e93",
+    "agents_md": "\u63d0\u4f9b AGENTS.md \u8ba9 AI Agent \u7406\u89e3 Vault \u7ed3\u6784",
+    "local_first": "\u6570\u636e\u5b8c\u5168\u672c\u5730\u5316\uff0cMarkdown + Git \u5b58\u50a8",
+    "multi_agent": "\u539f\u751f\u652f\u6301 Claude Code\u3001Codex CLI\u3001Gemini CLI",
+    "open_source": "AGPL 3.0 \u534f\u8bae\uff0c\u5b8c\u5168\u5f00\u6e90\u514d\u8d39"
+  },
+  "notes": "Tolaria \u662f\u72ec\u7acb\u684c\u9762\u5e94\u7528\uff0c\u9700\u5148\u5b89\u88c5\u3002\u5b89\u88c5\u540e\u542f\u52a8 Tolaria \u5e76\u521b\u5efa Vault\uff0c\u7136\u540e MCP Server \u4f1a\u81ea\u52a8\u53ef\u7528\u3002\u9002\u5408\u9700\u8981\u8ba9 AI Agent \u67e5\u8be2\u672c\u5730\u77e5\u8bc6\u5e93\u7684\u573a\u666f\u3002\u5efa\u8bae\u4e0e research \u573a\u666f\u642d\u914d\u4f7f\u7528\u3002",
+  "license": "AGPL-3.0",
+  "recommended_scenarios": "\u6839\u636e\u8be5\u5de5\u5177\u7279\u6027\u9002\u7528\u7684\u6700\u4f73\u573a\u666f\uff08\u5f85\u8865\u5145\uff09",
+  "unsuitable_scenarios": "\u4e0d\u63a8\u8350\u4f7f\u7528\u8be5\u5de5\u5177\u7684\u573a\u666f\u6216\u5c40\u9650\u6027\uff08\u5f85\u8865\u5145\uff09"
+}

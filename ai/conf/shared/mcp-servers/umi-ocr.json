@@ -1,0 +1,71 @@
+{
+  "id": "umi-ocr",
+  "name": "Umi-OCR Server",
+  "description": "\u79bb\u7ebf OCR \u6587\u5b57\u8bc6\u522b MCP \u670d\u52a1\u5668\uff0c\u57fa\u4e8e Umi-OCR HTTP API\uff0c\u652f\u6301\u622a\u56fe\u8bc6\u522b\u3001\u6279\u91cf OCR\u3001PDF \u8bc6\u522b\u3001\u4e8c\u7ef4\u7801\u3001\u516c\u5f0f\u8bc6\u522b",
+  "category": "design",
+  "install": {
+    "type": "bash",
+    "command": "bash \"${SCRIPT_DIR}/scripts/install_umi_ocr.sh\"",
+    "prepare": "${SCRIPT_DIR}/scripts/mcp/prepare-umi-ocr.sh",
+    "urls": {
+      "github": "https://github.com/hiroi-sora/Umi-OCR/releases/latest",
+      "lanzou": "https://hiroi-sora.lanzoul.com/s/umi-ocr",
+      "scoop": "scoop install extras/umi-ocr"
+    }
+  },
+  "config": {
+    "command": "node",
+    "args": [
+      "-e",
+        "const fs=require('fs');const OCR_URL=process.env.UMI_OCR_URL||'http://localhost:1224';const MCP_NAME='umi-ocr';const MCP_VERSION='1.0.0';const tools=[{name:'ocr_image',description:'\u8bc6\u522b\u56fe\u7247\u6587\u5b57',inputSchema:{type:'object',properties:{image_path:{type:'string'},image_url:{type:'string'}},required:[]}}];function send(msg){  const str = JSON.stringify(msg);  process.stdout.write(`Content-Length: ${Buffer.byteLength(str, 'utf8')}\\r\\n\\r\\n${str}`);}function success(id,result){send({jsonrpc:'2.0',id,result})}function failure(id,code,message){send({jsonrpc:'2.0',id,error:{code,message}})}async function loadImage(args){  if(args.image_url){ const resp=await fetch(args.image_url); return Buffer.from(await resp.arrayBuffer()); }  if(args.image_path){ return fs.readFileSync(args.image_path); }  throw new Error('\u7f3a\u5c11 image_path \u6216 image_url');}async function callOcr(args){  const image=await loadImage(args||{});  const resp=await fetch(OCR_URL+'/api/ocr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base64:image.toString('base64'),options:(args&&args.options)||{}})});  return await resp.text();}let buffer = Buffer.alloc(0);process.stdin.on('data', chunk => {  buffer = Buffer.concat([buffer, chunk]);  while(true) {    let idx = buffer.indexOf('\\r\\n\\r\\n');    let headerLen = 4;    if (idx === -1) {      idx = buffer.indexOf('\\n\\n');      headerLen = 2;    }    if(idx === -1) break;        const headerStr = buffer.slice(0, idx).toString('utf8');    const match = headerStr.match(/Content-Length:\\s*(\\d+)/i);    if(!match) { buffer = buffer.slice(idx + headerLen); continue; }    const len = parseInt(match[1], 10);    if(buffer.length < idx + headerLen + len) break;    const content = buffer.slice(idx + headerLen, idx + headerLen + len).toString('utf8');    buffer = buffer.slice(idx + headerLen + len);        try {      const msg = JSON.parse(content);      if (msg.method) {        if(msg.method === 'initialize') {          success(msg.id, {protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:MCP_NAME,version:MCP_VERSION}});        } else if(msg.method === 'tools/list') {          success(msg.id, {tools});        } else if(msg.method === 'tools/call') {          callOcr(msg.params.arguments).then(text => success(msg.id, {content:[{type:'text',text}]})).catch(e => failure(msg.id, -32603, e.message));        } else if (msg.method === 'server/discover') {          success(msg.id, {});        } else {          failure(msg.id, -32601, 'Method not found');        }      }    } catch(e) {}  }});"
+    ],
+    "transportType": "stdio",
+    "env": {
+      "UMI_OCR_URL": "http://localhost:1224"
+    }
+  },
+  "required_tools": [
+    "node"
+  ],
+  "status_check": [
+    {
+      "name": "\u68c0\u67e5 Umi-OCR HTTP \u670d\u52a1",
+      "command": "curl -s http://localhost:1224/api/ocr -X POST -H 'Content-Type: application/json' -d '{\"base64\":\"\"}' 2>/dev/null | head -c 100 || echo 'Umi-OCR \u670d\u52a1\u672a\u542f\u52a8'"
+    },
+    {
+      "name": "\u68c0\u67e5\u7aef\u53e3",
+      "command": "lsof -i :1224 2>/dev/null || ss -tlnp 2>/dev/null | grep 1224 || echo '\u7aef\u53e3 1224 \u672a\u76d1\u542c'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "ocr_image",
+      "description": "\u8bc6\u522b\u56fe\u7247\u4e2d\u7684\u6587\u5b57 (\u652f\u6301\u622a\u56fe\u3001\u7167\u7247\u3001\u626b\u63cf\u4ef6)"
+    },
+    {
+      "name": "ocr_pdf",
+      "description": "\u8bc6\u522b PDF \u6587\u6863\u4e2d\u7684\u6587\u5b57"
+    },
+    {
+      "name": "ocr_qrcode",
+      "description": "\u8bc6\u522b\u6216\u751f\u6210\u4e8c\u7ef4\u7801"
+    }
+  ],
+  "notes": "Umi-OCR \u662f\u72ec\u7acb\u684c\u9762\u5e94\u7528\uff0c\u9700\u5148\u542f\u52a8 HTTP \u670d\u52a1\u518d\u4f7f\u7528 MCP\u3002\u652f\u6301 Windows/Linux\uff0cmacOS \u9700\u901a\u8fc7\u865a\u62df\u673a\u6216 Docker \u8fd0\u884c\u3002",
+  "tags": [
+    "OCR",
+    "\u6587\u5b57\u8bc6\u522b",
+    "\u56fe\u7247\u5904\u7406"
+  ],
+  "scenarios": [
+    "research",
+    "design-prototype"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://github.com/hiroi-sora/Umi-OCR/releases/latest",
+  "repository": "https://github.com/hiroi-sora/Umi-OCR",
+  "recommended_scenarios": "\u6839\u636e\u8be5\u5de5\u5177\u7279\u6027\u9002\u7528\u7684\u6700\u4f73\u573a\u666f\uff08\u5f85\u8865\u5145\uff09",
+  "unsuitable_scenarios": "\u4e0d\u63a8\u8350\u4f7f\u7528\u8be5\u5de5\u5177\u7684\u573a\u666f\u6216\u5c40\u9650\u6027\uff08\u5f85\u8865\u5145\uff09"
+}

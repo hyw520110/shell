@@ -1,0 +1,34 @@
+{
+  "id": "anthropics-skills",
+  "name": "Anthropic Official Skills Protocol",
+  "description": "官方的技能协议示例和 CLAUDE.md 规范，指导开发者如何编写持久化的项目指令与技能清单。",
+  "category": "ai",
+  "scenarios": [
+    "coding",
+    "architecture"
+  ],
+  "tags": [
+    "规范",
+    "协议",
+    "Anthropic",
+    "Harness"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/anthropics/skills",
+  "repository": "https://github.com/anthropics/skills",
+  "prompts": {
+    "default": "请参考 anthropics/skills 规范，在本项目创建规范的 .claude/skills/ 结构。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "instructions": {
+    "workflow": "参照规范，规范化并持久化当前工作流的 AI 技能配置。"
+  },
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

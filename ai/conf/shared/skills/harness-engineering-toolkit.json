@@ -1,0 +1,35 @@
+{
+  "id": "harness-engineering-toolkit",
+  "name": "Harness Engineering Toolkit",
+  "description": "专注于 AI 智能体工程化实践的工具包，提供 /harness-audit 体检报告与 /harness-create 骨架生成。",
+  "category": "coding",
+  "scenarios": [
+    "coding",
+    "architecture",
+    "code-review"
+  ],
+  "tags": [
+    "审计",
+    "构建",
+    "Harness",
+    "工程化"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/example/harness-engineering-toolkit",
+  "repository": "https://github.com/example/harness-engineering-toolkit",
+  "prompts": {
+    "default": "运行 /harness-audit 扫描项目文档结构、CI 约束和评审痕迹。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "instructions": {
+    "workflow": "执行审计命令以获取项目当前的 Harness 完整度报告，并按照报告进行修正。"
+  },
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

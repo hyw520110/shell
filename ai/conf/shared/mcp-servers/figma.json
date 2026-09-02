@@ -1,0 +1,70 @@
+{
+  "id": "figma",
+  "name": "Figma MCP Server",
+  "description": "Figma 设计协同 MCP 服务器，允许 AI 读取和操作 Figma 设计文件、节点和样式，实现自动化的 Design to Code 工作流。",
+  "category": "design",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @tothienbao6a0/figma-mcp-server"
+  },
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@tothienbao6a0/figma-mcp-server"
+    ],
+    "transportType": "stdio",
+    "env": {
+      "FIGMA_ACCESS_TOKEN": "${FIGMA_ACCESS_TOKEN:-}"
+    }
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_file",
+      "description": "获取完整的 Figma 文件数据结构"
+    },
+    {
+      "name": "get_node",
+      "description": "获取指定节点(Node)的设计属性、样式和子元素"
+    },
+    {
+      "name": "get_components",
+      "description": "获取 Figma 库中的组件和变体定义"
+    },
+    {
+      "name": "export_image",
+      "description": "从 Figma 设计稿导出切图或预览图"
+    }
+  ],
+  "notes": "必须设置 FIGMA_ACCESS_TOKEN 环境变量才能访问非公开文件。在 Figma 账号设置 -> Personal access tokens 中生成。",
+  "tags": [
+    "设计",
+    "Figma",
+    "UI/UX",
+    "Design2Code"
+  ],
+  "scenarios": [
+    "design-prototype",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://www.figma.com/mcp-catalog",
+  "repository": "https://github.com/tothienbao6a0/figma-mcp-server",
+  "requires_env": [
+    "FIGMA_ACCESS_TOKEN"
+  ],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

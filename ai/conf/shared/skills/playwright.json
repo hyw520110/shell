@@ -1,0 +1,60 @@
+{
+  "id": "playwright",
+  "name": "浏览器自动化 (Playwright)",
+  "description": "通过 Playwright 实现高级浏览器自动化 - 支持网页爬取、表单填写、自动截图和 UI 交互测试",
+  "category": "browser",
+  "prompts": {
+    "scrape": "使用 Playwright 访问 'https://example.com' 并提取所有标题和链接",
+    "screenshot": "访问 'https://github.com' 并截取全屏快照保存到本地",
+    "search": "在百度中搜索 'AI Hub' 并点击第一个搜索结果",
+    "form_fill": "访问登录页面，自动填写用户名和密码并提交",
+    "monitor": "监控指定网页的变动，如果发现关键词则发出提醒"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "playwright"
+    ],
+    "system_commands": [
+      "node",
+      "npm"
+    ]
+  },
+  "install_check": "npm list -g @playwright/mcp --depth=0",
+  "instructions": {
+    "usage": "确保已安装浏览器环境（npx playwright install chromium）。Playwright 适合处理 SPA (单页应用) 和需要交互的复杂网页。",
+    "best_practices": [
+      "在爬取前先使用 screenshot 查看页面加载状态",
+      "尽量使用 headless 模式以节省资源",
+      "对于简单的静态网页，优先使用 fetch MCP 以获得更快的响应"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "name": "install-deps",
+      "description": "安装浏览器所需的系统依赖 (Linux 必选)",
+      "command": "npx playwright install-deps"
+    },
+    {
+      "name": "install-all-browsers",
+      "description": "安装所有支持的浏览器 (Chromium, Firefox, WebKit)",
+      "command": "npx playwright install"
+    }
+  ],
+  "tags": [
+    "浏览器",
+    "自动化",
+    "爬虫",
+    "测试"
+  ],
+  "scenarios": [
+    "productivity",
+    "coding",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://playwright.dev",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

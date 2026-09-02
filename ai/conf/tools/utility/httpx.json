@@ -1,0 +1,40 @@
+{
+  "id": "httpx",
+  "name": "ProjectDiscovery httpx",
+  "description": "ProjectDiscovery 的 HTTP/HTTPS 探测与技术指纹 CLI；注意不是 Python httpx 库。",
+  "category": "ai-utility",
+  "tags": ["安全", "漏洞扫描", "Web", "资产侦察"],
+  "install": {
+    "methods": [
+      {
+        "name": "macOS/Linux 自动安装",
+        "type": "bash",
+        "command": "bash \"$AI_HUB_SCRIPT_DIR/scripts/install-projectdiscovery-httpx.sh\" install",
+        "check": "bash \"$AI_HUB_SCRIPT_DIR/scripts/install-projectdiscovery-httpx.sh\" check",
+        "uninstall": ["echo 'ProjectDiscovery httpx 请按安装来源手动卸载；未自动删除用户数据。'"]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "bash \"$AI_HUB_SCRIPT_DIR/scripts/install-projectdiscovery-httpx.sh\" install",
+    "check": "bash \"$AI_HUB_SCRIPT_DIR/scripts/install-projectdiscovery-httpx.sh\" check"
+  },
+  "commands": {
+    "version": "bash $AI_HUB_SCRIPT_DIR/scripts/install-projectdiscovery-httpx.sh check",
+    "env": "bash $AI_HUB_SCRIPT_DIR/scripts/install-projectdiscovery-httpx.sh env"
+  },
+  "status_check": [
+    {
+      "name": "检查 ProjectDiscovery httpx",
+      "command": "bash \"$AI_HUB_SCRIPT_DIR/scripts/install-projectdiscovery-httpx.sh\" check 2>/dev/null || echo 'ProjectDiscovery httpx 未安装'"
+    }
+  ],
+  "homepage": "https://github.com/projectdiscovery/httpx",
+  "repository": "https://github.com/projectdiscovery/httpx",
+  "scenarios": ["security", "qa-testing", "ops-monitoring"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "notes": "httpxProbe 使用的是该 Go CLI。Python 的 httpx 模块不能替代它。"
+}

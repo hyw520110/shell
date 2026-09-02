@@ -1,0 +1,34 @@
+{
+  "id": "pm-prioritization-engine",
+  "name": "优先级排序",
+  "description": "对需求/功能/项目进行多维度优先级排序，输出版本排期建议。支持RICE/ICE/Kano/成本收益等多模型评分。适用于用户说'帮我排优先级'、'用RICE打分'、'功能排期'、'路线图规划'等场景。",
+  "category": "product-management",
+  "prompts": {
+    "prioritize": "使用RICE/ICE/Kano等多模型对需求池进行评分和排序，输出版本排期建议",
+    "rice": "使用RICE模型（Reach×Impact×Confidence/Effort）对需求评分",
+    "kano": "使用Kano模型对需求进行分类（必要/期望/兴奋/无差异/反向）"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "tips": "支持多模型评分和分歧标记，适合资源约束下的理性决策",
+  "notes": "原名 SPACE-prioritization-engine，多模型需求优先级引擎",
+  "tags": [
+    "优先级",
+    "需求管理",
+    "产品管理"
+  ],
+  "scenarios": [
+    "productivity",
+    "product-docs"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/zephyrwang6/pm-skills",
+  "repository": "https://github.com/zephyrwang6/pm-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

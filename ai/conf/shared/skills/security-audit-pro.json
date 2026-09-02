@@ -1,0 +1,42 @@
+{
+  "id": "security-audit-pro",
+  "name": "高级安全审计 (Security Audit Pro)",
+  "description": "集成了 80+ 个 OWASP Top 10 (2025) 和 CWE Top 25 审计检查点。提供具备 CVSS v4.0 风险评分能力的 Agent 技能。",
+  "category": "coding-best-practices",
+  "prompts": {
+    "audit-vulnerability": "对这段代码进行一次深度安全漏洞评估，重点检查 SQLi, XSS, SSRF 和认证绕过风险。请按照 OWASP 2025 标准给出评分。",
+    "secure-design-review": "审查此系统的架构设计，识别潜在的 Agent Goal Hijack 或 Tool Misuse 风险（针对 Agentic 应用）。",
+    "generate-remediation": "针对发现的漏洞，起草一份详细的修复方案和回归测试用例。"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "pentest-mcp"
+    ],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "instructions": {
+    "usage": "这是对 'Security Sentinel' 的专家级补充。它引入了更严苛的审计流程和标准化的评分体系。",
+    "best_practices": [
+      "配合 pentest-mcp 使用，可以让 AI 同时进行静态分析和动态工具验证",
+      "要求 AI 每次输出审计结果时，必须附带 CWE 编号和修复优先级建议",
+      "在开发高风险金融或数据处理模块前，强制执行此技能的审计流程"
+    ]
+  },
+  "tags": [
+    "安全审计",
+    "OWASP",
+    "CVE",
+    "渗透测试"
+  ],
+  "scenarios": [
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/netresearch/agent-skills",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

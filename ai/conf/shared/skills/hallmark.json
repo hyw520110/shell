@@ -1,0 +1,76 @@
+{
+  "id": "hallmark",
+  "name": "Hallmark Design",
+  "description": "Anti-AI-slop 设计技能，帮助 AI 工具生成看起来不像 AI 生成的 UI 设计。提供 22 种主题，支持新建页面、审计、重新设计和从设计参考中提取 DNA。彻底摆脱 AI 作图的廉价感，生成独特且富有创意的界面。",
+  "category": "design",
+  "tags": [
+    "设计",
+    "UI",
+    "原型",
+    "网页",
+    "视觉设计",
+    "页面设计图"
+  ],
+  "install": {
+    "command": "npx skills add nutlope/hallmark",
+    "check": "test -d ~/.claude/skills/hallmark -o -d ~/.cursor/rules/hallmark.mdc && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "default": "使用 Hallmark 设计 {product_description}，选择一个合适的宏观结构和主题",
+    "audit": "使用 hallmark audit 分析 {target} 的设计质量，识别 AI 生成风格的反模式",
+    "redesign": "使用 hallmark redesign 重新设计 {target}，保留内容但更换视觉结构",
+    "study": "使用 hallmark study 分析 {url_or_screenshot} 的设计 DNA，提取宏观结构、字体搭配和色彩锚点"
+  },
+  "capabilities": [
+    "22 种精选主题 - 提供多样化的视觉风格选择",
+    "结构多样性 - 不同项目使用不同的宏观结构，避免千篇一律",
+    "Anti-AI-slop 测试 - 65 项防AI生成检测门控，确保输出独特性",
+    "预发布自检 - 六轴评分系统（Philosophy/Hierarchy/Execution/Specificity/Restraint/Variety）",
+    "响应式设计 - 自动验证 320/375/414/768px 四个断点",
+    "8 状态组件规范 - 按钮等交互组件必须覆盖所有状态",
+    "真实内容原则 - 禁止编造数据、指标和社会证明",
+    "设计 DNA 提取 - 从参考设计或截图提取可移植的设计系统"
+  ],
+  "dependencies": {
+    "platforms": [
+      "claude-code",
+      "cursor",
+      "codex"
+    ],
+    "skills_registry": "nutlope/hallmark"
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "npx-skills",
+      "name": "npx skills",
+      "description": "Skills CLI 工具，用于安装和管理 AI 技能",
+      "check": {
+        "command": "npx skills --version"
+      },
+      "install": {
+        "darwin": "npm install -g @anthropic-ai/skills-cli || npx skills --version",
+        "linux": "npm install -g @anthropic-ai/skills-cli || npx skills --version",
+        "default": "npm install -g @anthropic-ai/skills-cli || npx skills --version"
+      }
+    }
+  ],
+  "tips": "Hallmark 由 Together AI 提供支持，默认选择 22 种主题之一，遵循多样化规则确保每次生成都有不同的宏观结构。适合需要高质量、独特设计感的 UI 开发场景。",
+  "notes": "Hallmark 非常固执己见且刻意无聊 - 这是设计决策，不是缺陷。它拒绝让模型回到每个 LLM 都训练过的默认样式。",
+  "homepage": "https://github.com/Nutlope/hallmark",
+  "repository": "https://github.com/Nutlope/hallmark",
+  "docs": {
+    "recipes": "https://github.com/Nutlope/hallmark/blob/main/docs/recipes.md",
+    "study_examples": "https://github.com/Nutlope/hallmark/blob/main/docs/study-examples.md"
+  },
+  "scenarios": [
+    "productivity",
+    "coding",
+    "product-docs",
+    "design-prototype"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,78 @@
+{
+  "id": "snyk-agent-scan",
+  "name": "Snyk Agent Scan",
+  "description": "Snyk 开源的 Agent 供应链安全审计 CLI（原 Invariant Labs 的 mcp-scan，已被 Snyk 收购并更名）。扫描 Claude Desktop / Cursor / VSCode / Windsurf / Zed / Claude Code 等客户端已落地的 MCP 配置，检测提示注入、工具投毒(tool poisoning)、工具影子(cross-origin escalation)、'rug pull' 越权、可疑下载、凭据处理不当等风险；支持扫描 agent skills。仅用于审计自有/有权测试的环境。",
+  "category": "ops",
+  "scenarios": [
+    "coding",
+    "qa-testing",
+    "ops-monitoring"
+  ],
+  "tags": [
+    "安全",
+    "MCP",
+    "审计",
+    "防御",
+    "提示注入",
+    "tool-poisoning",
+    "snyk",
+    "mcp-scan"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "compatibility": {
+    "check": "false",
+    "reason": "Snyk Agent Scan 是 CLI 审计器，不是 MCP Server，不应写入 Codex 的 MCP 列表；请直接运行 snyk-agent-scan scan。"
+  },
+  "homepage": "https://github.com/snyk/agent-scan",
+  "repository": "https://github.com/snyk/agent-scan",
+  "install": {
+    "type": "uv",
+    "command": "uv tool install snyk-agent-scan",
+    "post_install": [
+      {
+        "description": "验证安装",
+        "command": "command -v snyk-agent-scan >/dev/null 2>&1 && snyk-agent-scan help 2>&1 | head -1 || echo '安装失败'"
+      }
+    ]
+  },
+  "config": {
+    "command": "snyk-agent-scan",
+    "args": [
+      "scan"
+    ],
+    "transportType": "stdio"
+  },
+  "required_tools": [
+    "uv"
+  ],
+  "requires_env": [],
+  "status_check": [
+    {
+      "name": "检查 snyk-agent-scan CLI",
+      "command": "command -v snyk-agent-scan >/dev/null 2>&1 && snyk-agent-scan help 2>&1 | head -1 || echo '未安装'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "scan",
+      "description": "扫描一个或多个 MCP 配置文件的安全风险（默认命令），可上传脱敏签名到 Snyk 后端验证"
+    },
+    {
+      "name": "inspect",
+      "description": "离线打印工具/资源/提示定义，不连接验证后端"
+    },
+    {
+      "name": "guard",
+      "description": "安装/卸载/检查 Agent Guard 钩子，实时拦截可疑工具调用"
+    },
+    {
+      "name": "evo",
+      "description": "推送扫描结果到 Snyk Evo 平台"
+    }
+  ],
+  "notes": "⚠️ 仅审计你自有或有权测试的客户端配置。\n\n**重要**：本工具是 CLI 审计器，**不是 MCP server**。此处的 `config` 字段仅用于满足配置 schema 校验（框架要求 MCP 配置必须有 config.command），请勿将本条目当作 MCP server 启动（`default_enabled` 已设为 false）。实际用法是命令行调用：snyk-agent-scan scan / inspect / guard / evo。\n\n**工具更名**：原为 Invariant Labs 的 `mcp-scan`，后被 Snyk 收购并更名。旧的 `uv tool install mcp-scan` 只会安装指向新包的弃用存根。\n\n**隐私**：`scan` 会把脱敏后的 server 签名上传到 Snyk 后端 (`api.snyk.io`) 做验证分析(含主机名/用户名等元数据，可 opt-out)；离线用 `inspect`。\n\n**CI 模式**：`--ci` 须配合 `--dangerously-run-mcp-servers`（scan 会为每个 stdio MCP server 启动子进程检查其工具）。\n\n**依赖**：需要 uv (`brew install uv`)；Python >= 3.10。",
+  "recommended_scenarios": "引入第三方 MCP 前的安全体检、本机 MCP 客户端配置定期审计、CI 中对 MCP 配置做安全门禁、检测工具投毒/提示注入/rug pull/可疑下载/凭据泄露。",
+  "unsuitable_scenarios": "需要直接静态扫描 ai-hub 源注册表 conf/shared/mcp-servers/*.json（它扫客户端落地配置或显式传入的 config 文件）、完全离线且必须用 scan 的场景（改用 inspect）。"
+}

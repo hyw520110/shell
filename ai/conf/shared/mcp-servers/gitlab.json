@@ -1,0 +1,56 @@
+{
+  "id": "gitlab",
+  "name": "GitLab MCP",
+  "description": "GitLab代码管理集成，支持仓库访问、Issue管理、MR跟踪、CI/CD流水线操作",
+  "category": "development",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g @modelcontextprotocol/server-gitlab"
+  },
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-gitlab"
+    ],
+    "transportType": "stdio",
+    "env": {
+      "GITLAB_PERSONAL_ACCESS_TOKEN": "${GITLAB_PERSONAL_ACCESS_TOKEN:-}",
+      "GITLAB_API_URL": "${GITLAB_API_URL:-https://gitlab.com/api/v4}"
+    }
+  },
+  "required_tools": [
+    "node",
+    "npm",
+    "glab"
+  ],
+  "status_check": [
+    {
+      "name": "检查 glab CLI",
+      "command": "glab version 2>/dev/null || echo 'GitLab CLI 未安装'"
+    },
+    {
+      "name": "检查安装",
+      "command": "npm list -g @modelcontextprotocol/server-gitlab --depth=0 2>/dev/null || echo 'MCP 服务器未安装'"
+    }
+  ],
+  "notes": "需要 GitLab Personal Access Token 和 GitLab 实例 URL（默认 https://gitlab.com）",
+  "tags": [
+    "GitLab",
+    "Git",
+    "代码管理"
+  ],
+  "scenarios": [
+    "coding"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://modelcontextprotocol.io",
+  "repository": "https://github.com/modelcontextprotocol/servers",
+  "requires_env": [
+    "GITLAB_PERSONAL_ACCESS_TOKEN"
+  ],
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

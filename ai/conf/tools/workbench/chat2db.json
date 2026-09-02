@@ -1,0 +1,60 @@
+{
+  "id": "chat2db",
+  "name": "Chat2DB",
+  "description": "AI 驱动的数据库管理与智能分析客户端。支持自然语言生成 SQL、对话式数据查询与可视化报表生成。",
+  "category": "ai-workbench",
+  "sort_order": 2510,
+  "sort_key": "Chat2DB",
+  "tags": ["workbench", "database", "sql", "data-analysis", "docker"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "Docker 部署 (Web 版)",
+        "type": "bash",
+        "command": "docker run -d --name chat2db -p 10824:10824 chat2db/chat2db:latest",
+        "check": "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q '^chat2db$'",
+        "uninstall": [
+          "docker stop chat2db && docker rm chat2db"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "docker stop chat2db && docker rm chat2db && docker pull chat2db/chat2db:latest && docker run -d --name chat2db -p 10824:10824 chat2db/chat2db:latest",
+    "check": "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q '^chat2db$'"
+  },
+
+  "config": {
+    "path": "$HOME/.chat2db/config",
+    "operations": {
+      "view": "echo '配置在 Web UI 或客户端内进行管理'"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "容器状态",
+      "command": "command -v docker >/dev/null 2>&1 && docker ps --filter 'name=chat2db' --format '{{.Names}} - {{.Status}}' || echo '未运行'"
+    },
+    {
+      "name": "Web 界面",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:10824 >/dev/null && echo '响应正常 (端口 10824)' || echo '未响应'"
+    }
+  ],
+
+  "commands": {
+    "start": "docker start chat2db",
+    "stop": "docker stop chat2db",
+    "logs": "docker logs -f chat2db"
+  },
+
+  "prompts": {
+    "connect_db": "说明如何在 Chat2DB 中连接本地的 MySQL 或 PostgreSQL 并配置自定义大模型 API 进行对话式查询。",
+    "generate_reports": "如何利用 Chat2DB 的 AI 能力，将 SQL 查询结果一键转化为可视化图表和分析报表？"
+  },
+
+  "notes": "Chat2DB 默认运行在 10824 端口。它既支持以 Docker 形式运行 Web 服务，也提供了原生的桌面客户端。项目主页: https://github.com/chat2db/Chat2DB"
+}

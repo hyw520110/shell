@@ -1,0 +1,39 @@
+version: "3"
+
+services:
+  nginx:                                         
+    container_name: nginx           
+    image: nginx:latest                                 
+    restart: always
+    ports:                                    
+      - 80:80
+      - 443:443
+    # 移除特权模式，使用更精确的权限控制
+    # privileged: true
+    # 使用默认的bridge网络模式，移除host网络模式以避免与端口映射冲突
+    # network_mode: host
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./conf:/etc/nginx
+      - /var/log/nginx:/var/log/nginx
+      - ./html:/usr/share/nginx/html
+      - /etc/localtime:/etc/localtime
+      - /etc/hosts:/etc/hosts
+      # 移除特定环境的挂载点，可根据实际需要添加
+      # - /oss/other:/oss/other
+    # 添加更精确的权限控制
+    cap_add:
+      - NET_BIND_SERVICE
+#docker network create --driver bridge --subnet 10.1.120.0/24 --gateway 10.1.120.1 nginx_net
+#    networks:
+#      net:
+#        ipv4_address: 10.1.120.96
+#networks:
+#  net:
+#    ipam:
+#      driver: bridge
+#      config:
+#        - subnet: "10.1.120.0/24"
+#          gateway: 10.1.120.255
+#    external: true

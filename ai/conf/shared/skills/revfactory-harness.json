@@ -1,0 +1,42 @@
+{
+  "id": "revfactory-harness",
+  "name": "RevFactory Harness",
+  "description": "Claude Code 的 Team-Architecture Factory，自动生成 Agent 团队架构和 Skills。6 种预定义架构模式：Pipeline、Fan-out/Fan-in、Expert Pool、Producer-Reviewer、Supervisor、Hierarchical Delegation",
+  "category": "design-prototype",
+  "scenarios": [
+    "design-prototype",
+    "productivity"
+  ],
+  "tags": [
+    "agent",
+    "team-architecture",
+    "claude-code",
+    "plugin",
+    "skill-generation"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/revfactory/harness",
+  "repository": "https://github.com/revfactory/harness",
+  "prompts": {
+    "default": "Build a harness for this project",
+    "design-team": "Design an agent team for this domain",
+    "setup-harness": "Set up a harness",
+    "deep-research": "Build a harness for deep research. I need an agent team that can investigate any topic from multiple angles — web search, academic sources, community sentiment — then cross-validate findings and produce a comprehensive report.",
+    "website-dev": "Build a harness for full-stack website development. The team should handle design, frontend (React/Next.js), backend (API), and QA testing in a coordinated pipeline from wireframe to deployment."
+  },
+  "dependencies": {
+    "system_commands": [
+      "git"
+    ]
+  },
+  "install_check": "ls -la ~/.claude/skills/harness/ 2>/dev/null || echo '未安装'",
+  "instructions": {
+    "workflow": "安装后，在 Claude Code 中使用 'Build a harness for this project' 触发插件。插件会根据项目领域自动生成 Agent 团队定义 (.claude/agents/) 和 Skills (.claude/skills/)。",
+    "safety": "本地优先，所有生成的文件保存在项目目录中"
+  },
+  "tips": "支持 6 种架构模式：Pipeline（顺序任务）、Fan-out/Fan-in（并行任务）、Expert Pool（专家池）、Producer-Reviewer（生成-评审）、Supervisor（监督者模式）、Hierarchical Delegation（分层委派）。支持多语言：English、한국어、日本語。",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

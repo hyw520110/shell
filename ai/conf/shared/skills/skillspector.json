@@ -1,0 +1,58 @@
+{
+  "id": "skillspector",
+  "name": "SkillSpector Skill Security Audit",
+  "description": "使用 NVIDIA SkillSpector 在安装第三方 Agent Skills 前进行安全扫描，发现 prompt injection、数据外传、危险代码、MCP 权限和供应链风险。",
+  "category": "security",
+  "prompts": {
+    "scan-skill": "使用 SkillSpector 扫描这个 Skill 目录，先运行无 LLM 的静态扫描并解释风险。",
+    "preinstall-review": "安装第三方 Skill 前，用 SkillSpector 评估安全风险，并给出是否安装的建议。",
+    "scan-repo": "对给定 GitHub Skill 仓库运行 SkillSpector 扫描，输出 Markdown 风险报告。",
+    "ci-plan": "设计一个用 SkillSpector 扫描 Skills 的 CI 安全门禁方案。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "python3",
+      "uv"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "install-skillspector",
+      "name": "install-skillspector",
+      "description": "克隆并安装 NVIDIA SkillSpector 到 ~/.local/share/ai-hub/skillspector",
+      "install": {
+        "default": "base=\"$HOME/.local/share/ai-hub\"; repo=\"$base/skillspector\"; mkdir -p \"$base\"; if [ -d \"$repo/.git\" ]; then git -C \"$repo\" pull --ff-only; else git clone https://github.com/NVIDIA/SkillSpector.git \"$repo\"; fi; cd \"$repo\" && if command -v uv >/dev/null 2>&1; then uv sync; else python3 -m venv .venv && . .venv/bin/activate && pip install -e .; fi"
+      },
+      "check": {
+        "paths": [
+          "~/.local/share/ai-hub/skillspector"
+        ]
+      }
+    }
+  ],
+  "instructions": {
+    "workflow": "优先使用 --no-llm 静态扫描获取确定性结果；需要语义判断时再启用 LLM Provider。",
+    "reporting": "输出风险分数、严重度、触发规则、证据路径、是否建议安装和隔离建议。",
+    "safety": "不要自动安装未扫描的第三方 Skill；扫描结果为高危时应停止安装并让用户确认。"
+  },
+  "tags": [
+    "安全",
+    "Skills",
+    "供应链",
+    "审计",
+    "NVIDIA"
+  ],
+  "scenarios": [
+    "coding",
+    "qa-testing",
+    "agent-workbench"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/NVIDIA/SkillSpector",
+  "repository": "https://github.com/NVIDIA/SkillSpector",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

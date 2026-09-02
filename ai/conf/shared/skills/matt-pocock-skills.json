@@ -1,0 +1,47 @@
+{
+  "id": "matt-pocock-skills",
+  "name": "Matt Pocock Skills",
+  "description": "Matt Pocock 的工程实践 Skills 集合，面向真实软件工程任务，强调需求澄清、共享语言、任务对齐、issue 跟踪和可组合的小型工程技能。",
+  "category": "development",
+  "install": {
+    "command": "npx skills@latest add mattpocock/skills",
+    "check": "npx skills find matt 2>/dev/null | grep -Eqi 'matt|pocock|grill|triage'"
+  },
+  "prompts": {
+    "setup": "使用 Matt Pocock Skills 的思路为当前项目建立需求澄清、issue 跟踪和文档输出工作流。",
+    "alignment": "在实现 {feature} 前，用 grill-me / grill-with-docs 风格提出澄清问题，确保需求对齐。"
+  },
+  "capabilities": [
+    "需求澄清和任务对齐",
+    "共享语言与领域建模",
+    "issue 跟踪设置：GitHub、Linear 或本地文件",
+    "小型、可组合、适合真实工程项目的 skills"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "node",
+      "npx"
+    ]
+  },
+  "tips": "安装后按仓库说明选择 `/setup-matt-pocock-skills`，并配置 issue tracker、标签和文档输出位置。",
+  "homepage": "https://github.com/mattpocock/skills",
+  "repository": "https://github.com/mattpocock/skills",
+  "tags": [
+    "工程实践",
+    "TypeScript",
+    "需求澄清",
+    "Issue 管理",
+    "代码质量",
+    "Skill 集合"
+  ],
+  "scenarios": [
+    "coding",
+    "productivity",
+    "product-docs"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

@@ -1,0 +1,65 @@
+{
+  "id": "ecc-agentshield",
+  "name": "ECC AgentShield",
+  "description": "从 ECC 中拆出的 Agent 配置安全扫描能力，聚焦 Claude Code/Codex 等 Agent 的 hooks、MCP、skills、rules、权限边界和提示注入风险。",
+  "category": "coding-best-practices",
+  "install": {
+    "command": "echo 'AgentShield 建议按需运行: npx ecc-agentshield scan；首次运行前请确认 ECC 仓库当前安装说明。'",
+    "check": "npx ecc-agentshield --version 2>/dev/null || true"
+  },
+  "prompts": {
+    "scan": "使用 ECC AgentShield 的检查思路审查当前 Agent 配置，重点检查 hooks、MCP、skills、rules、环境变量和权限边界。",
+    "mcp": "审查当前 MCP 配置的安全风险，列出高风险命令、敏感环境变量、网络访问和本地文件权限。",
+    "hooks": "审查 hooks/pre-tool/post-tool 配置，判断是否存在重复执行、越权、命令注入或隐藏副作用。"
+  },
+  "capabilities": [
+    "Agent 配置安全扫描",
+    "hooks、MCP、skills、rules 和环境变量风险检查",
+    "提示注入、命令注入和权限边界审查",
+    "输出可执行的修复清单"
+  ],
+  "dependencies": {
+    "system_commands": [
+      "node",
+      "npx"
+    ]
+  },
+  "recommended_extension_commands": [
+    {
+      "id": "ecc-agentshield-scan",
+      "name": "Run AgentShield Scan",
+      "description": "运行 ECC AgentShield 扫描当前 Agent 配置。",
+      "check": {
+        "command": "npx ecc-agentshield --version"
+      },
+      "install": {
+        "default": "npx ecc-agentshield scan"
+      }
+    }
+  ],
+  "tips": "本配置和 security-audit-pro/security-sentinel 不完全重复；它关注 Agent harness 配置本身，而不是业务代码漏洞。建议在新增 MCP、hooks、插件或跨 harness 同步后运行。",
+  "homepage": "https://github.com/affaan-m/ECC",
+  "repository": "https://github.com/affaan-m/ECC",
+  "documentation": "https://github.com/affaan-m/ECC/blob/main/README.zh-CN.md",
+  "tags": [
+    "安全扫描",
+    "Agent安全",
+    "Hooks",
+    "MCP",
+    "权限",
+    "提示注入",
+    "审计",
+    "Claude Code",
+    "Codex"
+  ],
+  "scenarios": [
+    "agent-workbench",
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

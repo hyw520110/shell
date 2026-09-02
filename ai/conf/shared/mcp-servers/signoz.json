@@ -1,0 +1,64 @@
+{
+  "id": "signoz",
+  "name": "SigNoz MCP Server",
+  "description": "SigNoz 开源 APM 的 MCP 服务器。允许 AI 代理通过 OpenTelemetry 数据获取 Metrics、Traces 和 Logs。",
+  "category": "ops",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g signoz-mcp-server"
+  },
+  "prepare": "bash ${SCRIPT_DIR}/scripts/mcp/prepare-signoz.sh",
+  "config": {
+    "command": "sh",
+    "args": [
+      "-c",
+      "NO_PROXY=localhost,127.0.0.1 no_proxy=localhost,127.0.0.1 SIGNOZ_URL=${SIGNOZ_URL:-http://localhost:8080} SIGNOZ_API_KEY=${SIGNOZ_API_KEY:-} exec signoz-mcp-server"
+    ],
+    "transportType": "stdio",
+    "env": {}
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "requires_env": [],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "query_logs",
+      "description": "查询 ClickHouse 日志 适用场景: 多语言混合（Go/Node/Python）、云原生架构（OpenTelemetry）、对海量日志检索性能要求极高、需要统一大盘的现代化场景。 避免场景: 纯传统/闭门 Java 巨石应用（建议改用 SkyWalking），或无容器化/Kubernetes基础设施的单机小型项目。"
+    },
+    {
+      "name": "query_metrics",
+      "description": "查询 PromQL/Metrics 数据 适用场景: 多语言混合（Go/Node/Python）、云原生架构（OpenTelemetry）、对海量日志检索性能要求极高、需要统一大盘的现代化场景。 避免场景: 纯传统/闭门 Java 巨石应用（建议改用 SkyWalking），或无容器化/Kubernetes基础设施的单机小型项目。"
+    },
+    {
+      "name": "get_traces",
+      "description": "获取分布式调用链路(Traces)信息 适用场景: 多语言混合（Go/Node/Python）、云原生架构（OpenTelemetry）、对海量日志检索性能要求极高、需要统一大盘的现代化场景。 避免场景: 纯传统/闭门 Java 巨石应用（建议改用 SkyWalking），或无容器化/Kubernetes基础设施的单机小型项目。"
+    }
+  ],
+  "notes": "需要运行中的 SigNoz 后端；默认连接 http://localhost:8080。请在 SigNoz 设置中创建 API Key，并通过 SIGNOZ_API_KEY 配置。",
+  "tags": [
+    "SigNoz",
+    "OpenTelemetry",
+    "APM",
+    "AIOps"
+  ],
+  "scenarios": [
+    "ops-monitoring",
+    "coding",
+    "productivity"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://signoz.io",
+  "repository": "https://github.com/SigNoz/signoz",
+  "recommended_scenarios": "多语言混合（Go/Node/Python）、云原生架构（OpenTelemetry）、对海量日志检索性能要求极高、需要统一大盘的现代化场景。",
+  "unsuitable_scenarios": "纯传统/闭门 Java 巨石应用（建议改用 SkyWalking），或无容器化/Kubernetes基础设施的单机小型项目。"
+}

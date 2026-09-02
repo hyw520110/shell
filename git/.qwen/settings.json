@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash *)",
+      "Bash(/users/mac/workspace/shell/git/git-diff.sh *)",
+      "Bash(diff *)",
+      "Bash(chmod *)",
+      "Bash(echo *)",
+      "Bash(./git-diff.sh *)"
+    ]
+  },
+  "$version": 3
+}
