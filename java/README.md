@@ -65,7 +65,6 @@ cd java
 |---------|------|---------|---------|
 | `build-tools/maven/maven.sh` | Maven安装脚本 | ✅ | ✅ |
 | `build-tools/maven/clean-maven.sh` | Maven清理脚本 | ❌ | ❌ |
-| `build-tools/maven/mvnd.sh` | mvnd启动脚本 | ❌ | ❌ |
 | `build-tools/maven/deploy-maven.bat` | Maven部署脚本（Windows） | ❌ | ❌ |
 
 #### Gradle
@@ -78,7 +77,7 @@ cd java
 
 | 脚本文件 | 说明 | 版本检测 | 帮助函数 |
 |---------|------|---------|---------|
-| `build-tools/mvnd/install-mvnd.sh` | mvnd安装脚本 | ✅ | ✅ |
+| `build-tools/mvnd/mvnd.sh` | mvnd安装脚本 | ✅ | ✅ |
 
 ### 应用管理
 
@@ -174,8 +173,8 @@ cd java
 
 #### Maven Daemon（mvnd）
 ```bash
-./build-tools/mvnd/install-mvnd.sh
-./build-tools/mvnd/install-mvnd.sh --version
+./build-tools/mvnd/mvnd.sh
+./build-tools/mvnd/mvnd.sh --version 1.0-m4
 ```
 
 ### Java 应用管理
@@ -239,7 +238,7 @@ cd java-app
 | | GraalVM | ❌ | - |
 | **构建工具** | Maven | ✅ | build-tools/maven/maven.sh |
 | | Gradle | ✅ | build-tools/gradle/install-gradle.sh |
-| | mvnd | ✅ | build-tools/mvnd/install-mvnd.sh |
+| | mvnd | ✅ | build-tools/mvnd/mvnd.sh |
 | | Ant | ❌ | - |
 | **应用服务器** | Tomcat | ❌ | - |
 | | Jetty | ❌ | - |
@@ -318,7 +317,7 @@ echo 'export PATH=$JAVA_HOME/bin:$PATH' >> ~/.bashrc
 
 ```bash
 # 安装 mvnd
-./build-tools/mvnd/install-mvnd.sh
+./build-tools/mvnd/mvnd.sh
 
 # 使用 mvnd 构建
 mvnd clean package

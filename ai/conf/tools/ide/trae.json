@@ -1,17 +1,20 @@
 {
   "id": "trae",
-  "name": "Trae IDE",
-  "description": "字节跳动推出的自适应 AI IDE，具备强大的 AI 编程助手功能",
+  "name": "Trae",
+  "description": "TraeWork / TraeCode，支持国内版和国际版；安装/更新时多选版本",
   "category": "ai-ide",
-  "tags": ["ai", "ide", "bytedance"],
-
+  "tags": [
+    "ai",
+    "ide",
+    "bytedance"
+  ],
   "install": {
     "methods": [
       {
-        "name": "官方 dmg 安装 (via 脚本)",
+        "name": "版本选择安装 (via 脚本)",
         "type": "bash",
-        "command": "bash ../ide/install-trae.sh",
-        "check": "[ -d '/Applications/Trae.app' ] || [ -d '/Applications/TRAE SOLO CN.app' ] || ls -d /Applications/*Trae*.app &>/dev/null",
+        "command": "bash ide/trae/install-trae.sh",
+        "check": "command -v trae >/dev/null 2>&1 || command -v trae-cn >/dev/null 2>&1 || command -v traecode >/dev/null 2>&1 || command -v traework >/dev/null 2>&1 || { for app in /Applications/*[Tt][Rr][Aa][Ee]*.app; do [ ! -d \"$app\" ] || exit 0; done; exit 1; }",
         "uninstall": [
           "echo '请手动在 /Applications 中删除 Trae 应用'"
         ]
@@ -19,34 +22,27 @@
     ],
     "default_method": 0
   },
-
   "update": {
-    "command": "bash ../ide/install-trae.sh",
-    "check": "[ -d '/Applications/Trae.app' ]"
+    "command": "bash ide/trae/install-trae.sh",
+    "check": "command -v trae >/dev/null 2>&1 || command -v trae-cn >/dev/null 2>&1 || command -v traecode >/dev/null 2>&1 || command -v traework >/dev/null 2>&1 || { for app in /Applications/*[Tt][Rr][Aa][Ee]*.app; do [ ! -d \"$app\" ] || exit 0; done; exit 1; }"
   },
-
   "config": {
     "path": "$HOME/Library/Application Support/Trae/User/settings.json",
     "operations": {
       "view": "cat \"$HOME/Library/Application Support/Trae/User/settings.json\" 2>/dev/null || echo '配置文件不存在'",
-      "edit": "open -a Trae 2>/dev/null || echo '请在 IDE 中手动打开设置'"
+      "edit": "open -a \"$(ls -d /Applications/*Trae*.app 2>/dev/null | head -1)\" 2>/dev/null || echo '请在 IDE 中手动打开设置'"
     }
   },
-
   "commands": {
-    "start": "open -a \"$(ls -d /Applications/*Trae*.app | head -1)\""
+    "start": "open -a \"$(ls -d /Applications/*Trae*.app 2>/dev/null | head -1)\""
   },
-
   "status_check": [
     {
       "name": "检查应用",
-      "command": "ls -d /Applications/*Trae*.app &>/dev/null && echo '已安装' || echo '未安装'"
+      "command": "bash -c 'command -v trae >/dev/null 2>&1 || command -v trae-cn >/dev/null 2>&1 || command -v traecode >/dev/null 2>&1 || command -v traework >/dev/null 2>&1 || { for app in /Applications/*[Tt][Rr][Aa][Ee]*.app; do [ ! -d \"$app\" ] || exit 0; done; exit 1; }' && echo '已安装' || echo '未安装'"
     }
   ],
-
   "mcp_servers": {},
-
   "skills": {},
-
-  "notes": "Trae 是字节跳动官方出品的 AI IDE。该工具将通过调用本地 ide 目录下的脚本进行安装。"
+  "notes": "IDE 分类仅显示一个 Trae 入口。安装/更新时多选 TraeWork 国内版、TraeCode 国内版、TraeWork 国际版、TraeCode 国际版。macOS TraeCode 使用官方接口安装；TraeWork 和其他平台提供官方下载指引，待手动安装不会报告安装成功。"
 }

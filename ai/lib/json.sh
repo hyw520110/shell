@@ -101,7 +101,7 @@ load_extended_commands() {
 parse_all_tool_configs() {
     local dir="$1"
     [[ -d "$dir" ]] || return 1
-    local parser_version="tools-parser-v2-normalize-multiline-fields"
+    local parser_version="tools-parser-v3-bulk"
     
     local cache_base="${AI_HUB_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/ai-hub}"
     local cache_dir="$cache_base"
@@ -113,7 +113,9 @@ parse_all_tool_configs() {
     local current_fingerprint
     current_fingerprint=$(
         {
-            printf '%s\n' "$parser_version"
+            printf '%s\n' "$parser_version" "$dir" "$HOME"
+            cat "${LIB_DIR:-${SCRIPT_DIR:-.}/lib}/parse-tools.jq"
+            find "$dir" -name "*.json" -type f | sort
             find "$dir" -name "*.json" -type f -exec cat {} + 2>/dev/null
         } | if command -v md5sum >/dev/null 2>&1; then md5sum | awk '{print $1}'; elif command -v md5 >/dev/null 2>&1; then md5 -q; else cksum | awk '{print $1}'; fi
     )
@@ -130,87 +132,29 @@ parse_all_tool_configs() {
     fi
 
     debug_log "缓存失效，正在重新编译 AOT 元数据..."
-    local results=()
-
-    # 3. 递归扫描所有 JSON 文件
+    local files=() file
     while IFS= read -r file; do
-        [[ "$(basename "$file")" == "_template.json" ]] && continue
+        [[ "${file##*/}" == "_template.json" ]] || files+=("$file")
+    done < <(find "$dir" -name '*.json' -type f | sort)
+    [[ ${#files[@]} -gt 0 ]] || return 0
 
-        # 获取子目录名，用于推导 category
-        local subdir=$(basename "$(dirname "$file")")
-        local inferred_cat=""
-        case "$subdir" in
-            cli) inferred_cat="ai-coding" ;;
-            ide) inferred_cat="ai-ide" ;;
-            gateway) inferred_cat="ai-gateway" ;;
-            agent) inferred_cat="ai-agent" ;;
-            runtime) inferred_cat="ai-runtime" ;;
-            optimizer) inferred_cat="ai-optimizer" ;;
-            workbench) inferred_cat="ai-workbench" ;;
-            utility) inferred_cat="ai-utility" ;;
-        esac
-
-        while IFS="$TOOL_FIELD_SEP" read -r id name inst_cmd type plugin conf_path pypi_placeholder start_cmd v_check desc cat check_cmd sort_order sort_key group; do
-            [[ -z "$id$name$inst_cmd$type$plugin$conf_path$start_cmd$v_check$desc$cat$check_cmd$sort_order$sort_key$group" ]] && continue
-            # 还原占位符
-            [[ "$id" == "__E__" || -z "$id" ]] && id=$(basename "$file" .json)
-            [[ "$name" == "__E__" || -z "$name" ]] && name="$id"
-            [[ "$inst_cmd" == "__E__" ]] && inst_cmd=""
-            [[ "$type" == "__E__" ]] && type="unknown"
-            [[ "$plugin" == "__E__" ]] && plugin=""
-            [[ "$conf_path" == "__E__" ]] && conf_path=""
-            [[ "$start_cmd" == "__E__" ]] && start_cmd="$id"
-            [[ "$v_check" == "__E__" ]] && v_check=""
-            [[ "$desc" == "__E__" ]] && desc=""
-            [[ "$cat" == "__E__" ]] && cat="$inferred_cat"
-            [[ "$check_cmd" == "__E__" ]] && check_cmd=""
-            [[ "$sort_order" == "__E__" || ! "$sort_order" =~ ^[0-9]+$ ]] && sort_order=5000
-            [[ "$sort_key" == "__E__" || -z "$sort_key" ]] && sort_key="$name"
-            [[ "$group" == "__E__" ]] && group=""
-
-            # 1. 提取包名 (pkg)
-            local pkg=""
-            if [[ -n "$inst_cmd" ]]; then
-                case "$type" in
-                    "npm") pkg=$(echo "$inst_cmd" | sed -E 's/.*npm install -g ([^ ]+).*/\1/' | cut -d' ' -f1 | sed 's/--.*//' | xargs) ;;
-                    "pip"|"pip_official") pkg=$(echo "$inst_cmd" | sed -E 's/.*pip3 install ([^ ]+).*/\1/') ;;
-                    "brew") pkg=$(echo "$inst_cmd" | sed -n 's/.*brew install \([^ ]*\).*/\1/p' | head -1) ;;
-                esac
-            fi
-            [[ -z "$pkg" && ( "$type" == "npm" || "$type" == "pip" ) ]] && pkg="$id"
-
-            # 2. 提取纯命令 (cmd)
-            local cmd=$(echo "$start_cmd" | awk '{print $1}'); [[ -z "$cmd" ]] && cmd="$id"
-
-            conf_path="${conf_path//\$HOME/$HOME}"
-            local result_line="${id}${TOOL_FIELD_SEP}${name}${TOOL_FIELD_SEP}${pkg}${TOOL_FIELD_SEP}${type}${TOOL_FIELD_SEP}${plugin}${TOOL_FIELD_SEP}${conf_path}${TOOL_FIELD_SEP}${TOOL_FIELD_SEP}${cmd}${TOOL_FIELD_SEP}${v_check}${TOOL_FIELD_SEP}${desc}${TOOL_FIELD_SEP}${cat}${TOOL_FIELD_SEP}${file}${TOOL_FIELD_SEP}${check_cmd}${TOOL_FIELD_SEP}${sort_order}${TOOL_FIELD_SEP}${sort_key}${TOOL_FIELD_SEP}${group}"
-            results+=("$(printf '%05d\t%s\t%s\t%s' "$sort_order" "$sort_key" "$file" "$result_line")")
-        done < <(jq -r --arg sep "$TOOL_FIELD_SEP" '
-            def p(v): (v // "") | tostring | gsub("[\r\n\t]+"; " ") | if . == "" then "__E__" else . end;
-            def check_cmd:
-                (.install.methods[0].check // "")
-                | if type == "string" then . else "" end;
-            [
-                p(.id), p(.name), p(.install.methods[0].command // ""),
-                p(.install.methods[0].type // "unknown"), p(.install.methods[0].plugin // ""),
-                p(.config.path), "", p(.commands.start // .id),
-                (p(.commands.version) | tostring), p(.description), p(.category),
-                p(check_cmd), p(.sort_order // .order // 5000), p(.sort_key // .name),
-                p(.group)
-            ] | join($sep)
-        ' "$file" 2>/dev/null)
-    done < <(find "$dir" -name "*.json" -type f 2>/dev/null | sort)
-
-    local sorted_results=()
-    while IFS=$'\t' read -r _sort _name _file line; do
-        [[ -n "$line" ]] && sorted_results+=("$line") && echo "$line"
-    done < <(printf '%s\n' "${results[@]}" | sort -t $'\t' -k1,1n -k2,2f -k3,3)
-
-    # 4. 写入持久化缓存
+    # 一次 jq 解析所有文件；避免每个工具启动 jq / basename / awk / sed。
+    local rows tmp_file
+    rows=$(mktemp "$cache_dir/.tools_rows.XXXXXX") || return 1
+    tmp_file=$(mktemp "$cache_dir/.tools_compiled.XXXXXX") || { rm -f "$rows"; return 1; }
+    if ! jq -r --arg sep "$TOOL_FIELD_SEP" --arg user_home "$HOME" \
+        -f "${LIB_DIR:-${SCRIPT_DIR:-.}/lib}/parse-tools.jq" "${files[@]}" > "$rows"; then
+        rm -f "$rows" "$tmp_file"
+        return 1
+    fi
     {
-        echo "#FINGERPRINT:$current_fingerprint"
-        for line in "${sorted_results[@]}"; do echo "$line"; done
-    } > "$cache_file" 2>/dev/null && chmod 600 "$cache_file" 2>/dev/null || true
+        printf '#FINGERPRINT:%s\n' "$current_fingerprint"
+        sort -t $'\t' -k1,1n -k2,2f -k3,3 "$rows" | cut -f4-
+    } > "$tmp_file"
+    rm -f "$rows"
+    chmod 600 "$tmp_file"
+    mv "$tmp_file" "$cache_file" || { rm -f "$tmp_file"; return 1; }
+    tail -n +2 "$cache_file"
 }
 
 # 解析工具 JSON 配置文件并返回格式化字符串

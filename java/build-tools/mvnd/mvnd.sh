@@ -85,7 +85,7 @@ readonly MAVEN_MIRROR_HUAWEI="https://mirrors.huaweicloud.com/repository/maven/"
 readonly DEFAULT_LOCAL_REPO="$HOME/.m2/repository"
 
 # === 全局变量 ===
-SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_NAME="$(basename "$0")"
 MVND_VERSION="$DEFAULT_MVND_VERSION"
 INSTALL_DIR="$MVND_DIR"
 LOCAL_REPO="$DEFAULT_LOCAL_REPO"
@@ -185,13 +185,13 @@ get_shell_config_file() {
 
 # === 显示帮助信息 ===
 show_usage() {
-    cat << 'EOF'
+    cat << EOF
 Maven Daemon (mvnd) 一键安装配置脚本
 
 Maven Daemon 是 Apache Maven 的守护进程版本，提供更快的构建速度和更好的用户体验。
 它通过在后台保持 JVM 进程运行，避免了每次构建都启动 JVM 的开销。
 
-用法: ./install-mvnd.sh [选项]
+用法: ./${SCRIPT_NAME} [选项]
 
 选项:
     -h, --help                  显示此帮助信息
@@ -212,12 +212,12 @@ Maven Daemon 是 Apache Maven 的守护进程版本，提供更快的构建速�
     official  - 官方源 (不使用镜像)
 
 示例:
-    ./install-mvnd.sh                           # 使用默认设置安装
-    ./install-mvnd.sh --version 1.0-m4          # 安装特定版本
-    ./install-mvnd.sh --mirror tencent          # 使用腾讯云镜像
-    ./install-mvnd.sh --repo ~/maven-repo       # 自定义本地仓库
-    ./install-mvnd.sh --uninstall               # 卸载mvnd
-    ./install-mvnd.sh --dry-run                 # 试运行模式
+    ./${SCRIPT_NAME}                           # 使用默认设置安装
+    ./${SCRIPT_NAME} --version 1.0-m4          # 安装特定版本
+    ./${SCRIPT_NAME} --mirror tencent          # 使用腾讯云镜像
+    ./${SCRIPT_NAME} --repo ~/maven-repo       # 自定义本地仓库
+    ./${SCRIPT_NAME} --uninstall               # 卸载mvnd
+    ./${SCRIPT_NAME} --dry-run                 # 试运行模式
 
 使用指南:
     1. 安装完成后，重启终端或执行: source ~/.zshrc (或 ~/.bashrc)
@@ -684,30 +684,55 @@ configure_shell() {
 
     print_info "配置 shell 环境: $config_file"
 
-    # 检查是否已配置
-    if grep -q "MVND_HOME" "$config_file" 2>/dev/null; then
-        if [[ "$FORCE_REINSTALL" == false ]]; then
-            print_warning "mvnd 环境变量已配置，跳过添加"
-            print_info "使用 --force 选项强制重新配置"
-            return 0
-        fi
-
-        # 删除旧的 mvnd 配置
-        print_info "删除旧的 mvnd 配置..."
-        if [[ "$(uname)" == "Darwin" ]]; then
-            sed -i '' '/# mvnd环境配置/,/^$/d' "$config_file" 2>/dev/null || true
-        else
-            sed -i '/# mvnd环境配置/,/^$/d' "$config_file" 2>/dev/null || true
-        fi
+    if [[ ! -f "$config_file" ]]; then
+        touch "$config_file"
     fi
 
-    # 添加新的 mvnd 配置
-    cat >> "$config_file" << EOF
+    # 规范化现有 PATH：将 mvnd 追加到已有的 export PATH 中，避免生成第二条 PATH 配置。
+    local temp_file="${config_file}.mvnd.tmp.$$"
+    awk -v install_dir="$INSTALL_DIR" '
+        BEGIN { in_mvnd_block = 0; path_updated = 0 }
 
-# mvnd环境配置
-export MVND_HOME="$INSTALL_DIR"
-export PATH="\$MVND_HOME/bin:\$PATH"
-EOF
+        # 删除旧版脚本生成的独立 mvnd 配置块。
+        /^# mvnd环境配置$/ {
+            in_mvnd_block = 1
+            next
+        }
+        in_mvnd_block {
+            if ($0 == "") {
+                in_mvnd_block = 0
+            }
+            next
+        }
+
+        # 由下面的规范化逻辑重新生成 MVND_HOME，避免重复定义。
+        /^export MVND_HOME=/ { next }
+
+        # 找到第一条 PATH 配置，在它之前定义 MVND_HOME，并把 mvnd 路径追加进去。
+        /^export PATH=/ && !path_updated {
+            print "# mvnd环境配置"
+            print "export MVND_HOME=\"" install_dir "\""
+            line = $0
+            if (line !~ /\$MVND_HOME\/bin/) {
+                sub(/\$PATH/, "$MVND_HOME/bin:$PATH", line)
+            }
+            print line
+            path_updated = 1
+            next
+        }
+
+        { print }
+
+        # 配置文件没有 PATH 时，创建唯一的一条 PATH 配置。
+        END {
+            if (!path_updated) {
+                print "# mvnd环境配置"
+                print "export MVND_HOME=\"" install_dir "\""
+                print "export PATH=\"$MVND_HOME/bin:$PATH\""
+            }
+        }
+    ' "$config_file" > "$temp_file"
+    mv "$temp_file" "$config_file"
 
     print_success "mvnd 环境变量已配置"
 }
@@ -813,6 +838,8 @@ main() {
 
     # 检查是否已安装
     if check_mvnd_installed && [[ "$FORCE_REINSTALL" == false ]]; then
+        # 已安装时仍规范化 shell 配置，确保旧版独立 PATH 配置可以被合并。
+        configure_shell
         print_info "使用 --force 选项强制重新安装"
 
         # 显示当前配置

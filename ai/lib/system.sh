@@ -261,8 +261,12 @@ check_and_kill_process() {
         warn_log "$display_name 正在运行"
         read -p "$display_name 正在运行，继续 $operation 可能导致冲突，是否强制关闭进程? (y/N): " kill_proc
         if [[ "$kill_proc" == "y" || "$kill_proc" == "Y" ]]; then
-            pkill -f "$cmd_name"
-            success_log "进程已关闭"
+            if pkill -f "$cmd_name"; then
+                success_log "进程已关闭"
+            else
+                error_log "无法关闭 $display_name 进程，请先手动退出后重试"
+                return 1
+            fi
         else
             warn_log "操作已取消"
             return 1

@@ -17,6 +17,10 @@
     ],
     "default_method": 0
   },
+  "update": {
+    "command": "bash -c 'printf \"MonkeyCode 在线版无需本地更新，当前版本由服务端管理（online-managed）\\n\"'"
+  },
+  "process_check": "",
 
   "status_check": [
     {
@@ -26,7 +30,18 @@
   ],
 
   "commands": {
-    "start": "open https://monkeycode-ai.com"
+    "start": "open https://monkeycode-ai.com",
+    "version": "printf 'online-managed'"
+  },
+
+  "setup_guide": {
+    "manual": "MonkeyCode 是在线 SaaS 平台，不需要本地安装 CLI。",
+    "workflows": [
+      {
+        "name": "开始使用",
+        "example": "执行“start”操作打开官网，登录后创建项目或提交开发任务。"
+      }
+    ]
   },
 
   "notes": "MonkeyCode 特别适合处理复杂的 PRD、架构设计和受控的代码实现。目前推荐直接使用其成熟的 SaaS 版本。"

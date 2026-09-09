@@ -139,7 +139,7 @@ _init_config_v2() {
     if [[ -d "$md" ]]; then
         local mcp_files=()
         for f in "$md"/*.json; do
-            [[ -f "$f" ]] && [[ "$(basename "$f")" != _* ]] && mcp_files+=("$f")
+            [[ -f "$f" ]] && [[ "${f##*/}" != _* ]] && mcp_files+=("$f")
         done
         if [[ ${#mcp_files[@]} -gt 0 ]]; then
             while IFS=$'\t' read -r mid mname mtype mconf; do
@@ -155,7 +155,7 @@ _init_config_v2() {
     if [[ -d "$sd" ]]; then
         local skill_files=()
         for f in "$sd"/*.json; do
-            [[ -f "$f" ]] && [[ "$(basename "$f")" != _* ]] && skill_files+=("$f")
+            [[ -f "$f" ]] && [[ "${f##*/}" != _* ]] && skill_files+=("$f")
         done
         if [[ ${#skill_files[@]} -gt 0 ]]; then
             while IFS=$'\t' read -r sid sname sdesc sjson; do
@@ -182,13 +182,9 @@ operate_tool() {
         check_proxy_connectivity
     fi
 
-    # 1. 运行检查
-    if [[ "$op" != "install" ]]; then
-        check_and_kill_process "${OP_cmd:-$OP_id}" "$OP_name" "$op" || return 1
-    fi
-
-    # 2. 获取命令
+    # 1. 获取命令
     local run_cmd=""
+    local core_rc=0
     if [[ -n "$OP_file" && -f "$OP_file" ]]; then
         case "$op" in
             "install") run_cmd=$(jq -r '.install.methods[0].command // ""' "$OP_file" 2>/dev/null) ;;
@@ -205,6 +201,21 @@ operate_tool() {
         esac
     fi
 
+    # 2. 运行检查。显式配置为空的 process_check 表示在线/无本地进程工具，跳过 pkill。
+    if [[ "$op" != "install" ]]; then
+        local process_pattern="${OP_cmd:-$OP_id}"
+        local process_check_enabled=true
+        if [[ -n "$OP_file" && -f "$OP_file" ]]; then
+            if jq -e 'has("process_check")' "$OP_file" >/dev/null 2>&1; then
+                process_pattern=$(jq -r '.process_check // empty' "$OP_file" 2>/dev/null)
+                [[ -n "$process_pattern" ]] || process_check_enabled=false
+            fi
+        fi
+        if [[ "$process_check_enabled" == true && -n "$process_pattern" ]]; then
+            check_and_kill_process "$process_pattern" "$OP_name" "$op" || return 1
+        fi
+    fi
+
     # 3. 执行核心逻辑
     if [[ -n "$OP_plugin" ]]; then
         info_log "➜ 正在执行插件 $OP_plugin ($op) $OP_name..."
@@ -219,7 +230,7 @@ operate_tool() {
         if [[ "$OP_type" == "npm" || "$OP_type" == "pip" || "$OP_type" == "pip_official" || "$OP_type" == "brew" || "$OP_type" == "uv" || "$OP_type" == "bash" ]]; then
             info_log "➜ 正在通过 $OP_type $op $OP_name..."
             exec_pkg_op "$OP_type" "$op" "$OP_name" "$OP_pkg" "$npm_registry" "$OP_id" "$OP_type" "$OP_cmd"
-            return $?
+            core_rc=$?
         else
             # 不支持自动操作，直接报错返回，移除已无法执行的死代码
             warn_log "工具 $OP_name 不支持自动 $op（类型: ${OP_type:-未知}）"
@@ -228,10 +239,11 @@ operate_tool() {
     else
         info_log "➜ 正在执行 $op $OP_name..."
         run_configured_command "$run_cmd" "$OP_name $op"
+        core_rc=$?
     fi
 
     # 4. 结果处理
-    if [[ $? -eq 0 ]]; then
+    if [[ ${core_rc:-0} -eq 0 ]]; then
         success_msg "$OP_name $op 成功"
         # 5. 执行扩展命令
         if [[ "$op" == "uninstall" ]]; then
@@ -262,11 +274,19 @@ operate_tool() {
             fi
         fi
 
+        if [[ "$op" == "install" || "$op" == "update" ]]; then
+            show_tool_usage_guide "$OP_file" "$OP_name" "$op"
+        fi
+
         # 清除缓存，强制下一次刷新状态
         rm -f "$TOOLS_STATUS_CACHE_FILE" 2>/dev/null || true
         TOOL_STATUS=()
         return 0
     else
+        if [[ ${core_rc:-0} -eq 3 ]]; then
+            warn_log "$OP_name 需要手动安装，未完成自动安装"
+            return 3
+        fi
         error_log "$OP_name $op 失败"
         return 1
     fi
@@ -337,8 +357,6 @@ safe_remove_config_path() {
             ;;
     esac
 
-    read -p "确认删除 $tool_name 配置路径 $real? 请输入工具名确认: " confirm_path
-    [[ "$confirm_path" == "$tool_name" ]] || { warn_log "配置删除已取消"; return 1; }
     rm -rf -- "$real"
 }
 
@@ -350,6 +368,44 @@ uninstall_tool_extended() {
     execute_extended_commands "$UN_id" "uninstall_extended" "$UN_name"
     execute_extended_commands "$UN_id" "uninstall_cleanup" "$UN_name"
     [[ -n "$UN_conf" ]] && { read -p "是否删除配置文件 $UN_conf? (y/N): " rm_c; [[ "$rm_c" == "y" ]] && safe_remove_config_path "$UN_conf" "$UN_name"; }
+}
+
+show_tool_usage_guide() {
+    local file="$1" name="$2" operation="${3:-安装}"
+    [[ -f "$file" ]] || return 0
+
+    local manual notes homepage repository docs
+    manual=$(jq -r '.setup_guide.manual // .usage_guide.manual // empty' "$file" 2>/dev/null)
+    notes=$(jq -r '.notes // empty' "$file" 2>/dev/null)
+    homepage=$(jq -r '.homepage // empty' "$file" 2>/dev/null)
+    repository=$(jq -r '.repository // empty' "$file" 2>/dev/null)
+    docs=$(jq -r '.docs // empty' "$file" 2>/dev/null)
+    local has_guide=false
+    [[ -n "$manual$notes$homepage$repository$docs" ]] && has_guide=true
+    jq -e '(.setup_guide.workflows // .usage_guide.workflows // .commands // {}) | length > 0' "$file" >/dev/null 2>&1 && has_guide=true
+    [[ "$has_guide" == true ]] || return 0
+
+    echo -e "\n${CYAN}📖 ${name} 使用指南（${operation}完成）${NC}"
+    [[ -n "$manual" ]] && echo -e "  ${manual}"
+    local workflow_name workflow_example
+    while IFS=$'\t' read -r workflow_name workflow_example; do
+        [[ -n "$workflow_name" || -n "$workflow_example" ]] || continue
+        echo -e "  ${YELLOW}${workflow_name:-使用方式}:${NC} ${workflow_example}"
+    done < <(jq -r '(.setup_guide.workflows // .usage_guide.workflows // [])[]? | [(.name // ""), (.example // .command // "")] | @tsv' "$file" 2>/dev/null)
+
+    local command_key command_value
+    while IFS=$'\t' read -r command_key command_value; do
+        [[ -n "$command_key" && -n "$command_value" ]] || continue
+        case "$command_key" in
+            start|start-*|run*|open|help|auth|config|version|chat|sessions)
+                echo -e "  ${GREEN}${command_key}:${NC} ${command_value}" ;;
+        esac
+    done < <(jq -r '.commands // {} | to_entries[] | [ .key, (if (.value | type) == "string" then .value else (.value.command // "") end) ] | @tsv' "$file" 2>/dev/null)
+
+    [[ -n "$notes" ]] && echo -e "  ${YELLOW}说明:${NC} ${notes}"
+    [[ -n "$homepage" ]] && echo -e "  ${BLUE}主页:${NC} $homepage"
+    [[ -n "$repository" && "$repository" != "$homepage" ]] && echo -e "  ${BLUE}仓库:${NC} $repository"
+    [[ -n "$docs" ]] && echo -e "  ${BLUE}文档:${NC} $docs"
 }
 
 is_destructive_command() {
@@ -461,27 +517,14 @@ get_tool_display_status() {
     local status="${TOOL_STATUS[$idx]}"
     [[ "$status" != "true" ]] && { echo "未安装"; return 0; }
     local version
-    version=$(get_tool_version "$idx" 1 2>/dev/null | head -1)
+    parse_tool_data "${TOOLS[$idx]}" "DISPLAY"
+    # 菜单只读已有缓存，避免启动 CLI / IDE 或串行调用包管理器。
+    version=$(get_cache "ver:${DISPLAY_id}" 2>/dev/null)
     if [[ -n "$version" ]]; then
         echo "v$version"
     else
         echo "已安装"
     fi
-}
-
-build_recommended_preselect_for_indices() {
-    local idxs_var="$1"
-    local pre=""
-    local count j tool_idx
-    eval "count=\${#$idxs_var[@]}"
-    for ((j=0; j<count; j++)); do
-        eval "tool_idx=\${$idxs_var[$j]}"
-        parse_tool_data "${TOOLS[$tool_idx]}" "REC"
-        if [[ "$RECOMMENDED_TOOLS_STR" == *" ${REC_id} "* ]] && [[ "${TOOL_STATUS[$tool_idx]}" != "true" ]]; then
-            pre+="$j "
-        fi
-    done
-    echo "$pre"
 }
 
 # npm 全局包列表缓存，避免 is_mcp_server_installed 多次调用 npm list -g
@@ -569,7 +612,7 @@ select_tool_interactive() {
     # key=tab_index, value="idx1 idx2 ..."
 
     while true; do
-        detect_tool_status "fast"
+        detect_tool_status "fast" "$(tool_categories_for_tab "$CURRENT_TAB")"
         local opts=(); local idxs=()
         local display_cat last_header=""
         local _seen_groups=""  # 已显示的 group 名称，用于合并变体工具
@@ -579,6 +622,19 @@ select_tool_interactive() {
             for i in "${!TOOLS[@]}"; do
                 parse_tool_data "${TOOLS[$i]}" "C"
                 [[ "$C_cat" == "$display_cat" ]] || continue
+                if [[ -n "$C_group" ]]; then
+                    [[ " $_seen_groups " != *" $C_group "* ]] || continue
+                    _seen_groups+=" $C_group"
+                    local group_count=0 group_installed=0 gi
+                    for gi in $(_resolve_group_members "$i"); do
+                        group_count=$((group_count + 1))
+                        [[ "${TOOL_STATUS[$gi]}" != true ]] || group_installed=$((group_installed + 1))
+                    done
+                    local group_name="${C_name% (*}"
+                    opts+=("${group_name} [${group_installed}/${group_count} 个版本已安装]")
+                    idxs+=("$i")
+                    continue
+                fi
                 local status_icon="${YELLOW}⚠️ ${NC}"
                 local extra_info=""
                 local badge
@@ -598,7 +654,7 @@ select_tool_interactive() {
                 elif [[ "$C_cat" == "ai-ide" ]]; then
                     _fix_ide_cli_path "$C_id" "$C_name"
                 fi
-                opts+=("${status_icon}${badge}${C_name}${extra_info}"); idxs+=($i); echo "OPT_ADDED: $C_id" >> /tmp/ai-hub-opts.log
+                opts+=("${status_icon}${badge}${C_name}${extra_info}"); idxs+=($i)
             done
         done
         # 3. 添加固定操作项 (使用 @ 标识)
@@ -606,25 +662,14 @@ select_tool_interactive() {
         opts+=("${FIXED_OPS[@]}")
         local t_cnt=$((${#opts[@]} - ${#FIXED_OPS[@]}))
 
-        # 4. 计算预选推荐项（复用 build_recommended_preselect_for_indices 逻辑）
-        local pre_idxs=""
-        local _pi _tool_idx
-        for _pi in "${!idxs[@]}"; do
-            _tool_idx="${idxs[$_pi]}"
-            [[ "$_tool_idx" =~ ^[0-9]+$ ]] || continue
-            parse_tool_data "${TOOLS[$_tool_idx]}" "R"
-            if [[ "$RECOMMENDED_TOOLS_STR" == *" ${R_id} "* ]] && [[ "${TOOL_STATUS[$_tool_idx]}" != "true" ]]; then
-                pre_idxs+="$_pi "
-            fi
-        done
-        
+        # 初次进入不勾选；切换 Tab 只恢复用户手动选择。
         local res
-        # 恢复此 tab 的选中状态记忆（优先于推荐预选）
+        # 恢复此 tab 的选中状态记忆（仅用户手动选择）
         _MENU_RESTORE_INDICES="$(assoc_get_wrapper "_TAB_SELECTED" "$CURRENT_TAB" "")"
         _MENU_RESTORE_CURSOR="$(assoc_get_wrapper "_TAB_CURSOR" "$CURRENT_TAB" "0")"
         _MENU_ALT_SCREEN=true
         _MENU_SHOW_ALL=true
-        res=$(menu_select "AI Hub 工具中枢 (${TABS[$CURRENT_TAB]})" "true" "true" "$pre_idxs" "TABS" "CURRENT_TAB" "${opts[@]}")
+        res=$(menu_select "AI Hub 工具中枢 (${TABS[$CURRENT_TAB]})" "true" "true" "" "TABS" "CURRENT_TAB" "${opts[@]}")
         _MENU_ALT_SCREEN=false
         _MENU_SHOW_ALL=false
         
@@ -649,9 +694,7 @@ select_tool_interactive() {
                 *"安装"*)
                     if [[ ${#sel[@]} -gt 0 ]]; then
                         for s in "${sel[@]}"; do
-                            for ti in $(_resolve_group_members "${idxs[$s]}"); do
-                                operate_tool "$ti" "install"
-                            done
+                            _install_or_update_entry "${idxs[$s]}"
                         done
                     else
                         install_or_update_menu
@@ -660,14 +703,13 @@ select_tool_interactive() {
                 *"卸载"*)
                     if [[ ${#sel[@]} -gt 0 ]]; then
                         for s in "${sel[@]}"; do
-                            for ti in $(_resolve_group_members "${idxs[$s]}"); do
-                                parse_tool_data "${TOOLS[$ti]}" "_UG"
-                                if [[ -n "$_UG_group" ]]; then
-                                    _show_group_variant_uninstall "$_UG_group"
-                                else
-                                    uninstall_tool_extended "$ti"
-                                fi
-                            done
+                            local ti="${idxs[$s]}"
+                            parse_tool_data "${TOOLS[$ti]}" "_UG"
+                            if [[ -n "$_UG_group" ]]; then
+                                _show_group_variant_uninstall "$_UG_group"
+                            else
+                                uninstall_tool_extended "$ti"
+                            fi
                         done
                     else
                         uninstall_menu
@@ -720,7 +762,7 @@ _resolve_group_members() {
         echo "$ti"
         return
     fi
-    local _members=""
+    local _members="" _rj
     for ((_rj=0; _rj<${#TOOLS[@]}; _rj++)); do
         parse_tool_data "${TOOLS[$_rj]}" "_RGC"
         [[ "$_RGC_group" == "$_RGM_group" ]] && _members+=" $_rj"
@@ -732,6 +774,7 @@ _resolve_group_members() {
 # 用法: _show_group_variant_menu <group_name>
 _show_group_variant_menu() {
     local group="$1"
+    local _vi _vp vs
 
     # 收集变体信息
     local v_opts=() v_idxs=() v_statuses=()
@@ -751,11 +794,8 @@ _show_group_variant_menu() {
     
     [[ ${#v_opts[@]} -eq 0 ]] && return
     
-    # 默认全选
+    # 默认不勾选；没有勾选时 Enter 仅安装当前版本。
     local v_pre=""
-    for ((_vp=0; _vp<${#v_opts[@]}; _vp++)); do
-        v_pre+="$_vp "
-    done
     
     # 构建组显示名
     local _first_name=""
@@ -770,25 +810,22 @@ _show_group_variant_menu() {
     
     [[ "$v_res" == "EXIT" || -z "$v_res" ]] && return
     
-    local v_sel=($v_res)
-    local v_trig=${v_sel[${#v_sel[@]}-1]}
-    unset v_sel[${#v_sel[@]}-1]
-    
-    # 对选中的每个变体执行安装/更新
-    for vs in "${v_sel[@]}"; do
-        [[ "$vs" =~ ^[0-9]+$ ]] || continue
-        local vi=${v_idxs[$vs]}
-        local vop="install"
-        [[ "${TOOL_STATUS[$vi]}" == "true" ]] && vop="update"
+    # menu_select 的末项是光标位置，不能当作额外的已选版本。
+    for vs in $(_menu_selected_indices "$v_res" "${#v_idxs[@]}"); do
+        local vi="${v_idxs[$vs]}" vop="install"
+        # operate_tool 成功后会清空 TOOL_STATUS，使用菜单打开时的快照。
+        [[ "${v_statuses[$vs]}" != true ]] || vop="update"
         operate_tool "$vi" "$vop"
     done
-    echo ""; read -p "按回车返回..."
+    if [[ -t 0 ]]; then echo ""; read -r -p "按回车返回..."; fi
+    return 0
 }
 
 # 显示变体工具卸载二次选择菜单（仅显示已安装变体）
 # 用法: _show_group_variant_uninstall <group_name>
 _show_group_variant_uninstall() {
     local group="$1"
+    local _vi _vp vs
     
     # 收集已安装变体信息
     local v_opts=() v_idxs=()
@@ -816,11 +853,8 @@ _show_group_variant_uninstall() {
         return
     fi
     
-    # 默认全选
+    # 卸载版本也不默认勾选。
     local v_pre=""
-    for ((_vp=0; _vp<${#v_opts[@]}; _vp++)); do
-        v_pre+="$_vp "
-    done
     
     local v_res
     _MENU_ALT_SCREEN=true
@@ -829,16 +863,12 @@ _show_group_variant_uninstall() {
     
     [[ "$v_res" == "EXIT" || -z "$v_res" ]] && return
     
-    local v_sel=($v_res)
-    local v_trig=${v_sel[${#v_sel[@]}-1]}
-    unset v_sel[${#v_sel[@]}-1]
-    
-    for vs in "${v_sel[@]}"; do
-        [[ "$vs" =~ ^[0-9]+$ ]] || continue
-        local vi=${v_idxs[$vs]}
+    for vs in $(_menu_selected_indices "$v_res" "${#v_idxs[@]}"); do
+        local vi="${v_idxs[$vs]}"
         uninstall_tool_extended "$vi"
     done
-    echo ""; read -p "按回车返回..."
+    if [[ -t 0 ]]; then echo ""; read -r -p "按回车返回..."; fi
+    return 0
 }
 
 # ==================== 5. 辅助与修复逻辑 ====================
@@ -847,30 +877,52 @@ _fix_ide_cli_path() {
     local id=$1; local name=$2
     [[ "$(uname -s)" != "Darwin" ]] && return
     local target_bin="/usr/local/bin/$id"; command -v "$id" >/dev/null 2>&1 && return
-    local app_path=""; case "$id" in "trae") app_path=$(ls -d /Applications/*Trae*.app 2>/dev/null | head -1) ;; "cursor") app_path="/Applications/Cursor.app" ;; "windsurf") app_path="/Applications/Windsurf.app" ;; esac
+    local app_path=""; case "$id" in "trae") app_path=$(ls -d /Applications/*Trae*.app 2>/dev/null | head -1) ;; "cursor") app_path="/Applications/Cursor.app" ;; "devin") app_path="/Applications/Devin.app" ;; esac
     if [[ -d "$app_path" && -w "/usr/local/bin" ]]; then
         local cli_src=""; [[ "$id" == "trae" ]] && cli_src="$app_path/Contents/Resources/app/bin/trae"
         [[ "$id" == "cursor" ]] && cli_src="$app_path/Contents/Resources/app/bin/code"
-        [[ "$id" == "windsurf" ]] && cli_src="$app_path/Contents/Resources/app/bin/windsurf"
+        [[ "$id" == "devin" ]] && cli_src="$app_path/Contents/Resources/app/bin/devin"
         [[ -f "$cli_src" ]] && ln -sf "$cli_src" "$target_bin" && debug_log "已修复 $name 软链接"
     fi
 }
 
-install_or_update_menu() {
-    local opts=(); local idxs=()
-    build_tool_menu_options "all" "opts" "idxs"
-    
-    local preselected
-    preselected=$(build_recommended_preselect_for_indices "idxs")
-    local res
-    res=$(menu_select "📦 安装/更新工具" "true" "true" "$preselected" "" "" "${opts[@]}")
-    if [[ "$res" != "EXIT" && -n "$res" ]]; then
-        for i in $res; do
-            for ti in $(_resolve_group_members "${idxs[$i]}"); do
-                operate_tool "$ti" "install"
-            done
-        done
+# 多选结果 = 勾选项 + 光标；无勾选时仅使用光标，去重并检查边界。
+_menu_selected_indices() {
+    local raw="$1" count="$2" values=() cursor idx seen=" "
+    [[ -n "$raw" && "$raw" != EXIT && "$raw" != TAB:* ]] || return 0
+    read -r -a values <<< "$raw"
+    cursor="${values[${#values[@]}-1]}"
+    unset 'values[${#values[@]}-1]'
+    [[ ${#values[@]} -gt 0 ]] || values=("$cursor")
+    for idx in "${values[@]}"; do
+        [[ "$idx" =~ ^[0-9]+$ ]] || continue
+        [[ "$idx" -lt "$count" && " $seen " != *" $idx "* ]] || continue
+        printf '%s\n' "$idx"
+        seen+="$idx "
+    done
+}
+
+_install_or_update_entry() {
+    local ti="$1" op=install
+    parse_tool_data "${TOOLS[$ti]}" ENTRY
+    detect_tool_status fast "$ENTRY_cat"
+    if [[ -n "$ENTRY_group" ]]; then
+        _show_group_variant_menu "$ENTRY_group"
+    else
+        [[ "${TOOL_STATUS[$ti]}" != true ]] || op=update
+        operate_tool "$ti" "$op"
     fi
+}
+
+install_or_update_menu() {
+    detect_tool_status fast
+    local opts=() idxs=() i
+    build_tool_menu_options "all" "opts" "idxs"
+    local res
+    res=$(menu_select "📦 安装/更新工具" "true" "true" "" "" "" "${opts[@]}")
+    for i in $(_menu_selected_indices "$res" "${#idxs[@]}"); do
+        _install_or_update_entry "${idxs[$i]}"
+    done
 }
 
 uninstall_menu() {
@@ -1171,8 +1223,6 @@ batch_apply_selected_configs() {
 
     [[ ${#target_opts[@]} -eq 0 ]] && { warn_log "未发现已安装且支持 MCP 写入的 CLI/Agent/profile 配置"; return 1; }
 
-    local target_pre=""
-    for i in "${!target_opts[@]}"; do target_pre+="$i "; done
     local target_res=""
     if [[ -n "${AI_HUB_BATCH_TARGETS_RAW:-}" ]]; then
         if [[ "$AI_HUB_BATCH_TARGETS_RAW" == "all" || "$AI_HUB_BATCH_TARGETS_RAW" == "*" ]]; then
@@ -1195,7 +1245,7 @@ batch_apply_selected_configs() {
     else
         echo -e "\n✅ 解析完毕！共准备了 ${#selected_mcps[@]} 个 MCP 和 ${#selected_skills[@]} 个 Skills（部分无需配置变量已自动就绪）。"
         target_opts+=("🛠️ 配置到所有环境")
-        target_res=$(menu_select "选择要写入配置的 CLI/Agent/profile（可多选）" "true" "true" "$target_pre" "" "" "${target_opts[@]}")
+        target_res=$(menu_select "选择要写入配置的 CLI/Agent/profile（可多选）" "true" "true" "" "" "" "${target_opts[@]}")
         [[ "$target_res" == "EXIT" || -z "$target_res" ]] && return 0
     fi
 
@@ -1349,7 +1399,6 @@ batch_apply_standard_configs() {
     }
 
     local scenario_opts=()
-    local pre_scenarios=""
     local i
     for i in "${!SCENARIO_KEYS[@]}"; do
         if [[ -n "${SCENARIO_DESCS[$i]:-}" ]]; then
@@ -1357,13 +1406,11 @@ batch_apply_standard_configs() {
         else
             scenario_opts+=("🎯 ${SCENARIO_NAMES[$i]} (${SCENARIO_KEYS[$i]})")
         fi
-        [[ "${SCENARIO_KEYS[$i]}" == "$DEFAULT_SCENARIO" ]] && pre_scenarios+="$i "
     done
     [[ ${#scenario_opts[@]} -eq 0 ]] && { warn_log "未找到可用场景配置"; return 1; }
-    [[ -n "$pre_scenarios" ]] || pre_scenarios="0 "
 
     local scenario_res
-    scenario_res=$(menu_select "选择要应用的场景（可多选）" "true" "true" "$pre_scenarios" "" "" "${scenario_opts[@]}")
+    scenario_res=$(menu_select "选择要应用的场景（可多选）" "true" "true" "" "" "" "${scenario_opts[@]}")
     [[ "$scenario_res" == "EXIT" || -z "$scenario_res" ]] && return 0
 
     local selected_scenarios=() selected_mcps=() selected_skills=() idx
@@ -3322,7 +3369,6 @@ install_hermes_skill_from_aihub_json() {
 manage_mcp_servers_menu() {
     local opts=()
     local ids=()
-    local preselected=""
     local m idx=0
     for m in "${mcp_servers[@]}"; do
         local id="${m%%:*}"
@@ -3334,9 +3380,6 @@ manage_mcp_servers_menu() {
             opts+=("${GREEN}✅ ${name}${NC} ($id) - $status_text")
         else
             opts+=("${YELLOW}⚠️ ${name}${NC} ($id) - $status_text")
-            if jq -e --arg scenario "$DEFAULT_SCENARIO" '((.optional // false) | not) and ((.experimental // false) | not) and ((.scenarios // []) | index($scenario))' "${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/mcp-servers/${id}.json" >/dev/null 2>&1; then
-                preselected+="$idx "
-            fi
         fi
         ids+=("$id")
         idx=$((idx + 1))
@@ -3344,7 +3387,7 @@ manage_mcp_servers_menu() {
     [[ ${#opts[@]} -eq 0 ]] && { warn_log "没有可用的 MCP 服务器配置"; return 0; }
 
     local res
-    res=$(menu_select "🔧 MCP 服务器（推荐未安装项已默认勾选）" "true" "true" "$preselected" "" "" "${opts[@]}")
+    res=$(menu_select "🔧 MCP 服务器（按需勾选）" "true" "true" "" "" "" "${opts[@]}")
     [[ "$res" == "EXIT" || -z "$res" ]] && return 0
 
     local targets=()
@@ -3405,7 +3448,7 @@ manage_mcp_servers() {
 }
 manage_skills() {
     echo -e "\n${CYAN}🎯 Skills 技能管理${NC}"
-    local opts=() ids=() preselected="" idx=0
+    local opts=() ids=() idx=0
     local s sid sname sd sc
     for s in "${SKILLS[@]}"; do
         IFS='|' read -r sid sname sd sc <<< "$s"
@@ -3422,15 +3465,12 @@ manage_skills() {
             local ext_hint=""
             [[ "$(skill_missing_recommended_extension_count "$sid")" -gt 0 ]] && ext_hint="，含推荐扩展命令"
             opts+=("${YELLOW}⚠️ ${sname}${NC} [$sc] - 未安装${ext_hint}")
-            if jq -e --arg scenario "$DEFAULT_SCENARIO" '((.optional // false) | not) and ((.experimental // false) | not) and ((.scenarios // []) | index($scenario))' "${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/skills/${sid}.json" >/dev/null 2>&1; then
-                preselected+="$idx "
-            fi
         fi
         idx=$((idx + 1))
     done
     [[ ${#opts[@]} -eq 0 ]] && { warn_log "没有可用技能"; return 0; }
     local res
-    res=$(menu_select "可用技能（推荐未安装项已默认勾选）" "true" "true" "$preselected" "" "" "${opts[@]}")
+    res=$(menu_select "可用技能（按需勾选）" "true" "true" "" "" "" "${opts[@]}")
     [[ "$res" == "EXIT" || -z "$res" ]] && return
     local selected
     for selected in $res; do
@@ -3733,8 +3773,9 @@ main() {
         tgt="${positional_args[0]}"
     fi
 
-    set_log_level "$log"; init_config
-    [[ "$want_help" == true ]] && show_help
+    set_log_level "$log"
+    [[ "$want_help" == true ]] && { show_help; return 0; }
+    init_config
 
     if [[ -n "$targets_raw" && "$do_batch" == false && "$do_install" == false && -z "$op" && -z "$dm" ]]; then
         error_log "提供了目标参数但在非交互模式下必须搭配动作参数 (如 -i, -u, --batch-apply 等)"
@@ -3787,4 +3828,6 @@ main() {
     save_cache
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

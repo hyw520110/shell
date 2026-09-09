@@ -50,26 +50,18 @@ _get_npm_root() {
     fi
 
     local npm_root
-    npm_root=$(npm root -g 2>/dev/null || echo "")
+    npm_root=$(run_with_timeout 3 npm root -g 2>/dev/null || echo "")
     
     if [[ -z "$npm_root" ]]; then
-        # 动态搜索 NVM 路径，而非硬编码版本
-        local nvm_dir="${NVM_DIR:-$HOME/.nvm}"
-        if [[ -d "$nvm_dir/versions/node" ]]; then
-            # 找到最新的或当前正在使用的 Node 版本
-            local current_node=$(nvm current 2>/dev/null || echo "")
-            local latest_npm=""
-            if [[ "$current_node" != "none" && -n "$current_node" ]]; then
-                latest_npm=$(find "$nvm_dir/versions/node/$current_node" -path "*/bin/npm" -type f 2>/dev/null | head -1)
-            fi
-            [[ -z "$latest_npm" ]] && latest_npm=$(find "$nvm_dir/versions/node" -path "*/bin/npm" -type f 2>/dev/null | sort -Vr | head -1)
-            
-            if [[ -n "$latest_npm" ]]; then
-                npm_root=$("$latest_npm" root -g 2>/dev/null || echo "")
-            fi
+        # npm 不可用时只检查当前 Node 前缀，不递归遍历整个 NVM 安装目录。
+        local node_bin
+        node_bin=$(command -v node 2>/dev/null || true)
+        if [[ "$node_bin" == */bin/node ]]; then
+            local candidate="${node_bin%/bin/node}/lib/node_modules"
+            [[ ! -d "$candidate" ]] || npm_root="$candidate"
         fi
     fi
-    
+
     if [[ -n "$npm_root" ]]; then
         set_cache "npm_global_root" "$npm_root" 3600
         echo "$npm_root"
@@ -103,7 +95,11 @@ _check_single_tool_fast() {
     local cmd_to_check="${T_cmd:-$T_id}"
     local check_cmd="${T_check:-}"
     
-    if [[ -n "$check_cmd" ]]; then
+    local npm_check_pattern='^npm list -g ([^[:space:]]+) --depth=0$'
+    if [[ "$check_cmd" =~ $npm_check_pattern && -n "$npm_root" ]]; then
+        # npm list 会扫描整个全局依赖树；安装状态只需查看对应包元数据。
+        [[ -f "$npm_root/${BASH_REMATCH[1]}/package.json" ]] && is_installed=true
+    elif [[ -n "$check_cmd" ]]; then
         run_with_timeout "${AI_HUB_STATUS_CHECK_TIMEOUT:-5}" bash -c "$check_cmd" >/dev/null 2>&1 && is_installed=true
     elif [[ -n "$cmd_to_check" ]] && [[ "$cmd_to_check" != "open" ]] && command_exists "$cmd_to_check"; then
         is_installed=true
@@ -112,7 +108,7 @@ _check_single_tool_fast() {
         pkg_name="${pkg_name// /}"
         [[ -d "$npm_root/$pkg_name" || -d "$npm_root/node_modules/$pkg_name" ]] && is_installed=true
     elif [[ "$T_type" == "pip" || "$T_type" == "pip_official" ]] && command_exists pip3; then
-        if pip3 show "$T_pkg" >/dev/null 2>&1 && _pip_console_script_exists "$cmd_to_check"; then
+        if _pip_console_script_exists "$cmd_to_check"; then
             is_installed=true
         fi
     fi
@@ -127,78 +123,67 @@ detect_tool_status() {
     local force_refresh=false
     [[ "$mode" == "force" ]] && force_refresh=true
     
-    # 0. 如果在交互循环中，状态已在内存，直接返回（解决按右键切换 Tab 时的重复加载）
-    if [[ "$force_refresh" == false ]] && [[ ${#TOOL_STATUS[@]} -eq ${#TOOLS[@]} ]] && [[ ${#TOOLS[@]} -gt 0 ]]; then
-        return 0
+    local categories="${2:-}"
+    # 交互菜单只检测当前分类；未访问分类保留 unknown，不能误报为未安装。
+    if [[ ${#TOOL_STATUS[@]} -eq 0 && "$force_refresh" == false ]]; then
+        _load_tools_status_cache || true
     fi
-
-    # 1. 尝试从缓存加载
-    if [[ "$force_refresh" == false ]] && _load_tools_status_cache; then
-        # 如果缓存命中但 INSTALLED 列表为空，重建它
-        if [[ ${#INSTALLED_MCP_TOOLS[@]} -eq 0 ]]; then
-            for idx in "${!TOOL_STATUS[@]}"; do
-                if [[ "${TOOL_STATUS[$idx]}" == "true" ]]; then
-                    parse_tool_data "${TOOLS[$idx]}" "TMP"
-                    [[ -n "$TMP_conf" ]] && INSTALLED_MCP_TOOLS+=("$TMP_name") && INSTALLED_MCP_CONFIGS+=("$TMP_conf")
-                fi
-            done
+    local pending=() idx
+    for idx in "${!TOOLS[@]}"; do
+        parse_tool_data "${TOOLS[$idx]}" "SCAN"
+        [[ -n "${TOOL_STATUS[$idx]:-}" ]] || TOOL_STATUS[$idx]=unknown
+        [[ -z "$categories" || " $categories " == *" $SCAN_cat "* ]] || continue
+        if [[ "$force_refresh" == true || "${TOOL_STATUS[$idx]}" == unknown ]]; then
+            pending+=("$idx")
         fi
-        return 0
+    done
+    local npm_root=""
+    local npm_check_pattern='^npm list -g ([^[:space:]]+) --depth=0$'
+    if [[ ${#pending[@]} -gt 0 ]]; then
+        for idx in "${pending[@]}"; do
+            parse_tool_data "${TOOLS[$idx]}" "SCAN"
+            if [[ "$SCAN_check" =~ $npm_check_pattern ]] || { [[ "$SCAN_type" == npm && -z "$SCAN_check" ]] && ! command_exists "${SCAN_cmd:-$SCAN_id}"; }; then
+                npm_root=$(_get_npm_root)
+                break
+            fi
+        done
     fi
 
-    # 2. 缓存失效，重新检测
-    debug_log "检测工具状态 (模式: $mode)..."
-    reset_tool_arrays
-    local npm_root=$(_get_npm_root)
-    
-    if [[ "$mode" == "full" ]]; then
-        # 完整模式：显示 UI 并使用并发检测 (此处保留 ai-cli.sh 中 check_tools 的核心逻辑，但优化之)
-        echo -e "${CYAN}🔍 正在深度检测 AI 工具状态...${NC}"
-        start_spinner "分析中"
-        
-        local tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/ai-cli-full-check.XXXXXX")
-        local i=0
-        for tool in "${TOOLS[@]}"; do
-            (
-                local status=$(_check_single_tool_fast "$tool" "$npm_root")
-                parse_tool_data "$tool" "FT"
-                echo "$i|$status|$FT_name|$FT_conf" > "$tmp_dir/$i.res"
-            ) &
-            ((i++))
-            # 限制并发
-            [[ $(jobs -r | wc -l) -ge 12 ]] && sleep 0.1
-        done
-        wait
-        
-        for ((j=0; j<i; j++)); do
-            if [[ -f "$tmp_dir/$j.res" ]]; then
-                IFS='|' read -r r_idx r_status r_name r_conf < "$tmp_dir/$j.res"
-                TOOL_STATUS[$j]="$r_status"
-                if [[ "$r_status" == "true" ]]; then
-                    [[ -n "$r_conf" ]] && INSTALLED_MCP_TOOLS+=("$r_name") && INSTALLED_MCP_CONFIGS+=("$r_conf")
-                fi
-            fi
-        done
-        rm -rf "$tmp_dir"
-        stop_spinner
-    else
-        # 快速模式：顺序循环检测
-        echo -e "${CYAN}🚀 初始化工具状态检测中 (可能会耗时几秒)...${NC}" >&2
-        start_spinner "检测中"
-        local i=0
-        for tool in "${TOOLS[@]}"; do
-            local status=$(_check_single_tool_fast "$tool" "$npm_root")
-            TOOL_STATUS[$i]="$status"
-            if [[ "$status" == "true" ]]; then
-                parse_tool_data "$tool" "TMP"
-                [[ -n "$TMP_conf" ]] && INSTALLED_MCP_TOOLS+=("$TMP_name") && INSTALLED_MCP_CONFIGS+=("$TMP_conf")
-            fi
-            ((i++))
-        done
-        stop_spinner
-    fi
-    
-    _save_tools_status_cache
+    # 固定大小的工作池；Bash 3.2 不支持 wait -n，按批回收明确的 PID。
+    local tmp_dir
+    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/ai-status-check.XXXXXX") || return 1
+    local limit="${MAX_CONCURRENT_PROCS:-5}"
+    [[ "$limit" =~ ^[1-9][0-9]*$ ]] || limit=5
+    [[ "$limit" -le 32 ]] || limit=32
+    local i=0 j pid status
+    local pids=()
+    [[ ${#pending[@]} -gt 0 ]] && echo -e "${CYAN}🚀 正在检测工具状态...${NC}" >&2
+    for idx in "${pending[@]}"; do
+        (_check_single_tool_fast "${TOOLS[$idx]}" "$npm_root" > "$tmp_dir/$idx") &
+        pids+=("$!")
+        i=$((i + 1))
+        if [[ ${#pids[@]} -ge "$limit" ]]; then
+            for pid in "${pids[@]}"; do wait "$pid" || true; done
+            pids=()
+        fi
+    done
+    for pid in "${pids[@]}"; do wait "$pid" || true; done
+    for j in "${pending[@]}"; do
+        status=false
+        read -r status < "$tmp_dir/$j" || status=false
+        TOOL_STATUS[$j]="$status"
+    done
+    INSTALLED_MCP_TOOLS=(); INSTALLED_MCP_CONFIGS=()
+    for j in "${!TOOLS[@]}"; do
+        if [[ "${TOOL_STATUS[$j]}" == "true" ]]; then
+            parse_tool_data "${TOOLS[$j]}" "TMP"
+            [[ -n "$TMP_conf" ]] && INSTALLED_MCP_TOOLS+=("$TMP_name") && INSTALLED_MCP_CONFIGS+=("$TMP_conf")
+        fi
+    done
+    rm -rf "$tmp_dir"
+
+    [[ ${#pending[@]} -eq 0 ]] || _save_tools_status_cache
+    return 0
 }
 
 # 工具状态全局变量
@@ -209,7 +194,7 @@ INSTALLED_MCP_TOOLS=()
 INSTALLED_MCP_CONFIGS=()
 
 # 工具状态缓存
-TOOLS_STATUS_CACHE_FILE="$HOME/.ai-tools-status-cache"
+TOOLS_STATUS_CACHE_FILE="${AI_HUB_STATUS_CACHE_FILE:-$HOME/.ai-tools-status-cache}"
 TOOLS_STATUS_CACHE_TTL=300  # 5分钟
 
 # 异步状态检测标志
@@ -302,7 +287,7 @@ _get_config_mtime() {
                 find "$config_dir" -name "*.json" -type f 2>/dev/null | sort | tr '\n' '\0' | xargs -0 $stat_cmd 2>/dev/null
             fi
 
-            for file in "$lib_dir/json.sh" "$lib_dir/tools.sh"; do
+            for file in "$lib_dir/json.sh" "$lib_dir/parse-tools.jq" "$lib_dir/tools.sh"; do
                 [[ -f "$file" ]] && $stat_cmd "$file" 2>/dev/null
             done
         fi
@@ -390,8 +375,8 @@ check_tools_fast() {
 # 参数3: idxs_var - 索引数组名
 build_tool_menu_options() {
     local filter=$1; local opts_var=$2; local idxs_var=$3
-    local opts=(); local idxs=()
-    local i=0
+    local _built_opts=(); local _built_idxs=()
+    local i=0 _gj
     local _seen_groups=""  # 已显示的变体组名
     for tool in "${TOOLS[@]}"; do
         parse_tool_data "$tool" "BT"
@@ -441,7 +426,7 @@ build_tool_menu_options() {
                 fi
             fi
             display_text="${g_status_icon}${badge}${_g_disp_name} 📦${_g_count}版本${NC} - ${g_extra}"
-            opts+=("$display_text"); idxs+=($_g_first_idx); add=true
+            add=true
         fi
         # === 变体工具合并处理结束 ===
 
@@ -460,12 +445,12 @@ build_tool_menu_options() {
                 fi
             fi
         fi
-        if [[ "$add" == "true" ]]; then opts+=("$display_text"); idxs+=($i); fi
+        if [[ "$add" == "true" ]]; then _built_opts+=("$display_text"); _built_idxs+=($i); fi
         ((i++))
     done
     [[ "$opts_var" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ && "$idxs_var" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
-    eval "$opts_var=(\"\${opts[@]}\")"
-    eval "$idxs_var=(\"\${idxs[@]}\")"
+    eval "$opts_var=(\"\${_built_opts[@]}\")"
+    eval "$idxs_var=(\"\${_built_idxs[@]}\")"
 }
 
 # 批量校验所有已安装工具的配置
@@ -512,7 +497,14 @@ get_tool_version() {
 
     # 解析版本检查逻辑 (优化：避免重复 jq 调用)
     if [[ "$V_vcheck" != "null" && "$V_vcheck" != "{}" ]]; then
-        local method=$(echo "$V_vcheck" | jq -r '.method // ""' 2>/dev/null)
+        local method=""
+        if echo "$V_vcheck" | jq -e 'type == "object"' >/dev/null 2>&1; then
+            method=$(echo "$V_vcheck" | jq -r '.method // ""' 2>/dev/null)
+        else
+            # 兼容配置中的字符串版本命令，例如 `tool --version` 或脚本查询命令。
+            version=$(run_with_timeout "$timeout_sec" bash -c "$V_vcheck" 2>/dev/null | head -n 1)
+            method="string"
+        fi
         case "$method" in
             "npm")
                 local pkg_clean="${V_pkg%@*}"; [[ "$V_pkg" == @* ]] && pkg_clean="@${V_pkg#@}" && pkg_clean="@${pkg_clean%%@*}"
@@ -715,7 +707,11 @@ exec_pkg_op() {
                     run_cmd="$pkg"
                 else
                     # 如果只是 URL，先下载到受控临时文件再执行，避免 curl | bash。
-                    run_cmd="tmp=\$(mktemp \"\${TMPDIR:-/tmp}/aihub-install.XXXXXX\") && curl -LsSf '$pkg' -o \"\$tmp\" && bash \"\$tmp\"; rc=\$?; rm -f \"\$tmp\"; exit \\$rc"
+                    if [[ -z "$pkg" ]]; then
+                        error_log "$name $op 缺少安装 URL 或命令，已停止执行"
+                        return 1
+                    fi
+                    run_cmd="tmp=\$(mktemp \"\${TMPDIR:-/tmp}/aihub-install.XXXXXX\") && curl -LsSf '$pkg' -o \"\$tmp\" && bash \"\$tmp\"; rc=\$?; rm -f \"\$tmp\"; exit \$rc"
                 fi
                 # 添加代理支持
                 if [[ -n "$proxy_http" ]]; then

@@ -55,6 +55,7 @@ network/duck.sh
 
 # 本地工具配置、索引和缓存
 **/.qwen/
+**/.zvec-grep/
 .grok/
 .neovate/
 .claude/settings.local.json
@@ -62,3 +63,5 @@ network/duck.sh
 .ruff_cache/
 .token-savior-cache.json
 **/.report_cache.json
+# Added by code-review-graph
+.code-review-graph/

@@ -13,11 +13,23 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # 配置变量
-APP_NAME="Trae"
+APP_NAME="${TRAE_PRODUCT:-TraeCode}"
+if [[ "$APP_NAME" == TraeWork ]]; then
+    APP_NAME="TRAE SOLO"
+fi
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$HOME/Downloads}"
 INSTALL_DIR="/Applications"
-TRAE_DOWNLOAD_API="https://icube-normal.trae.ai/icube/api/v1/native/version/trae/latest"
 TRAE_DOWNLOAD_REGION="${TRAE_DOWNLOAD_REGION:-sg}"
+# 地区 CDN 不代表产品版本：中国版必须使用 /cn/latest 清单。
+if [[ "${TRAE_PRODUCT:-TraeCode}" == "TraeWork" && "${TRAE_DOWNLOAD_REGION:-sg}" == cn ]]; then
+    TRAE_DOWNLOAD_API="${TRAE_DOWNLOAD_API:-https://icube-normal.trae.ai/icube/api/v1/native/version/trae/cn/latest}"
+elif [[ "${TRAE_PRODUCT:-TraeCode}" == "TraeWork" ]]; then
+    TRAE_DOWNLOAD_API="${TRAE_DOWNLOAD_API:-https://icube-normal.trae.ai/icube/api/v1/native/version/trae/latest}"
+elif [[ "$TRAE_DOWNLOAD_REGION" == cn ]]; then
+    TRAE_DOWNLOAD_API="${TRAE_DOWNLOAD_API:-https://icube-normal.trae.ai/icube/api/v1/native/version/trae/cn/latest}"
+else
+    TRAE_DOWNLOAD_API="${TRAE_DOWNLOAD_API:-https://icube-normal.trae.ai/icube/api/v1/native/version/trae/latest}"
+fi
 
 # 日志函数
 log_info() {
@@ -74,39 +86,42 @@ resolve_download_url() {
         return 1
     }
 
-    "$py" - "$chip" "$TRAE_DOWNLOAD_REGION" "$TRAE_DOWNLOAD_API" <<'PY'
+    "$py" - "$chip" "$TRAE_DOWNLOAD_REGION" "$TRAE_DOWNLOAD_API" "${TRAE_PRODUCT:-TraeCode}" <<'PY'
 import json
+import os
 import sys
 import urllib.request
 
 chip = sys.argv[1]
 region = (sys.argv[2] or "sg").lower()
 api = sys.argv[3]
+product = os.environ.get("TRAE_PRODUCT") or sys.argv[4] or "TraeCode"
 if region == "us":
     region = "va"
 
 request = urllib.request.Request(api, headers={"User-Agent": "ai-hub-installer/1.0"})
 with urllib.request.urlopen(request, timeout=60) as response:
     payload = json.load(response)
-downloads = (
-    payload.get("data", {})
-    .get("manifest", {})
-    .get("darwin", {})
-    .get("download", [])
-)
+downloads = None
+manifest = payload.get("data", {}).get("manifest", {})
+if product == "TraeWork":
+    downloads = (
+        payload.get("data", {})
+        .get("solo", {})
+        .get("darwin", {})
+        .get("download", [])
+    )
+if downloads is None:
+    downloads = (
+        manifest.get("darwin", {})
+        .get("download", [])
+    )
 
 preferred = None
 for item in downloads:
     if (item.get("region") or "").lower() == region and item.get(chip):
         preferred = item
         break
-if preferred is None:
-    for item in downloads:
-        if (item.get("region") or "").lower() == "sg" and item.get(chip):
-            preferred = item
-            break
-if preferred is None:
-    preferred = next((item for item in downloads if item.get(chip)), None)
 
 if not preferred:
     raise SystemExit("Trae download URL not found in official manifest")
@@ -193,16 +208,17 @@ download_trae() {
     fi
 
     local download_url
-    download_url=$(resolve_download_url "$arch")
-    local download_file="Trae-darwin-${arch}.dmg"
+    download_url=$(resolve_download_url "$arch") || return 1
+    local download_file="Trae-${TRAE_DOWNLOAD_REGION}-darwin-${arch}.dmg"
     
     log_info "准备下载 Trae..."
     log_info "下载地址: $download_url"
     
-    mkdir -p "$DOWNLOAD_DIR"
+    mkdir -p "$DOWNLOAD_DIR" || return 1
     local target_file="$DOWNLOAD_DIR/$download_file"
     
-    if [ -f "$target_file" ]; then
+    # URL 随最新版本变化；只复用相同来源的完整镜像。
+    if [ -f "$target_file" ] && [ -f "$target_file.url" ] && [ "$(cat "$target_file.url")" = "$download_url" ]; then
         log_info "发现已存在的文件: $target_file"
         log_info "正在验证镜像完整性..."
         
@@ -217,7 +233,7 @@ download_trae() {
         fi
     fi
     
-    download_file "$download_url" "$DOWNLOAD_DIR" "$download_file"
+    download_file "$download_url" "$DOWNLOAD_DIR" "$download_file" || return 1
 
     log_info "正在验证下载结果..."
     if ! validate_dmg "$target_file"; then
@@ -226,6 +242,7 @@ download_trae() {
         return 1
     fi
     
+    printf '%s\n' "$download_url" > "$target_file.url"
     echo "$target_file"
 }
 
@@ -233,11 +250,12 @@ download_trae() {
 install_trae() {
     log_info "开始安装 Trae..."
     
-    local dmg_path=$(download_trae)
+    local dmg_path
+    dmg_path=$(download_trae) || return 1
     
     log_info "挂载镜像: $dmg_path"
     local mount_output
-    mount_output=$(hdiutil attach "$dmg_path" -nobrowse -readonly)
+    mount_output=$(hdiutil attach "$dmg_path" -nobrowse -readonly) || return 1
     
     local volume_path
     volume_path=$(echo "$mount_output" | grep -o "/Volumes/.*" | tail -1)
@@ -250,17 +268,26 @@ install_trae() {
     
     log_info "发现挂载卷: $volume_path"
     
-    local app_in_volume=$(find "$volume_path" -maxdepth 1 -name "Trae.app" | head -1)
+    local app_in_volume
+    app_in_volume=$(find "$volume_path" -maxdepth 1 -type d -iname "*trae*.app" | head -1)
     if [ -n "$app_in_volume" ] && [ -d "$app_in_volume" ]; then
         log_info "正在复制 $APP_NAME 到 $INSTALL_DIR..."
-        cp -R "$app_in_volume" "$INSTALL_DIR/"
+        if ! cp -R "$app_in_volume" "$INSTALL_DIR/"; then
+            hdiutil detach "$volume_path" 2>/dev/null || true
+            return 1
+        fi
     else
-        log_error "未在镜像中找到 Trae.app"
+        log_error "未在镜像中找到 Trae 应用"
         hdiutil detach "$volume_path" 2>/dev/null || true
         return 1
     fi
     
-    hdiutil detach "$volume_path"
+    hdiutil detach "$volume_path" || return 1
+    if rm -f -- "$dmg_path" "$dmg_path.url"; then
+        log_info "已删除安装包: $dmg_path"
+    else
+        log_warn "安装成功，但安装包清理失败: $dmg_path"
+    fi
     log_info "Trae 安装完成！"
 }
 
@@ -276,7 +303,7 @@ main() {
         exit 0
     fi
 
-    if check_installed; then
+    if [[ "${1:-}" != "--yes" ]] && check_installed; then
         log_warn "Trae 已安装 (版本: $(get_version))"
         read -p "是否重新安装? (y/N): " reinstall
         if [[ ! "$reinstall" =~ ^[Yy]$ ]]; then
@@ -287,4 +314,6 @@ main() {
     install_trae
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

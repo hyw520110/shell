@@ -280,13 +280,15 @@ run_with_timeout() {
         pid=$!
 
         local count=0
+        local max_ticks=$((timeout_sec * 20))
         while kill -0 $pid 2>/dev/null; do
-            if [[ $count -ge $timeout_sec ]]; then
+            if [[ $count -ge $max_ticks ]]; then
                 kill -9 $pid 2>/dev/null
                 wait $pid 2>/dev/null
                 return 124
             fi
-            sleep 1
+            # 50ms 轮询，快速命令不再固定等待整整一秒。
+            sleep 0.05
             ((count++))
         done
 

@@ -4,6 +4,7 @@ set -euo pipefail
 # 定义下载目录变量
 DOWNLOAD_DIR="${HOME}/Downloads"
 MODEL_DIR="${HOME}/.ollama/models"
+OLLAMA_LOG_FILE="${OLLAMA_LOG_FILE:-${HOME}/.ollama/ollama.log}"
 MODEL_NAME=${1:-}
 readonly DEFAULT_MODEL="qwen3:8b"
 # Ollama 0.9.5 是官方发布说明中仍支持 macOS 12 Monterey 的版本。
@@ -331,7 +332,8 @@ start_ollama_service() {
 
     # 如果 systemd 服务未找到，使用 nohup 启动
     echo "使用nohup启动ollama服务..."
-    nohup ollama serve > "$HOME/ollama.log" 2>&1 &
+    mkdir -p "$(dirname "$OLLAMA_LOG_FILE")"
+    nohup ollama serve > "$OLLAMA_LOG_FILE" 2>&1 &
 
     # 等待服务启动
     for i in {1..10}; do
@@ -342,7 +344,7 @@ start_ollama_service() {
         sleep 1
     done
 
-    echo "ollama服务启动失败，请查看$HOME/ollama.log了解详情"
+    echo "ollama服务启动失败，请查看$OLLAMA_LOG_FILE了解详情"
     return 1
 }
 
@@ -520,7 +522,8 @@ start_ollama() {
     # 检查并启动ollama服务
     if ! check_ollama_service; then
         echo "正在启动ollama服务..."
-        nohup ollama serve > ollama.log 2>&1 &
+        mkdir -p "$(dirname "$OLLAMA_LOG_FILE")"
+        nohup ollama serve > "$OLLAMA_LOG_FILE" 2>&1 &
         # 等待服务启动
         for i in {1..10}; do
             if check_ollama_service; then
@@ -529,7 +532,7 @@ start_ollama() {
             fi
             sleep 1
         done
-        echo "ollama服务启动失败，请查看ollama.log了解详情"
+        echo "ollama服务启动失败，请查看$OLLAMA_LOG_FILE了解详情"
         return 1
     fi
     return 0

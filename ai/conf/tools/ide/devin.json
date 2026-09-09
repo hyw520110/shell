@@ -1,0 +1,50 @@
+{
+  "id": "devin",
+  "name": "Devin IDE",
+  "description": "Devin AI 原生 IDE（原 Windsurf），具备深度上下文理解和 Agent 协作能力",
+  "category": "ai-ide",
+  "tags": ["ai", "ide", "devin"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "官方 dmg 安装 (via 脚本)",
+        "type": "bash",
+        "command": "bash ../ide/install-devin.sh",
+        "check": "[ -d '/Applications/Devin.app' ]",
+        "uninstall": [
+          "echo '请手动在 /Applications 中删除 Devin 应用'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash ../ide/install-devin.sh",
+    "check": "[ -d '/Applications/Devin.app' ]"
+  },
+
+  "config": {
+    "path": "$HOME/Library/Application Support/Devin/User/settings.json",
+    "operations": {
+      "view": "cat \"$HOME/Library/Application Support/Devin/User/settings.json\" 2>/dev/null || echo '配置文件不存在'",
+      "edit": "open -a Devin 2>/dev/null || echo '请在 IDE 中手动打开设置'"
+    }
+  },
+
+  "commands": {
+    "start": "open -a Devin"
+  },
+
+  "status_check": [
+    {
+      "name": "检查应用",
+      "command": "[ -d '/Applications/Devin.app' ] && echo '已安装' || echo '未安装'"
+    }
+  ],
+
+  "mcp_servers": {},
+  "skills": {},
+  "notes": "Devin 是目前最先进的 AI IDE 之一（原 Windsurf），支持 Flow 模式进行自主编程。"
+}

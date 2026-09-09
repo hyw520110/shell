@@ -99,6 +99,11 @@ main() {
     validate_dmg "$target_file"
     install_app_from_dmg "$target_file"
     ls -d "$INSTALL_DIR/Codex.app" "$INSTALL_DIR/OpenAI Codex.app" >/dev/null 2>&1
+    if rm -f -- "$target_file"; then
+        log_info "已删除安装包: $target_file"
+    else
+        log_info "安装成功，但安装包清理失败: $target_file"
+    fi
     log_info "OpenAI Codex IDE 安装完成"
 }
 

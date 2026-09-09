@@ -1,0 +1,78 @@
+{
+  "id": "zvec-grep",
+  "name": "Zvec-Grep (zg)",
+  "description": "本地优先的代码、文档和语义检索工具。统一 ripgrep、BM25 和向量检索，并可选接入 AI Agent/MCP。",
+  "category": "ai-utility",
+  "sort_order": 5200,
+  "sort_key": "Zvec-Grep",
+  "tags": [
+    "代码检索",
+    "文档检索",
+    "语义搜索",
+    "向量搜索",
+    "本地优先",
+    "MCP"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "NPM 全局安装（Node.js 22+）",
+        "type": "npm",
+        "command": "npm install -g @zvec/zvec-grep",
+        "check": "zg version",
+        "uninstall": [
+          "npm uninstall -g @zvec/zvec-grep"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @zvec/zvec-grep@latest",
+    "check": "zg version"
+  },
+  "post_install": [
+    {
+      "description": "验证 zg 安装",
+      "command": "zg version"
+    },
+    {
+      "description": "提示 Agent/MCP 接入方式",
+      "command": "echo '[提示] 在项目根目录运行 zg index 建立索引；需要接入 Agent 时运行 zg install --target codex --yes'"
+    }
+  ],
+  "commands": {
+    "version": "zg version",
+    "index": "zg index",
+    "status": "zg status",
+    "query": "zg query --human",
+    "install_codex": "zg install --target codex --yes",
+    "uninstall_codex": "zg uninstall --target codex --yes"
+  },
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "zg version 2>/dev/null || echo 'Zvec-Grep 未安装（需要 Node.js 22+）'"
+    },
+    {
+      "name": "检查当前目录索引",
+      "command": "[ -d .zvec-grep ] && zg status 2>/dev/null || echo '当前目录尚未建立 .zvec-grep 索引'"
+    }
+  ],
+  "prompts": {
+    "index-project": "在当前项目根目录运行 zg index，建立或增量更新代码和文档索引",
+    "semantic-search": "使用 zg query 进行语义、关键词和精确文本混合检索，并引用返回的文件路径和行号",
+    "connect-codex": "运行 zg install --target codex --yes，将 Zvec-Grep 接入 Codex"
+  },
+  "notes": "Zvec-Grep 是可选实验性工具。需要 Node.js 22+；索引默认保存在项目根目录 .zvec-grep/，不应提交到 Git。zg 既可直接作为 CLI 使用，也可按需接入 AI Agent/MCP。",
+  "homepage": "https://zvec.org/en/docs/zvec-grep/",
+  "repository": "https://github.com/zvec-ai/zvec-grep",
+  "scenarios": [
+    "productivity",
+    "coding",
+    "research"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true
+}

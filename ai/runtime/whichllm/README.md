@@ -32,4 +32,4 @@ whichllm upgrade             # 对比硬件升级方案
 
 ## AI Hub 配置
 
-配置文件: `../../conf/tools/cli/whichllm.json`
+配置文件: `../../conf/tools/runtime/whichllm.json`

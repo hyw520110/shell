@@ -589,7 +589,7 @@ DEV_APPS=(
     "Maven:build-tools/maven/maven.sh:Maven构建工具:推荐"
     "Gradle:build-tools/gradle/install-gradle.sh:Gradle构建工具:推荐"
     "Arthas:arthas/install-arthas.sh:Java诊断工具:推荐"
-    "mvnd:build-tools/mvnd/install-mvnd.sh:mvnd守护进程:可选"
+    "mvnd:build-tools/mvnd/mvnd.sh:mvnd守护进程:可选"
 )
 
 # 定义IDE软件（仅在开发环境且有图形桌面时推荐）

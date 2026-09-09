@@ -19,7 +19,7 @@ if ! (declare -A _test 2>/dev/null); then
     assoc_set() {
         local array_name="$1" key="$2" value="$3"
         local safe_key
-        safe_key=$(_assoc_sanitize_key "$key")
+        safe_key="${key//[^a-zA-Z0-9_]/_}"
         # 验证变量名合法性（防注入）
         if [[ "$array_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
             local escaped_value; printf -v escaped_value "%q" "$value"
@@ -34,7 +34,7 @@ if ! (declare -A _test 2>/dev/null); then
     assoc_get() {
         local array_name="$1" key="$2" default="${3:-}"
         local safe_key
-        safe_key=$(_assoc_sanitize_key "$key")
+        safe_key="${key//[^a-zA-Z0-9_]/_}"
         local var_name="ASSOC_${array_name}_${safe_key}"
         # 使用间接引用获取值
         echo "${!var_name:-$default}"
@@ -44,7 +44,7 @@ if ! (declare -A _test 2>/dev/null); then
     assoc_has() {
         local array_name="$1" key="$2"
         local safe_key
-        safe_key=$(_assoc_sanitize_key "$key")
+        safe_key="${key//[^a-zA-Z0-9_]/_}"
         local var_name="ASSOC_${array_name}_${safe_key}"
         [[ -n "${!var_name+x}" ]]
     }

@@ -121,8 +121,8 @@ install_macos() {
     cleanup_mount() {
         local dir="${1:-}"
         [[ -n "$dir" ]] || return 0
-        hdiutil detach "$dir" >/dev/null 2>&1 || true
-        rm -rf "$dir"
+        hdiutil detach "$dir" >/dev/null 2>&1 || return 1
+        rmdir "$dir"
     }
 
     log_info "挂载 DMG: $dmg"
@@ -147,7 +147,7 @@ install_macos() {
         return 1
     fi
 
-    cleanup_mount "$mount_dir"
+    cleanup_mount "$mount_dir" || return 1
 
     log_ok "AiderDesk 安装完成"
 }
@@ -213,6 +213,11 @@ main() {
         windows) install_windows "$file" ;;
     esac
 
+    if rm -f -- "$file"; then
+        log_info "已删除安装包: $file"
+    else
+        log_warn "安装成功，但安装包清理失败: $file"
+    fi
     log_ok "完成"
 }
 

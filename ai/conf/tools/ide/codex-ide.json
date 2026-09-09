@@ -11,8 +11,8 @@
         "name": "官方 dmg 安装 (macOS)",
         "type": "bash",
         "command": "bash ../ide/install-codex-ide.sh",
-        "check": "[ -d '/Applications/OpenAI Codex.app' ] || [ -d '/Applications/Codex.app' ]",
-        "uninstall": ["echo '请手动在 /Applications 中删除 OpenAI Codex.app 或 Codex.app'"]
+        "check": "[ -d '/Applications/OpenAI Codex.app' ] || [ -d '/Applications/Codex.app' ] || [ -d '/Applications/ChatGPT.app' ]",
+        "uninstall": ["echo '请手动在 /Applications 中删除 ChatGPT.app、OpenAI Codex.app 或 Codex.app'"]
       }
     ],
     "default_method": 0
@@ -21,12 +21,12 @@
   "status_check": [
     {
       "name": "应用状态",
-      "command": "([ -d '/Applications/OpenAI Codex.app' ] || [ -d '/Applications/Codex.app' ]) && echo '已安装' || echo '未安装'"
+      "command": "([ -d '/Applications/OpenAI Codex.app' ] || [ -d '/Applications/Codex.app' ] || [ -d '/Applications/ChatGPT.app' ]) && echo '已安装' || echo '未安装'"
     }
   ],
 
   "commands": {
-    "start": "open -a 'Codex' || open -a 'OpenAI Codex'"
+    "start": "open -a 'ChatGPT' || open -a 'Codex' || open -a 'OpenAI Codex'"
   },
 
   "notes": "OpenAI Codex IDE 是目前最专业的 AI 辅助编程环境之一，特别适合处理大型项目的全局架构重构。"

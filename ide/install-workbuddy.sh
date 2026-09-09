@@ -129,6 +129,11 @@ main() {
     validate_dmg "$target_file"
     install_app_from_dmg "$target_file"
     [[ -d "$INSTALL_DIR/WorkBuddy.app" ]]
+    if rm -f -- "$target_file"; then
+        log_info "已删除安装包: $target_file"
+    else
+        log_info "安装成功，但安装包清理失败: $target_file"
+    fi
     log_info "WorkBuddy 安装完成"
 }
 

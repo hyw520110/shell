@@ -7,11 +7,12 @@
 | 脚本文件 | 说明 | 版本检测 | 帮助函数 |
 |---------|------|---------|---------|
 | `ollama_cli.sh` | Ollama CLI 工具 | ✅ | ❌ |
-| `ollama.sh` | 自动检测系统并安装/启动 Ollama | ✅ | ✅ |
-| `startup.sh` | 启动 Ollama 服务 | ❌ | ❌ |
+| `ollama.sh` | 安装并启动 Ollama 服务 | ✅ | ✅ |
 | `stop.sh` | 停止 Ollama 服务 | ❌ | ❌ |
-| `uninstall_ollama.sh` | 完整卸载脚本（含模型/配置） | ✅ | ✅ |
+| `uninstall.sh` | 完整卸载脚本（含模型/配置） | ✅ | ✅ |
 | `docker-compose.yml` | Docker 部署配置 | - | - |
+
+服务日志默认保存到用户目录 `~/.ollama/ollama.log`，也可通过 `OLLAMA_LOG_FILE` 自定义路径；日志不放在本仓库中。
 
 ## 🚀 快速开始
 
@@ -19,16 +20,16 @@
 
 ```bash
 # 交互式卸载（有确认提示）
-bash uninstall_ollama.sh
+bash uninstall.sh
 
 # 强制卸载（无提示）
-bash uninstall_ollama.sh --force
+bash uninstall.sh --force
 
 # 仅删除模型
-bash uninstall_ollama.sh --models --force
+bash uninstall.sh --models --force
 
 # 预览将删除的内容
-bash uninstall_ollama.sh --dry-run
+bash uninstall.sh --dry-run
 ```
 
 ### 使用 Docker 启动
@@ -37,6 +38,10 @@ bash uninstall_ollama.sh --dry-run
 cd ollama
 docker-compose up -d
 ```
+
+## 🎬 AI短视频工具链
+
+Ollama 主要负责选题、脚本、分镜、提示词和标题生成。完整的工具选型、视频类型工作流、云端生产路线、本地 GPU 路线以及 OpenCut 定位，请参阅 [AI 短视频工具链与生产路线](../../docs/AI短视频工具链与生产路线.md)。
 
 ### 使用 CLI 工具
 
@@ -69,7 +74,7 @@ cd ollama
 **使用方式**:
 ```bash
 # 启动 Ollama 服务
-./startup.sh
+./ollama.sh
 
 # 停止服务
 ./stop.sh

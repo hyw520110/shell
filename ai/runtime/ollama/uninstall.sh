@@ -2,9 +2,12 @@
 ###############################################################################
 # Ollama 完整卸载脚本
 # 功能: 删除 Ollama 程序、模型、配置、容器、服务
-# 用法: bash uninstall_ollama.sh
+# 用法: bash uninstall.sh
 ###############################################################################
 set -euo pipefail
+
+# 与 ollama.sh 保持一致；同时保留旧路径，兼容历史安装。
+OLLAMA_LOG_FILE="${OLLAMA_LOG_FILE:-${HOME}/.ollama/ollama.log}"
 
 # --------------------------- 颜色输出 ----------------------------------------
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -310,6 +313,7 @@ uninstall_config() {
   
   # 删除日志
   local log_files=(
+    "$OLLAMA_LOG_FILE"
     "$HOME/ollama.log"
     "$HOME/.ollama/logs"
   )
@@ -402,11 +406,6 @@ uninstall_service() {
     [[ -f "/etc/systemd/system/ollama.service" ]] && info "  /etc/systemd/system/ollama.service"
     [[ -f "/etc/systemd/system/ollama.service.d/" ]] && info "  /etc/systemd/system/ollama.service.d/"
     [[ -f "$HOME/Library/LaunchAgents/com.ollama.plist" ]] && info "  $HOME/Library/LaunchAgents/com.ollama.plist"
-    return
-  fi
-  
-  if ! confirm "是否删除 Ollama 系统服务?"; then
-    info "跳过服务删除"
     return
   fi
   

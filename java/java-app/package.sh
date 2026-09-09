@@ -16,6 +16,7 @@ fi
 readonly DEFAULT_MAVEN_PROFILE="dev"
 readonly TOOLS_DIR="${PROJECT_ROOT_DIR}/.tools"
 readonly MVND_DIR="${TOOLS_DIR}/mvnd"
+readonly MVND_INSTALL_SCRIPT="${PROJECT_ROOT_DIR}/build-tools/mvnd/mvnd.sh"
 readonly DEP_FILE="$PROJECT_ROOT_DIR/.service-order.conf"
 readonly DEP_FILE_IGNORE_ENTRY=".service-order.conf"
 # 全局变量
@@ -729,13 +730,20 @@ setup_maven_daemon() {
     fi
 
     # Maven 可用时不自动安装 mvnd，避免默认打包触发额外下载；显式 USE_MVND=true 时才尝试安装。
-    if [[ "${USE_MVND:-false}" == "true" ]] && [ -f "$SCRIPT_DIR/mvnd.sh" ]; then
+    if [[ "${USE_MVND:-false}" == "true" ]] && [ -f "$MVND_INSTALL_SCRIPT" ]; then
         log_info "尝试安装 mvnd..."
-        if bash "$SCRIPT_DIR/mvnd.sh"; then
+        if bash "$MVND_INSTALL_SCRIPT" \
+            --dir "$MVND_DIR" \
+            --skip-shell-config \
+            --non-interactive; then
             # 重新检查
-            if command -v mvnd >/dev/null 2>&1 && is_mvnd_usable "mvnd"; then
+            if [ -x "$MVND_DIR/bin/mvnd" ] && is_mvnd_usable "$MVND_DIR/bin/mvnd"; then
+                BUILD_COMMAND="$MVND_DIR/bin/mvnd"
+                log_info "项目本地 mvnd 安装成功: $BUILD_COMMAND"
+                return 0
+            elif command -v mvnd >/dev/null 2>&1 && is_mvnd_usable "mvnd"; then
                 BUILD_COMMAND="mvnd"
-                log_info "mvnd 安装成功"
+                log_info "全局 mvnd 安装成功"
                 return 0
             fi
         fi

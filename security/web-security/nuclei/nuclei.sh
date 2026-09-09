@@ -80,7 +80,7 @@ extract_registrable_domain() {
       ;;
   esac
   case "$host" in
-    *.co.uk|*.org.uk|*.ac.uk|*.gov.uk|*.com.cn|*.net.cn|*.org.cn|*.com.au|*.net.au|*.org.au|*.co.jp|*.com.hk|*.com.tw|*.co.kr)
+    *.co.uk|*.org.uk|*.ac.uk|*.gov.uk|*.com.cn|*.net.cn|*.org.cn|*.edu.cn|*.gov.cn|*.com.au|*.net.au|*.org.au|*.co.jp|*.com.hk|*.com.tw|*.co.kr)
       domain="$(printf '%s\n' "$host" | awk -F. '{print $(NF-2) "." $(NF-1) "." $NF}')"
       ;;
     *)

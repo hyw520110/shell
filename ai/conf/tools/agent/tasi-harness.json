@@ -13,9 +13,9 @@
     "methods": [
       {
         "name": "源码安装",
-        "type": "npm",
-        "command": "git clone https://github.com/example/tasi-harness.git $HOME/tasi-harness && cd $HOME/tasi-harness && npm install",
-        "check": true,
+        "type": "bash",
+        "command": "git clone https://github.com/TasiTech/tasi-harness.git $HOME/tasi-harness && cd $HOME/tasi-harness && npm install",
+        "check": "[ -f \"$HOME/tasi-harness/package.json\" ]",
         "uninstall": [
           "rm -rf $HOME/tasi-harness"
         ]
@@ -24,20 +24,26 @@
     "default_method": 0
   },
   "update": {
-    "command": "cd $HOME/tasi-harness && git pull && npm install",
-    "check": true
+    "command": "cd $HOME/tasi-harness && git pull --ff-only && npm install",
+    "check": "[ -f \"$HOME/tasi-harness/package.json\" ]"
   },
+  "process_check": "tasi-harness|start-electron-dev\\.mjs",
   "config": {
     "path": "",
     "operations": {}
   },
   "commands": {
-    "start": "cd $HOME/tasi-harness && npm run dev"
+    "start": "cd $HOME/tasi-harness && npm run dev",
+    "build": "cd $HOME/tasi-harness && npm run build",
+    "package-mac": "cd $HOME/tasi-harness && npm run dist:mac",
+    "start-packaged": "open -a 'Tasi Harness'",
+    "cli": "/Applications/Tasi\\ Harness.app/Contents/Resources/bin/tasi chat",
+    "help": "cd $HOME/tasi-harness && npm run help 2>/dev/null || echo '请查看 README 中的使用说明'"
   },
   "status_check": [
     {
       "name": "检查代码库",
-      "command": "ls -la $HOME/tasi-harness/package.json 2>/dev/null || echo \"未安装 Tasi Harness\""
+      "command": "[ -f \"$HOME/tasi-harness/package.json\" ] && echo '源码已安装' || echo '未安装 Tasi Harness'"
     }
   ],
   "mcp_servers": {},
@@ -46,5 +52,8 @@
     "shared_mcp_servers": [],
     "shared_skills": []
   },
-  "notes": "适合对安全性要求极高的本地开发场景。"
+  "homepage": "https://github.com/TasiTech/tasi-harness",
+  "repository": "https://github.com/TasiTech/tasi-harness",
+  "docs": "https://github.com/TasiTech/tasi-harness/blob/main/README.zh-CN.md",
+  "notes": "源码安装后使用 npm run dev 启动 Electron 开发版；npm run dist:mac 可构建 macOS 应用。打包后的 macOS 应用提供 tasi chat CLI。"
 }
