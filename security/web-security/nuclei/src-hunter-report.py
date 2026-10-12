@@ -23,7 +23,8 @@ from urllib.parse import urlsplit
 
 KNOWN_2LD = {
     "co.uk", "org.uk", "ac.uk", "gov.uk", "com.cn", "net.cn", "org.cn",
-    "com.au", "net.au", "org.au", "co.jp", "com.hk", "com.tw", "co.kr",
+    "edu.cn", "gov.cn", "mil.cn", "ac.cn", "com.au", "net.au", "org.au",
+    "co.jp", "com.hk", "com.tw", "co.kr",
 }
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4, "unknown": 5}
 SUPPORTED_CHECKS = {"aspx-debug-mode", "ds-store"}

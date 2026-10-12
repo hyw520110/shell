@@ -1,0 +1,64 @@
+{
+  "id": "codeql",
+  "name": "CodeQL Development MCP",
+  "description": "GitHub 官方 CodeQL Development MCP 服务器，辅助编写/校验/优化 QL 查询，执行查询编译、数据库分析、测试与安全审计。",
+  "category": "security",
+  "install": {
+    "type": "bash",
+    "pre_install": [
+      "command -v codeql >/dev/null 2>&1 || echo '未检测到 codeql CLI，请先运行 security/web-security/install-codeql.sh install'"
+    ],
+    "command": "npm install -g codeql-development-mcp-server 2>/dev/null || npx -y codeql-development-mcp-server --help >/dev/null 2>&1 || true"
+  },
+  "compatibility": {
+    "check": "case \"$(uname -s 2>/dev/null)\" in Darwin|Linux) exit 0 ;; *) exit 1 ;; esac",
+    "reason": "支持 macOS/Linux；需要 Node.js 运行时与 CodeQL CLI。"
+  },
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "codeql-development-mcp-server"
+    ],
+    "transportType": "stdio"
+  },
+  "required_tools": ["node", "codeql"],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查 CodeQL CLI",
+      "command": "codeql version 2>/dev/null || echo 'CodeQL CLI 未安装（可运行 security/web-security/install-codeql.sh install）'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "ql_query",
+      "description": "编写、编译并执行 QL 查询"
+    },
+    {
+      "name": "ql_database",
+      "description": "CodeQL 数据库创建与元数据操作"
+    },
+    {
+      "name": "ql_test",
+      "description": "运行查询测试并校验预期结果"
+    },
+    {
+      "name": "ql_pack",
+      "description": "管理 QL 查询包与依赖"
+    }
+  ],
+  "tags": ["安全", "代码审计", "查询语言", "MCP", "SAST"],
+  "scenarios": ["security", "code-review"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/advanced-security/codeql-development-mcp-server",
+  "repository": "https://github.com/advanced-security/codeql-development-mcp-server",
+  "recommended_scenarios": "授权代码库的安全审计与定制度高的 QL 查询开发；配合 CodeQL CLI 完成数据库构建与结果分析。",
+  "unsuitable_scenarios": "无 CodeQL CLI/数据库的快速扫描场景；非 QL 脚本化的一次性常规检查。",
+  "notes": "由 GitHub CodeQL Expert Services 团队维护，支持 stdio 和 http 传输。需要先有 CodeQL CLI 与可分析数据库。"
+}

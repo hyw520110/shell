@@ -610,12 +610,12 @@ do_scan() {
   esac
 
   case "$scan_type" in
-    cve)       opts+=(-t cves/ -severity critical,high,medium) ;;
+    cve)       opts+=(-t http/cves/ -severity critical,high,medium) ;;
     critical)  opts+=(-severity critical) ;;
     high)      opts+=(-severity critical,high) ;;
-    exposures) opts+=(-t exposures/) ;;
-    misconfig) opts+=(-t misconfiguration/) ;;
-    tech)      opts+=(-t technologies/ -severity info) ;;
+    exposures) opts+=(-t http/exposures/) ;;
+    misconfig) opts+=(-t http/misconfiguration/) ;;
+    tech)      opts+=(-t http/technologies/ -severity info) ;;
     all)       ;;
   esac
 

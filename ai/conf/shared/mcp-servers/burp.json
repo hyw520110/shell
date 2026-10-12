@@ -1,0 +1,67 @@
+{
+  "id": "burp",
+  "name": "Burp Suite MCP Server",
+  "description": "PortSwigger 官方 Burp Suite MCP 扩展，将 Burp 的请求收发、Repeater/Intruder、代理历史、Collaborator 等能力暴露给 AI 客户端。",
+  "category": "security",
+  "install": {
+    "type": "manual",
+    "setup": [
+      "先安装并启动 Burp Suite（macOS 可用 security/web-security/burp/burp.sh install）",
+      "在 Burp Extensions 标签添加官方 MCP Server 扩展 JAR（github.com/PortSwigger/mcp-server）",
+      "在 Burp 的 MCP 标签页启用 MCP Server，默认监听 http://127.0.0.1:9876",
+      "如需 stdio 模式，使用扩展内置代理：java -jar mcp-proxy-all.jar --sse-url http://127.0.0.1:9876"
+    ]
+  },
+  "compatibility": {
+    "check": "case \"$(uname -s 2>/dev/null)\" in Darwin|Linux) exit 0 ;; *) exit 1 ;; esac",
+    "reason": "需要图形界面运行 Burp；支持 macOS/Linux。"
+  },
+  "config": {
+    "command": "sh",
+    "args": [
+      "-c",
+      "export PATH=\"$HOME/.local/bin:$PATH\"; exec java -jar \"${BURP_MCP_PROXY_JAR:-${HOME}/.burp-mcp/mcp-proxy-all.jar}\" --sse-url ${BURP_MCP_SSE_URL:-http://127.0.0.1:9876}"
+    ],
+    "transportType": "stdio"
+  },
+  "required_tools": ["java"],
+  "status_check": [
+    {
+      "name": "检查 Java",
+      "command": "java -version 2>&1 | head -n1 || echo 'Java 未安装'"
+    },
+    {
+      "name": "检查 Burp MCP 服务",
+      "command": "if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:9876 -sTCP:LISTEN >/dev/null 2>&1; then echo 'Burp MCP 服务在线 (127.0.0.1:9876)'; else echo 'Burp MCP 未运行（需先启动 Burp 并启用 MCP Server 扩展）'; fi"
+    }
+  ],
+  "tools": [
+    {
+      "name": "burp_send_request",
+      "description": "通过 Burp 发送 HTTP/1.1 与 HTTP/2 请求"
+    },
+    {
+      "name": "burp_repeater",
+      "description": "创建 Repeater 标签或发送请求到 Intruder"
+    },
+    {
+      "name": "burp_proxy_history",
+      "description": "读取并过滤代理历史与请求/响应",
+      "input": "支持 URL 解码、Base64 等内置编码工具"
+    },
+    {
+      "name": "burp_collaborator",
+      "description": "生成并轮询 Collaborator payload 用于带外测试"
+    }
+  ],
+  "tags": ["安全", "Web", "拦截代理", "MCP", "DAST"],
+  "scenarios": ["security", "qa-testing"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://portswigger.net/bappstore/9952290f04ed4f628e624d0aa9dccebc",
+  "repository": "https://github.com/PortSwigger/mcp-server",
+  "recommended_scenarios": "授权环境的 Web 手工验证：请求重放、代理历史分析、带外（OOB）交互探测、配置导出修改。",
+  "unsuitable_scenarios": "未启动 Burp 的自动化批次环境；未授权目标的大规模自动化扫描；依赖 CLI 无头跑批的场景。",
+  "notes": "官方扩展（v1.3.0）。安全控制：目标批准系统（auto-approve）、配置编辑权限开关均需在 Burp MCP 标签手动确认。stdio 模式需将扩展内置代理 jar 提取到 BURP_MCP_PROXY_JAR 指向的路径，否则仅建议直连 SSE。"
+}

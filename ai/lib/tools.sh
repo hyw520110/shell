@@ -580,6 +580,10 @@ exec_pkg_op() {
     local check_cmd="$mgr"
     [[ "$mgr" == "pip" || "$mgr" == "pip_official" ]] && check_cmd="pip3"
 
+    if [[ "$mgr" == npm && ( "$op" == install || "$op" == update ) ]]; then
+        ensure_node_runtime || return $?
+    fi
+
     if ! command_exists "$check_cmd"; then
         case "$mgr" in
             npm)

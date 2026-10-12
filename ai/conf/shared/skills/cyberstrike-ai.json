@@ -1,0 +1,46 @@
+{
+  "id": "cyberstrike-ai",
+  "name": "CyberStrikeAI 安全运营 Skill",
+  "description": "在明确授权和人工审批边界内使用 CyberStrikeAI 进行资产、漏洞、工具编排和证据报告管理。",
+  "category": "security",
+  "prompts": {
+    "authorized-assessment": "开始前复述授权主体、目标资产、测试窗口、允许的工具和禁止的操作。默认只执行低影响、可回滚、只读检查；不要把公网可达、版本暴露或组件识别直接称为漏洞。",
+    "impact-triage": "将发现分为信息、候选和已验证漏洞。只有存在可复现的数据暴露、权限变化、敏感操作结果或明确业务影响时，才建议形成漏洞报告；记录证据、影响边界、复核步骤和误报排除。",
+    "report": "生成 Markdown 报告时记录目标授权依据、工具版本、时间、请求规模、原始证据、严重性依据、影响验证、限制条件和修复建议；不得写入真实凭证、客户数据或武器化载荷。"
+  },
+  "capabilities": [
+    "授权资产与漏洞记录整理",
+    "安全工具和报告工作流编排",
+    "Nuclei/ZAP/Burp 等结果的证据化复核",
+    "安全边界、审计和人工审批检查"
+  ],
+  "instructions": {
+    "authorization": "没有明确书面授权时拒绝远程扫描、主动验证、WebShell、C2、外部 MCP 和批量任务；公益 SRC 页面不能替代具体资产授权范围。",
+    "safe_defaults": [
+      "CyberStrikeAI 仅绑定 127.0.0.1，使用 HTTPS 和强管理员密码",
+      "保持 c2.enabled=false，不配置 WebShell，不连接不受信任的外部 MCP",
+      "高风险工具、命令执行、写入、删除、上传、凭据处理和内部探测必须人工审批",
+      "优先使用 Nuclei 安全模板、ZAP baseline 和只读接口检查",
+      "报告只保存必要证据，脱敏 Cookie、Token、API Key 和个人数据"
+    ],
+    "evidence": "提交前至少保留一个可独立复现的证据链：请求/响应或截图、身份状态、影响对象、权限变化或业务结果；配置缺失和指纹信息单独列为加固建议。"
+  },
+  "tags": [
+    "安全",
+    "授权测试",
+    "漏洞管理",
+    "MCP",
+    "证据",
+    "CyberStrikeAI"
+  ],
+  "scenarios": [
+    "security",
+    "qa-testing"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://github.com/AIPentest/CyberStrikeAI",
+  "repository": "https://github.com/Ed1s0nZ/CyberStrikeAI",
+  "notes": "本 Skill 不提供高风险利用步骤，也不自动提交漏洞；CyberStrikeAI 官方安全策略要求将部署视为高权限系统。"
+}

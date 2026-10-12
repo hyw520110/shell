@@ -1,0 +1,43 @@
+{
+  "id": "archify",
+  "name": "Archify (AI 架构图生成)",
+  "description": "将代码库或系统描述转化为可验证、可交付的高保真交互式架构/流程/时序/数据流/生命周期 HTML 图。Agent 生成类型化 JSON IR，Archify 原子化渲染为暗/亮双主题、含动效、支持 PNG/SVG/WebM 导出的单文件 HTML，并带架构 Delta 对比和校验系统。",
+  "category": "diagram",
+  "install": {
+    "command": "npx skills add tt-a1i/archify",
+    "check": "test -d ~/.claude/skills/archify -o -d ~/.config/opencode/skills/archify -o -d ~/.agents/skills/archify && echo '已安装' || echo '未安装'"
+  },
+  "prompts": {
+    "runtime-architecture": "分析 {repo_path} 仓库，然后用 archify 生成高保真运行时架构图。展示 8-12 个核心组件、一条主路径、外部依赖和信任边界；把支撑性细节放进卡片而非增加更多连线。",
+    "workflow": "用 archify 画一张 {workflow_desc} 流程图，展示参与者、顺序、分支和异常情况。",
+    "sequence": "用 archify 画一张含 {callers} 与 {callees}、返回值和时序的时序图，展示 {scenario} 场景。",
+    "data-flow": "用 archify 画一张 {flow_desc} 数据流图，标注来源、转换、存储和边界。",
+    "lifecycle": "用 archify 画一张 {system} 生命周期图，展示状态、事件、重试与终态。",
+    "architecture-delta": "用 archify 对比 base.json 与 head.json 两张架构快照，生成 Before/Delta/After 的架构演进图以用于 CR 或设计评审。",
+    "guide": "我不确定用哪种图，使用 archify guide 为 {description} 推荐合适的图表类型。"
+  },
+  "capabilities": [
+    "5 种图类型 - Architecture / Workflow / Sequence / Data Flow / Lifecycle",
+    "确定性渲染 - 类型化 JSON IR 原子化编译为单文件 HTML，暗/亮主题一键切换",
+    "架构 Delta - 对比两张已验证快照，精确标出新增/删除/变更/移动/重路由事实",
+    "交互查看器 - 节点检索、上游/下游溯源、路由探查、语义角色对比、章节故事播放",
+    "演示模式 - 演示视图 + 1200x630 分享卡片导出",
+    "多格式导出 - PNG/SVG/WebM 下载与复制",
+    "原子化校验 - 交付前 Schema/布局/HTML/SVG/路由/标签全关卡校验，失败保留已知良好输出"
+  ],
+  "dependencies": {
+    "platforms": ["claude-code", "cursor", "codex", "opencode", "gemini"],
+    "system_commands": ["node", "npx"]
+  },
+  "tips": "触发词：用 archify 画架构图/流程图/时序图。描述用 'Browser -> API -> Redis cache -> PostgreSQL fallback' 这类箭头语法即可。无需 Node 源仓库也能从描述出图。可通过 ARCHIFY_UPDATE_CHECK_DISABLED=1 关闭更新提醒。",
+  "notes": "安装后 agent 将具备把技术意图转化为可验证交付物（交互式 HTML 图）的能力。产物是自包含单文件 HTML，便于在 README/评审/发布中复用。",
+  "homepage": "https://github.com/tt-a1i/archify",
+  "repository": "https://github.com/tt-a1i/archify",
+  "tags": ["架构图", "流程图", "时序图", "可视化", "系统设计", "HTML"],
+  "scenarios": ["productivity", "product-docs", "diagramming", "architecture", "coding"],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

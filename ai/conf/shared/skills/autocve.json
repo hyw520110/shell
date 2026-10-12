@@ -1,0 +1,46 @@
+{
+  "id": "autocve",
+  "name": "AutoCVE 源码审计 Skill",
+  "description": "在明确授权范围内使用 AutoCVE 对源码项目进行 CVE 线索发现、人工复核和报告整理。",
+  "category": "security",
+  "prompts": {
+    "authorized-source-audit": "开始前确认源码来源、授权主体、版本/commit、允许的依赖和测试环境。AutoCVE 只用于授权源码项目，不把公网 URL 或 SRC 资产表当作源码审计授权。",
+    "triage": "将结果分为代码审计线索、可复现候选和已验证漏洞。优先确认数据暴露、权限绕过、敏感操作、远程代码执行或明确业务影响；不要仅凭扫描器标签或 CVSS 预测下结论。",
+    "report": "输出 Markdown 报告，记录项目版本、受影响代码路径、前置条件、复现步骤、最小安全 PoC、影响边界、修复建议和复核限制；脱敏密钥、Token、私有代码和真实客户数据。"
+  },
+  "capabilities": [
+    "授权源码项目导入和审计任务整理",
+    "Agent 审计结果分类和误报复核",
+    "CVE 候选证据与报告结构化",
+    "与代码审查、依赖扫描和修复流程衔接"
+  ],
+  "instructions": {
+    "authorization": "没有明确授权时拒绝导入私有源码、运行漏洞验证或执行 PoC；不得扫描或攻击第三方公网服务。",
+    "safe_defaults": [
+      "只审计指定版本/commit，优先使用隔离的本地或测试环境",
+      "默认不执行破坏性 PoC、DoS、爆破、凭据验证、持久化或外联动作",
+      "AutoCVE 启动前必须确认 Docker socket、Agent Worker 和沙箱边界",
+      "关闭不需要的外部集成，不将 AutoCVE 自动注册为 Codex MCP",
+      "报告中区分信息、候选和已验证漏洞，禁止自动提交 CVE 或 SRC"
+    ],
+    "evidence": "高价值结论至少应由源码位置、受影响输入、可重复路径和影响结果组成；涉及命令执行、SSRF、文件读写或权限变化时，只在隔离靶场使用最小无害验证。"
+  },
+  "tags": [
+    "安全",
+    "源码审计",
+    "CVE",
+    "SAST",
+    "授权测试",
+    "AutoCVE"
+  ],
+  "scenarios": [
+    "security",
+    "code-review"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://github.com/larlarua/AutoCVE",
+  "repository": "https://github.com/larlarua/AutoCVE",
+  "notes": "AutoCVE 上游采用 AGPL-3.0；本 Skill 只定义保守审计流程，不提供武器化利用步骤，不自动提交漏洞。"
+}

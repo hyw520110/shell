@@ -153,6 +153,64 @@ ensure_python_with_uv() {
     return 0
 }
 
+# 加载用户级 Node 管理器，避免非交互 SSH 未加载 shell 配置时误判未安装。
+load_node_runtime() {
+    if command_exists node && command_exists npm && node --version >/dev/null 2>&1 && npm --version >/dev/null 2>&1; then
+        return 0
+    fi
+    local fnm_bin="" candidate fnm_env
+    fnm_bin=$(command -v fnm 2>/dev/null || true)
+    if [[ -z "$fnm_bin" ]]; then
+        for candidate in "$HOME/.fnm/fnm" "${XDG_DATA_HOME:-$HOME/.local/share}/fnm/fnm"; do
+            if [[ -x "$candidate" ]]; then fnm_bin="$candidate"; break; fi
+        done
+    fi
+    if [[ -n "$fnm_bin" ]]; then
+        export PATH="$(dirname "$fnm_bin"):$PATH"
+        fnm_env=$("$fnm_bin" env --shell bash 2>/dev/null) || fnm_env=""
+        if [[ -n "$fnm_env" ]]; then
+            eval "$fnm_env"
+            "$fnm_bin" use default >/dev/null 2>&1 || true
+        fi
+    fi
+    if command_exists node && command_exists npm && node --version >/dev/null 2>&1 && npm --version >/dev/null 2>&1; then
+        return 0
+    fi
+    local nvm_script="${NVM_DIR:-$HOME/.nvm}/nvm.sh"
+    if [[ -f "$nvm_script" ]]; then
+        . "$nvm_script" --no-use
+        nvm use default >/dev/null 2>&1 || true
+    fi
+    command_exists node && command_exists npm && node --version >/dev/null 2>&1 && npm --version >/dev/null 2>&1
+}
+
+ensure_node_runtime() {
+    load_node_runtime && return 0
+    local hub_dir="${AI_HUB_SCRIPT_DIR:-${SCRIPT_DIR:-}}"
+    local node_script="$hub_dir/../node/node.sh"
+    if [[ -z "$hub_dir" || ! -f "$node_script" ]]; then
+        error_log "缺少 Node.js/npm，且未找到仓库 Node 安装脚本: ../node/node.sh"
+        return 1
+    fi
+    local runtime_tmp install_rc=0
+    local installer_args=(--yes --registry official)
+    [[ -z "${AI_HUB_NODE_VERSION:-}" ]] || installer_args+=("$AI_HUB_NODE_VERSION")
+    runtime_tmp=$(mktemp -d "${TMPDIR:-/tmp}/ai-hub-node.XXXXXX") || return 1
+    info_log "缺少可用的 Node.js/npm，调用 ../node/node.sh 自动安装用户级运行环境..."
+    # node.sh 的下载过程使用工作目录；隔离在临时目录，避免污染项目和 NTFS 分区。
+    (cd "$runtime_tmp" && bash "$node_script" "${installer_args[@]}") || install_rc=$?
+    rmdir "$runtime_tmp" 2>/dev/null || warn_log "Node 安装暂存文件保留于: $runtime_tmp"
+    if [[ "$install_rc" -ne 0 ]]; then
+        error_log "Node.js/npm 自动安装失败（退出码 $install_rc），停止工具安装"
+        return "$install_rc"
+    fi
+    if ! load_node_runtime; then
+        error_log "Node 安装脚本已结束，但当前进程仍无法运行 node/npm"
+        return 1
+    fi
+    success_log "Node.js $(node --version)、npm $(npm --version) 已就绪"
+}
+
 # 检查系统依赖
 check_dependencies() {
     local missing_deps=()
@@ -216,6 +274,7 @@ check_dependencies() {
 
     # 运行时版本水位线检查
     debug_log "检查运行时版本..."
+    load_node_runtime || true
     if [[ -x "$HOME/.local/bin/python3" ]]; then
         ensure_local_bin_in_path
         hash -r 2>/dev/null || true
@@ -261,11 +320,17 @@ check_and_kill_process() {
         warn_log "$display_name 正在运行"
         read -p "$display_name 正在运行，继续 $operation 可能导致冲突，是否强制关闭进程? (y/N): " kill_proc
         if [[ "$kill_proc" == "y" || "$kill_proc" == "Y" ]]; then
-            if pkill -f "$cmd_name"; then
-                success_log "进程已关闭"
+            # pkill 部分进程可能因权限（其他用户/root 运行）失败，先发信号再复查残留
+            pkill -f "$cmd_name" >/dev/null 2>&1 || true
+            sleep 1
+            local remain remain_count
+            remain=$(pgrep -f "$cmd_name" 2>/dev/null | grep -vw "$$" | tr '\n' ' ' | sed 's/ $//')
+            if [[ -n "$remain" ]]; then
+                remain_count=$(printf '%s\n' "$remain" | wc -w | tr -d ' ')
+                warn_log "仍有 $remain_count 个进程未关闭（可能以其他用户身份运行）: $remain"
+                warn_log "可手动处理: sudo pkill -f '$cmd_name'"
             else
-                error_log "无法关闭 $display_name 进程，请先手动退出后重试"
-                return 1
+                success_log "进程已关闭"
             fi
         else
             warn_log "操作已取消"

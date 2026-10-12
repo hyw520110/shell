@@ -404,25 +404,38 @@ measure_download_speed() {
     local proxy_var="${3:-}"
     local timeout="${ADL_SPEED_TEST_SECONDS:-8}"
     local bytes="${ADL_SPEED_TEST_BYTES:-1048576}"
+    local include_size="${4:-0}"
     local speed=""
+    local header_file=""
+    local remote_size=0
+    local -a proxy_args
 
-    command -v curl >/dev/null 2>&1 || { echo 0; return 0; }
+    [[ "$timeout" =~ ^[1-9][0-9]*$ ]] || timeout=8
+    [[ "$bytes" =~ ^[1-9][0-9]*$ ]] || bytes=1048576
+
+    command -v curl >/dev/null 2>&1 || {
+        [[ "$include_size" == "1" ]] && echo '0 0' || echo 0
+        return 0
+    }
+    header_file=$(mktemp) || return 1
 
     if [[ "$mode" == "proxy" ]]; then
-        speed=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
-            curl -fL --range "0-$((bytes - 1))" --max-redirs 10 \
-            --connect-timeout 5 --max-time "$timeout" \
-            --proxy "$proxy_var" \
-            -o /dev/null -sS -w "%{speed_download}" "$url" 2>/dev/null || true)
+        proxy_args=(--proxy "$proxy_var")
     else
-        speed=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
-            curl -fL --range "0-$((bytes - 1))" --max-redirs 10 \
-            --connect-timeout 5 --max-time "$timeout" \
-            --noproxy "*" \
-            -o /dev/null -sS -w "%{speed_download}" "$url" 2>/dev/null || true)
+        proxy_args=(--noproxy "*")
     fi
+    [[ "${ADL_INSECURE:-0}" != "1" ]] || proxy_args+=(-k)
+    speed=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
+        -u no_proxy -u NO_PROXY curl -fsSL --range "0-$((bytes - 1))" --max-redirs 10 \
+        --connect-timeout 5 --max-time "$timeout" --max-filesize "$bytes" \
+        --header 'Accept-Encoding: identity' --user-agent "${ADL_USER_AGENT:-Mozilla/5.0}" \
+        "${proxy_args[@]}" -D "$header_file" \
+        -o /dev/null -w '%{speed_download}' "$url" 2>/dev/null || true)
+    remote_size=$(parse_remote_size_headers < "$header_file")
+    rm -f -- "$header_file"
 
-    awk -v s="${speed:-0}" 'BEGIN { if (s > 0) printf "%d\n", s; else print 0 }'
+    awk -v s="${speed:-0}" -v size="$remote_size" -v include_size="$include_size" \
+        'BEGIN { s = (s > 0 ? int(s) : 0); if (include_size == 1) printf "%.0f %.0f\n", s, size; else printf "%.0f\n", s }'
 }
 
 get_file_size_bytes() {
@@ -436,62 +449,74 @@ get_file_size_bytes() {
     fi
 }
 
+parse_remote_size_headers() {
+    LC_ALL=C awk '
+        {
+            sub(/\r$/, "")
+            line = tolower($0)
+        }
+        line ~ /^http\// {
+            status = $2 + 0
+            content_length = 0
+            total = 0
+        }
+        line ~ /^content-length:[[:space:]]*[0-9]+[[:space:]]*$/ {
+            content_length = $2 + 0
+        }
+        line ~ /^content-range:[[:space:]]*bytes[[:space:]]+[0-9]+-[0-9]+\/[0-9]+[[:space:]]*$/ {
+            value = line
+            sub(/^.*\//, "", value)
+            total = value + 0
+        }
+        END {
+            if ((status == 200 || status == 206) && total > 0)
+                printf "%.0f\n", total
+            else if (status == 200 && content_length > 0)
+                printf "%.0f\n", content_length
+            else print 0
+        }'
+}
+
 get_remote_size_bytes() {
     local url="$1"
     local mode="$2"
     local proxy_var="${3:-}"
     local header=""
+    local size=0
+    local timeout="${ADL_SIZE_PROBE_TIMEOUT:-10}"
+    local -a proxy_args request_args
+
+    [[ "$timeout" =~ ^[1-9][0-9]*$ ]] || timeout=10
 
     command -v curl >/dev/null 2>&1 || { echo 0; return 0; }
 
     if [[ "$mode" == "proxy" ]]; then
-        header=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
-            curl -fIL --max-redirs 10 --connect-timeout 5 --max-time 10 \
-            --proxy "$proxy_var" "$url" 2>/dev/null || true)
+        proxy_args=(--proxy "$proxy_var")
     else
-        header=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
-            curl -fIL --max-redirs 10 --connect-timeout 5 --max-time 10 \
-            --noproxy "*" "$url" 2>/dev/null || true)
+        proxy_args=(--noproxy "*")
     fi
+    request_args=(-fsSL --max-redirs 10 --connect-timeout 5 --max-time "$timeout"
+        --user-agent "${ADL_USER_AGENT:-Mozilla/5.0}"
+        --header 'Accept-Encoding: identity')
+    [[ "${ADL_INSECURE:-0}" != "1" ]] || request_args+=(-k)
 
-    local size
-    size=$(awk '{
-            line=tolower($0)
-        }
-        line ~ /^content-length:/ {
-            gsub("\r", "", $2)
-            size=$2
-        }
-        line ~ /^content-range:/ {
-            gsub("\r", "", $0)
-            if (match($0, /\/[0-9]+$/)) size=substr($0, RSTART + 1)
-        }
-        END {if (size ~ /^[0-9]+$/) print size; else print 0}' <<< "$header")
-
-    if [[ "${size:-0}" -gt 0 ]]; then
-        echo "$size"
+    # HEAD 快速探测；只读取最终响应的大小，排除重定向页和错误页。
+    header=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
+        -u no_proxy -u NO_PROXY curl "${request_args[@]}" "${proxy_args[@]}" \
+        --head "$url" 2>/dev/null || true)
+    size=$(printf '%s\n' "$header" | parse_remote_size_headers)
+    if [[ "$size" -gt 0 ]]; then
+        printf '%s\n' "$size"
         return 0
     fi
 
-    # 部分代理或服务器对 HEAD 不返回 Content-Length；用 0-0 Range GET 兜底。
-    if [[ "$mode" == "proxy" ]]; then
-        header=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
-            curl -fsSL --range 0-0 -D - --max-redirs 10 --connect-timeout 5 --max-time 10 \
-            --proxy "$proxy_var" -o /dev/null "$url" 2>/dev/null || true)
-    else
-        header=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
-            curl -fsSL --range 0-0 -D - --max-redirs 10 --connect-timeout 5 --max-time 10 \
-            --noproxy "*" -o /dev/null "$url" 2>/dev/null || true)
-    fi
-
-    awk '{
-            line=tolower($0)
-        }
-        line ~ /^content-range:/ {
-            gsub("\r", "", $0)
-            if (match($0, /\/[0-9]+$/)) size=substr($0, RSTART + 1)
-        }
-        END {if (size ~ /^[0-9]+$/) print size; else print 0}' <<< "$header"
+    # Range GET 同时支持 206 Content-Range 和忽略 Range 的 200 Content-Length。
+    # 上限 1 字节：服务器忽略 Range 时也不会为了探测而下载大文件。
+    # curl 可因上限返回非零，但已经收到的响应头仍可用于大小探测。
+    header=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
+        -u no_proxy -u NO_PROXY curl "${request_args[@]}" "${proxy_args[@]}" \
+        --range 0-0 --max-filesize 1 -D - -o /dev/null "$url" 2>/dev/null || true)
+    printf '%s\n' "$header" | parse_remote_size_headers
 }
 
 expected_size_bytes() {
@@ -559,8 +584,10 @@ should_skip_proxy_speed_test() {
     ADL_REMOTE_SIZE_MODE="direct"
 
     remote_size=$(get_remote_size_bytes "$url" "direct")
+    ADL_DETECTED_DIRECT_SIZE="$remote_size"
     if [[ "$remote_size" -eq 0 && -n "$proxy_var" ]]; then
         remote_size=$(get_remote_size_bytes "$url" "proxy" "$proxy_var")
+        ADL_DETECTED_PROXY_SIZE="$remote_size"
         [[ "$remote_size" -gt 0 ]] && ADL_REMOTE_SIZE_MODE="proxy"
     fi
 
@@ -572,6 +599,8 @@ should_skip_proxy_speed_test() {
 
     local local_size remaining estimated_seconds
     local_size=$(get_file_size_bytes "$dir/$filename")
+    # 断点文件的逻辑长度可能提前变大，不能用它估算剩余下载量。
+    [[ ! -f "$dir/$filename.aria2" ]] || local_size=0
     if [[ "$local_size" -gt "$remote_size" ]]; then
         local_size=0
     fi
@@ -596,6 +625,9 @@ detect_and_config_proxy() {
     local url="${1:-}"
     local dir="${2:-}"
     local filename="${3:-}"
+    ADL_DETECTED_SIZE_URL="$url"
+    ADL_DETECTED_DIRECT_SIZE=0
+    ADL_DETECTED_PROXY_SIZE=0
 
     if [[ "${ADL_NO_PROXY:-0}" == "1" || "${ADL_DISABLE_PROXY:-0}" == "1" || "${ADL_PROXY_MODE:-auto}" == "direct" ]]; then
         log_info "已按配置禁用代理，将直连下载"
@@ -624,7 +656,8 @@ detect_and_config_proxy() {
         return 0
     fi
 
-    if [[ -n "$dir" && -n "$filename" ]] && should_skip_proxy_speed_test "$url" "$dir" "$filename" "$proxy_var"; then
+    if [[ "${ADL_PROXY_SPEED_TEST_ALLOW_SKIP:-0}" == "1" && -n "$dir" && -n "$filename" ]] \
+        && should_skip_proxy_speed_test "$url" "$dir" "$filename" "$proxy_var"; then
         # 跳过测速时默认使用代理（未测速无法证明直连可用）
         set_proxy_env "$proxy_var"
         log_info "跳过测速，使用代理下载: $proxy_var"
@@ -632,9 +665,11 @@ detect_and_config_proxy() {
     fi
 
     log_info "开始测速以选择直连或代理..."
-    local direct_speed proxy_speed
-    direct_speed=$(measure_download_speed "$url" "direct")
-    proxy_speed=$(measure_download_speed "$url" "proxy" "$proxy_var")
+    local direct_speed proxy_speed direct_size proxy_size
+    read -r direct_speed direct_size <<< "$(measure_download_speed "$url" "direct" '' 1)"
+    read -r proxy_speed proxy_size <<< "$(measure_download_speed "$url" "proxy" "$proxy_var" 1)"
+    [[ "$direct_size" -eq 0 ]] || ADL_DETECTED_DIRECT_SIZE="$direct_size"
+    [[ "$proxy_size" -eq 0 ]] || ADL_DETECTED_PROXY_SIZE="$proxy_size"
     log_info "直连测速: $(format_speed "$direct_speed")；代理测速: $(format_speed "$proxy_speed")"
 
     if [[ "$direct_speed" -gt 0 && "$direct_speed" -ge "$proxy_speed" ]]; then
@@ -698,7 +733,7 @@ install_aria2_for_sudo_user() {
 
 # === 安全的自动安装 Homebrew (macOS) ===
 ensure_homebrew() {
-    if [[ "${ADL_AUTO_INSTALL:-0}" != "1" ]]; then
+    if [[ "${ADL_AUTO_INSTALL:-1}" != "1" ]]; then
         log_info "ADL_AUTO_INSTALL=0，跳过自动安装 Homebrew"
         return 1
     fi
@@ -769,10 +804,13 @@ smart_retry_logic() {
     local attempt="$1"
     local max_small_file_attempts="${ADL_MAX_RETRIES_SMALL:-5}"
     local max_large_file_attempts="${ADL_MAX_RETRIES_LARGE:-0}"  # 0 表示无限
+    local max_unknown_attempts="${ADL_MAX_RETRIES_UNKNOWN:-8}"
     local remote_size="$2"
     local small_file_threshold=$((100 * 1024 * 1024))  # 100MB
 
-    if [[ "$remote_size" -ge "$small_file_threshold" ]]; then
+    if [[ "$remote_size" -lt 0 ]]; then
+        [[ "$max_unknown_attempts" -eq 0 || "$attempt" -le "$max_unknown_attempts" ]] && return 0
+    elif [[ "$remote_size" -ge "$small_file_threshold" ]]; then
         # 大文件：0 表示无限，否则最多 N 次
         [[ "$max_large_file_attempts" -eq 0 ]] && return 0
         [[ $attempt -le $max_large_file_attempts ]] && return 0
@@ -790,41 +828,65 @@ get_retry_wait() {
     local base_wait="${ADL_RETRY_BASE_WAIT:-2}"
     local max_wait="${ADL_RETRY_MAX_WAIT:-60}"
 
-    local wait=$((base_wait * (2 ** (attempt - 1))))
-    [[ $wait -gt $max_wait ]] && wait=$max_wait
-    echo $wait
+    local wait="$base_wait"
+    if [[ "$wait" -eq 0 ]]; then echo 0; return 0; fi
+    local step=1
+    while [[ "$step" -lt "$attempt" && "$wait" -lt "$max_wait" ]]; do
+        if [[ "$wait" -gt "$((max_wait / 2))" ]]; then
+            wait="$max_wait"
+        else
+            wait=$((wait * 2))
+        fi
+        step=$((step + 1))
+    done
+    [[ "$wait" -le "$max_wait" ]] || wait="$max_wait"
+    printf '%s\n' "$wait"
+}
+
+download_error_action() {
+    local tool="$1" code="$2" status="${3:-0}"
+    case "$tool:$code" in
+        aria2:7|*:130|*:143) echo cancel ;;
+        aria2:9|aria2:10|aria2:11|aria2:12|aria2:13|aria2:14|aria2:15|aria2:16|aria2:17|aria2:18|aria2:28|aria2:32|curl:23|curl:26|wget:2|wget:3) echo fatal ;;
+        aria2:3|aria2:4|aria2:8|aria2:23|aria2:24|curl:3|curl:33|curl:60|wget:5|wget:6) echo source ;;
+        curl:22)
+            case "$status" in
+                401|403|404|410) echo source ;;
+                *) echo retry ;;
+            esac ;;
+        *) echo retry ;;
+    esac
 }
 
 # === aria2c 退出码诊断 ===
 aria2_exit_code_diag() {
-    local code="$1"
-    case "$code" in
-        0)  echo "下载成功" ;;
-        1)  echo "未知错误" ;;
-        2)  echo "超时" ;;
-        3)  echo "资源未找到 (404/403)" ;;
-        4)  echo "达到最大重试次数" ;;
-        5)  echo "下载未完成" ;;
-        6)  echo "服务器不支持断点续传" ;;
-        7)  echo "磁盘空间不足" ;;
-        8)  echo "文件已存在且大小一致" ;;
-        9)  echo "校验和验证失败" ;;
-        10) echo "下载目录不存在或不可写" ;;
-        11) echo "SSL/TLS 握手失败" ;;
-        12) echo "SSL/TLS 证书验证失败" ;;
-        13) echo "SSL/TLS 证书过期" ;;
-        14) echo "SSL/TLS 证书无效" ;;
-        15) echo "SSL/TLS 证书不受信任" ;;
-        16) echo "SSL/TLS 证书主机名不匹配" ;;
-        17) echo "SSL/TLS 证书自签名" ;;
-        18) echo "SSL/TLS 证书链不完整" ;;
-        19) echo "SSL/TLS 证书撤销" ;;
-        20) echo "SSL/TLS 证书无效日期" ;;
-        21) echo "SSL/TLS 证书扩展无效" ;;
-        22) echo "SSL/TLS 证书用途无效" ;;
-        23) echo "SSL/TLS 证书策略无效" ;;
-        24) echo "SSL/TLS 证书名称约束无效" ;;
-        *)  echo "aria2c 退出码: $code" ;;
+    case "$1" in
+        0) echo "下载成功" ;;
+        1) echo "未知错误" ;;
+        2) echo "超时" ;;
+        3|4) echo "资源未找到" ;;
+        5) echo "下载速度过低" ;;
+        6) echo "网络错误" ;;
+        7) echo "任务已中断，仍有未完成下载" ;;
+        8) echo "服务器不支持断点续传" ;;
+        9) echo "磁盘空间不足" ;;
+        10) echo "断点文件分块大小不一致" ;;
+        11|12) echo "存在重复下载任务" ;;
+        13) echo "目标文件已存在" ;;
+        14) echo "文件重命名失败" ;;
+        15|16) echo "无法打开或创建目标文件" ;;
+        17) echo "文件读写错误" ;;
+        18) echo "无法创建目录" ;;
+        19) echo "DNS 解析失败" ;;
+        20) echo "Metalink 解析失败" ;;
+        21) echo "FTP 命令失败" ;;
+        22) echo "HTTP 响应头异常" ;;
+        23) echo "重定向次数过多" ;;
+        24) echo "HTTP 认证失败" ;;
+        28) echo "命令参数错误" ;;
+        29) echo "服务器暂时过载或维护" ;;
+        32) echo "校验和验证失败" ;;
+        *) echo "aria2c 退出码: $1" ;;
     esac
 }
 
@@ -975,8 +1037,8 @@ ensure_aria2() {
         return 0
     fi
 
-    # 默认不自动安装
-    if [[ "${ADL_AUTO_INSTALL:-0}" != "1" ]]; then
+    # 默认自动安装（可 ADL_AUTO_INSTALL=0 关闭）
+    if [[ "${ADL_AUTO_INSTALL:-1}" != "1" ]]; then
         log_info "ADL_AUTO_INSTALL=0，跳过自动安装 aria2"
         log_info "提示: 手动安装 aria2 或设置 ADL_AUTO_INSTALL=1 启用自动安装"
         return 1
@@ -1195,10 +1257,12 @@ verify_sha256() {
         return 1
     fi
 
-    if command -v shasum &> /dev/null; then
-        actual_sha=$(shasum -a 256 "$file" 2>/dev/null | awk '{print $1}')
+    if command -v openssl &> /dev/null; then
+        actual_sha=$(openssl dgst -sha256 -r "$file" 2>/dev/null | awk '{print $1}')
     elif command -v sha256sum &> /dev/null; then
         actual_sha=$(sha256sum "$file" 2>/dev/null | awk '{print $1}')
+    elif command -v shasum &> /dev/null; then
+        actual_sha=$(shasum -a 256 "$file" 2>/dev/null | awk '{print $1}')
     else
         log_error "已设置 ADL_SHA256，但未找到 sha256 校验工具"
         return 1
@@ -1212,8 +1276,28 @@ verify_sha256() {
         return 1
     fi
 
-    log_info "SHA256 校验通过"
     return 0
+}
+
+filter_aria2_result() {
+    local stats_file="$1" show_output="$2"
+    LC_ALL=C awk -v stats="$stats_file" -v show_output="$show_output" '
+        /^[[:space:]]*[0-9a-f]+[[:space:]]*\|/ {
+            split($0, fields, "|")
+            gsub(/[[:space:]]/, "", fields[2])
+            gsub(/[[:space:]]/, "", fields[3])
+            if (fields[2] == "OK" && fields[3] != "") {
+                speed = fields[3]
+                if (speed == "n/a" || speed == "-") speed = "暂无统计"
+                else if (speed !~ /\/s$/) speed = speed "/s"
+                print speed > stats
+                close(stats)
+            }
+            next
+        }
+        /^(Download Results:|Status Legend:|gid[[:space:]]*\||=+[+|]|\((OK|ERR|INPR)\):)/ { next }
+        /^[[:space:]]*$/ { next }
+        { if (show_output == 1) { print; fflush() } }'
 }
 
 # === 执行下载（带智能重试） ===
@@ -1223,10 +1307,26 @@ do_download() {
     local filename="$3"
     shift 3 2>/dev/null || true
 
+    local setting value
+    for setting in ADL_MAX_RETRIES_SMALL ADL_MAX_RETRIES_LARGE ADL_MAX_RETRIES_UNKNOWN ADL_RETRY_BASE_WAIT ADL_RETRY_MAX_WAIT; do
+        value="${!setting:-}"
+        if [[ -n "$value" && ! "$value" =~ ^(0|[1-9][0-9]*)$ ]]; then
+            log_error "$setting 必须是非负整数"
+            return 2
+        fi
+    done
+
     local ua="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     # 确保目录存在
-    mkdir -p "$dir"
+    if ! mkdir -p "$dir" || [[ ! -w "$dir" ]]; then
+        log_error "下载目录不存在或不可写: $dir"
+        return 1
+    fi
+    if ! command -v aria2c >/dev/null 2>&1 && ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+        log_error "未找到可用下载器"
+        return 1
+    fi
 
     log_info "开始下载: $filename"
 
@@ -1255,12 +1355,28 @@ do_download() {
     local remote_size_reliable=false
     local expected_size=0
     expected_size=$(expected_size_bytes)
+    local cached_size=0
+    if [[ "${ADL_DETECTED_SIZE_URL:-}" == "$url" ]]; then
+        if [[ "$probe_mode" == "proxy" ]]; then
+            cached_size="${ADL_DETECTED_PROXY_SIZE:-0}"
+        else
+            cached_size="${ADL_DETECTED_DIRECT_SIZE:-0}"
+        fi
+        if [[ "$cached_size" -gt 0 ]] && remote_size_is_suspicious "$url" "$filename" "$cached_size"; then
+            cached_size=0
+        fi
+    fi
 
     if [[ "$expected_size" -gt 0 ]]; then
         remote_size="$expected_size"
         retry_size="$expected_size"
         remote_size_reliable=true
-        log_info "使用配置的期望文件大小: $(format_bytes "$remote_size")"
+        log_info "文件大小: $(format_bytes "$remote_size")"
+    elif [[ "$cached_size" -gt 0 ]]; then
+        remote_size="$cached_size"
+        retry_size="$cached_size"
+        remote_size_reliable=true
+        log_info "文件大小: $(format_bytes "$remote_size")"
     else
         local try_url probe_size size_mode
         for try_url in "${all_urls[@]}"; do
@@ -1285,14 +1401,12 @@ do_download() {
                 remote_size="$probe_size"
                 retry_size="$probe_size"
                 remote_size_reliable=true
-                log_info "远程文件大小: $(format_bytes "$remote_size") (${size_mode})"
-                # 显示本地已有文件大小（断点续传进度）
+                log_info "文件大小: $(format_bytes "$remote_size")"
+                # 多线程可先写入文件尾部，逻辑长度不代表已下载量。
                 local existing_size=0
                 existing_size=$(get_file_size_bytes "$dir/$filename")
                 if [[ "$existing_size" -gt 0 ]]; then
-                    local pct=0
-                    [[ "$remote_size" -gt 0 ]] && pct=$((existing_size * 100 / remote_size))
-                    log_info "本地已有: $(format_bytes "$existing_size") (${pct}%，将断点续传)"
+                    log_info "本地文件长度: $(format_bytes "$existing_size")；实际完成量以下载器进度为准，将断点续传"
                 fi
                 break
             fi
@@ -1301,6 +1415,7 @@ do_download() {
 
     if [[ "$retry_size" -eq 0 ]]; then
         retry_size="$remote_size"
+        [[ "$retry_size" -ne 0 ]] || retry_size=-1
     fi
 
     local is_large_file=false
@@ -1317,10 +1432,14 @@ do_download() {
             log_info "检测到大文件策略，最多重试 ${max_large_file_attempts} 次"
         fi
     elif [[ "$remote_size_reliable" != true ]]; then
-        log_warn "文件大小: 未知（HEAD/Range 未返回可用 Content-Length，可能是代理、重定向或分块传输导致；下载完成后仍会做本地文件校验）"
+        log_info "预探测暂未获得总大小；下载器连接后若获得大小会显示实际进度，完成后仍执行校验"
+        log_info "大小未知策略：最多 ${ADL_MAX_RETRIES_UNKNOWN:-8} 轮（0 表示不限），不按小文件处理"
     fi
 
     local attempt=0
+    local transfer_speed="未知"
+    local -a retired_urls=()
+    local retired_url action
 
     while true; do
         attempt=$((attempt + 1))
@@ -1343,6 +1462,12 @@ do_download() {
 
         # 尝试每个 URL
         for try_url in "${all_urls[@]}"; do
+            [[ -n "$try_url" ]] || continue
+            local retired=false
+            for retired_url in "${retired_urls[@]:-}"; do
+                [[ "$try_url" != "$retired_url" ]] || retired=true
+            done
+            $retired && continue
             # 提取域名用于日志
             local domain=$(echo "$try_url" | sed -E 's|https?://([^/]+).*|\1|' )
 
@@ -1354,7 +1479,7 @@ do_download() {
 
             # 尝试 aria2c（带断点续传）
             if command -v aria2c &> /dev/null; then
-                log_info "[$attempt] 尝试下载源: $domain (aria2c + 断点续传)"
+                log_info "下载源: $domain (aria2c + 断点续传)"
 
                 # aria2c 自动支持断点续传
                 # 构建 aria2c 参数
@@ -1368,10 +1493,10 @@ do_download() {
                     --user-agent="$ua"
                     "$check_cert_option"
                     --disk-cache="${ADL_DISK_CACHE:-256M}"
-                    --summary-interval=0
+                    --console-log-level=warn
+                    --download-result=default
                     --max-file-not-found=0
                     --max-tries=1
-                    --show-console-readout=false
                     --async-dns="${ADL_ASYNC_DNS:-true}"
                 )
 
@@ -1392,14 +1517,26 @@ do_download() {
                 fi
                 aria2_opts+=(--file-allocation="$file_alloc")
 
-                # 终端模式显示进度
+                # 终端/日志模式显示定期进度。summary-interval=0 会导致
+                # 通过 tee 或 tail 跟随时几乎没有可见进度。
                 local aria2_exit=0
+                local aria_stats show_output=0
+                aria_stats=$(mktemp) || return 1
                 if [[ "${ADL_PROGRESS:-0}" == "1" || "${ADL_SHOW_PROGRESS:-0}" == "1" ]]; then
-                    aria2_opts+=(--show-console-readout=true)
-                    aria2c "${aria2_opts[@]}" -d "$dir" -o "$filename" "$try_url" || aria2_exit=$?
+                    show_output=1
+                    if [[ "${ADL_PROGRESS_LOG:-0}" == "1" ]]; then
+                        aria2_opts+=(--show-console-readout=false --summary-interval="${ADL_SUMMARY_INTERVAL:-5}")
+                    else
+                        aria2_opts+=(--show-console-readout=true --summary-interval="${ADL_SUMMARY_INTERVAL:-5}")
+                    fi
                 else
-                    aria2c "${aria2_opts[@]}" -d "$dir" -o "$filename" "$try_url" >/dev/null 2>&1 || aria2_exit=$?
+                    aria2_opts+=(--show-console-readout=false --summary-interval=0)
                 fi
+                LC_ALL=C aria2c "${aria2_opts[@]}" -d "$dir" -o "$filename" "$try_url" 2>&1 \
+                    | filter_aria2_result "$aria_stats" "$show_output" || aria2_exit=${PIPESTATUS[0]}
+                transfer_speed=$(cat "$aria_stats")
+                transfer_speed="${transfer_speed:-未知}"
+                rm -f -- "$aria_stats"
 
                 if [[ "$aria2_exit" -eq 0 ]]; then
                     download_success=true
@@ -1408,12 +1545,20 @@ do_download() {
                     local diag
                     diag=$(aria2_exit_code_diag "$aria2_exit")
                     log_warn "aria2c 下载失败: $diag (退出码 $aria2_exit)"
+                    action=$(download_error_action aria2 "$aria2_exit")
+                    case "$action" in
+                        cancel) log_warn "下载已中断，保留断点"; return 130 ;;
+                        fatal) log_error "本地文件、配置或校验错误，停止重试"; return 1 ;;
+                        source) retired_urls+=("$try_url"); log_warn "当前源不可用，本次任务不再重试该源"; continue ;;
+                    esac
+                    # 分块下载不能用 curl/wget 的顺序续传替代。
+                    [[ ! -f "$dir/$filename.aria2" ]] || continue
                 fi
             fi
 
             # 回退到 curl（带断点续传 -C -）
             if command -v curl &> /dev/null; then
-                log_info "[$attempt] 尝试下载源: $domain (curl + 断点续传)"
+                log_info "下载源: $domain (curl + 断点续传)"
 
                 local curl_opts=(-f -L --max-redirs 10 -C -)
                 if [[ "${ADL_INSECURE:-0}" == "1" ]]; then
@@ -1428,15 +1573,25 @@ do_download() {
                 )
 
                 # -C - 自动检测并续传
-                if curl "${curl_opts[@]}" "$try_url" 2>&1; then
+                local curl_exit=0 http_status="" curl_speed="" curl_metrics=""
+                curl_metrics=$(curl "${curl_opts[@]}" -w '%{http_code} %{speed_download}' "$try_url") || curl_exit=$?
+                read -r http_status curl_speed <<< "$curl_metrics"
+                if [[ "$curl_exit" -eq 0 ]]; then
+                    transfer_speed=$(format_speed "${curl_speed:-0}")
                     download_success=true
                     break
                 fi
+                action=$(download_error_action curl "$curl_exit" "$http_status")
+                case "$action" in
+                    cancel) log_warn "下载已中断，保留断点"; return 130 ;;
+                    fatal) log_error "文件读写失败，停止重试"; return 1 ;;
+                    source) retired_urls+=("$try_url"); log_warn "当前源不可用（curl $curl_exit / HTTP $http_status），尝试其他源"; continue ;;
+                esac
             fi
 
             # 回退到 wget（带断点续传）
             if command -v wget &> /dev/null; then
-                log_info "[$attempt] 尝试下载源: $domain (wget + 断点续传)"
+                log_info "下载源: $domain (wget + 断点续传)"
 
                 local wget_opts=(-c --tries=1 "--user-agent=$ua" --timeout=60 -O "$dir/$filename")
                 if [[ "${ADL_INSECURE:-0}" == "1" ]]; then
@@ -1444,14 +1599,53 @@ do_download() {
                 fi
 
                 # -c 断点续传
-                if wget "${wget_opts[@]}" "$try_url" 2>&1; then
+                local wget_exit=0
+                local wget_log wget_status
+                local wget_started wget_before wget_elapsed wget_downloaded
+                wget_before=$(get_file_size_bytes "$dir/$filename")
+                wget_started=$(date +%s)
+                wget_log=$(mktemp) || return 1
+                wget --server-response "${wget_opts[@]}" "$try_url" 2>&1 | tee "$wget_log" || wget_exit=${PIPESTATUS[0]}
+                wget_status=$(awk '/^[[:space:]]*HTTP\// {status=$2} END {print status + 0}' "$wget_log")
+                rm -f -- "$wget_log"
+                if [[ "$wget_exit" -eq 0 ]]; then
+                    wget_elapsed=$(( $(date +%s) - wget_started ))
+                    wget_downloaded=$(( $(get_file_size_bytes "$dir/$filename") - wget_before ))
+                    if [[ "$wget_elapsed" -gt 0 && "$wget_downloaded" -ge 0 ]]; then
+                        transfer_speed=$(format_speed "$((wget_downloaded / wget_elapsed))")
+                    else
+                        transfer_speed="无法统计（传输不足1秒）"
+                    fi
                     download_success=true
                     break
                 fi
+                action=$(download_error_action wget "$wget_exit")
+                if [[ "$wget_exit" -eq 8 ]]; then
+                    action=$(download_error_action curl 22 "$wget_status")
+                fi
+                case "$action" in
+                    cancel) return 130 ;;
+                    fatal) log_error "wget 配置或文件读写失败，停止重试"; return 1 ;;
+                    source) retired_urls+=("$try_url"); continue ;;
+                esac
             fi
 
             log_warn "当前源下载失败，尝试下一个..."
         done
+
+        local active_source=false
+        for try_url in "${all_urls[@]}"; do
+            [[ -n "$try_url" ]] || continue
+            local retired=false
+            for retired_url in "${retired_urls[@]:-}"; do
+                [[ "$try_url" != "$retired_url" ]] || retired=true
+            done
+            $retired || active_source=true
+        done
+        if ! $download_success && ! $active_source; then
+            log_error "所有下载源均不可用，保留断点并停止重试"
+            return 1
+        fi
 
         # 检查下载结果
         if [[ "$download_success" = true ]]; then
@@ -1476,11 +1670,7 @@ do_download() {
                     log_error "本地文件大于远端大小，可能是旧文件残留或错误续传；请清理目标文件后重试"
                     return 1
                 else
-                    if [[ "$explicit_expected_size" -gt 0 ]]; then
-                        log_info "显式期望大小校验通过: $(format_bytes "$local_size") >= $(format_bytes "$explicit_expected_size")"
-                    elif [[ "$remote_size_reliable" = true ]]; then
-                        log_info "文件大小校验通过: $(format_bytes "$local_size")"
-                    else
+                    if [[ "$explicit_expected_size" -eq 0 && "$remote_size_reliable" != true ]]; then
                         log_warn "远端大小未知，跳过文件大小强校验: $(format_bytes "$local_size")"
                     fi
                 fi
@@ -1497,31 +1687,10 @@ do_download() {
                     return 1
                 fi
 
-                # 计算下载耗时和平均速度
+                # 耗时包括重试和校验；断点续传不能用最终文件大小计算本次平均速度。
                 local end_time
                 end_time=$(date +%s)
                 local duration=$((end_time - start_time))
-
-                local speed_display=""
-                if [[ "$duration" -gt 0 ]]; then
-                    local avg_speed
-                    avg_speed=$((local_size / duration))
-
-                    # 格式化速度显示（不使用 bc，使用整数除法）
-                    if [[ "$avg_speed" -ge 1048576 ]]; then
-                        local mbps=$((avg_speed / 1048576))
-                        local kbps_remain=$(((avg_speed % 1048576) / 10240))  # 保留一位小数
-                        speed_display="${mbps}.${kbps_remain} MB/s"
-                    elif [[ "$avg_speed" -ge 1024 ]]; then
-                        local kbps=$((avg_speed / 1024))
-                        local bps_remain=$(((avg_speed % 1024) * 10 / 1024))  # 保留一位小数
-                        speed_display="${kbps}.${bps_remain} KB/s"
-                    else
-                        speed_display="${avg_speed} B/s"
-                    fi
-                else
-                    speed_display="超高速 (< 1s)"
-                fi
 
                 # 格式化时间显示
                 local time_display=""
@@ -1533,17 +1702,18 @@ do_download() {
                     time_display="${duration}秒"
                 fi
 
-                log_info "✅ 下载成功！"
-                log_info "总耗时: ${time_display} (共尝试 ${attempt} 次)"
-                if [[ -n "$speed_display" ]]; then
-                    log_info "平均速度: ${speed_display}"
-                fi
-
                 # 清理 aria2 断点文件
                 if [[ -f "$dir/$filename.aria2" ]]; then
                     rm -f "$dir/$filename.aria2"
-                    log_info "已清理断点文件: $filename.aria2"
                 fi
+
+                local verification=""
+                if [[ -n "${ADL_SHA256:-}" ]]; then
+                    verification="，SHA256 校验通过"
+                elif [[ "$remote_size_reliable" == true ]]; then
+                    verification="，文件大小校验通过"
+                fi
+                success "下载完成：${filename}${verification}；耗时 ${time_display}，平均速度 ${transfer_speed}"
 
                 return 0
             fi
@@ -1556,7 +1726,7 @@ do_download() {
         fi
 
         # 小文件在最后一次失败后退出
-        if ! $is_large_file && [[ $attempt -ge "${ADL_MAX_RETRIES_SMALL:-5}" ]]; then
+        if ! smart_retry_logic "$((attempt + 1))" "$retry_size"; then
             log_error "所有下载尝试均失败"
             return 1
         fi
@@ -1610,12 +1780,14 @@ adl - Aria2 Downloader 并行下载加速工具
     ADL_PROXY=http://127.0.0.1:7890 显式指定代理；也支持 socks5h://127.0.0.1:7890
     ADL_NO_PROXY=1               兼容开关：禁用代理检测和代理环境变量，强制直连
     ADL_PROXY_SPEED_TEST=0       关闭测速；检测到代理时直接使用代理
+    ADL_PROXY_SPEED_TEST_ALLOW_SKIP=1 启用小文件跳过测速（默认始终对比测速）
     ADL_SPEED_TEST_SECONDS=8     单次测速超时时间
     ADL_SPEED_TEST_BYTES=1048576 测速读取字节数
     ADL_PROXY_SPEED_TEST_SKIP_BYTES=67108864 剩余小于该字节数时跳过测速
     ADL_PROXY_SPEED_TEST_SKIP_SECONDS=30 预计下载时间小于该秒数时跳过测速
     ADL_PROXY_SPEED_TEST_ASSUME_BPS=5242880 估算下载时间使用的保守速度
     ADL_EXPECTED_SIZE_BYTES=<n> 精确指定期望文件大小（字节）
+    ADL_SIZE_PROBE_TIMEOUT=10    每次 HEAD/Range 大小探测的超时秒数
     ADL_EXPECTED_SIZE_GB=140    为 Hugging Face/大模型下载提供期望大小，避免 HEAD 误判
     ADL_FILE_ALLOCATION=none     aria2 文件预分配策略（默认自动检测：Linux ext4/xfs 用 falloc）
     ADL_ARIA2_SPLIT=16 / ADL_ARIA2_CONNECTIONS=16 aria2 并发参数
@@ -1623,7 +1795,7 @@ adl - Aria2 Downloader 并行下载加速工具
     ADL_ASYNC_DNS=true           aria2 异步 DNS（默认开启）
     ADL_PROGRESS=1               显示下载进度（等同于 --progress）
     ADL_AUTO_MIRROR=1            自动为 Hugging Face/GitHub 添加镜像（默认开启）
-    ADL_AUTO_INSTALL=0           启用自动安装 Homebrew/aria2（默认不启用）
+    ADL_AUTO_INSTALL=1           缺失时自动安装 aria2（macOS 用 Homebrew，Linux 用 apt/yum/dnf；ADL_AUTO_INSTALL=0 可关闭）
     ADL_INSECURE=1               禁用 HTTPS 证书校验（不推荐）
     ADL_SHA256=<hex>             校验下载文件的 SHA256 哈希
     ADL_RETRY_ON_CHECKSUM=1      SHA256 校验失败后继续重试（默认失败即终止）
@@ -1631,6 +1803,7 @@ adl - Aria2 Downloader 并行下载加速工具
     ADL_PROXY_TEST_TIMEOUT=5     代理验证超时时间(秒)
     ADL_MAX_RETRIES_SMALL=5      小文件最大重试次数
     ADL_MAX_RETRIES_LARGE=0      大文件最大重试次数（0=无限）
+    ADL_MAX_RETRIES_UNKNOWN=8    大小未知文件最大尝试轮数（0=无限）
     ADL_RETRY_BASE_WAIT=2        重试等待基础时间(秒)
     ADL_RETRY_MAX_WAIT=60        重试等待最长时间(秒)
 

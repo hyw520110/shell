@@ -16,13 +16,13 @@
         "name": "从源码克隆安装",
         "type": "bash",
         "command": "git clone https://github.com/bytedance/deer-flow.git ~/deer-flow && cd ~/deer-flow && make config",
-        "check": true
+        "check": "[ -d \"$HOME/deer-flow\" ]"
       }
     ],
     "default_method": 0
   },
   "update": {
-    "command": "cd ~/deer-flow && git pull && make install",
+    "command": "git -C \"$HOME/deer-flow\" pull && make -C \"$HOME/deer-flow\" install",
     "check": true
   },
   "config": {
@@ -37,10 +37,10 @@
     }
   },
   "commands": {
-    "start": "cd $HOME/deer-flow && make dev",
-    "docker_start": "cd $HOME/deer-flow && make docker-start",
-    "stop": "if cd $HOME/deer-flow && make down 2>/dev/null; then true; elif pkill -f 'deerflow' 2>/dev/null; then true; else echo 'DeerFlow 未运行'; fi",
-    "check": "cd $HOME/deer-flow && make check"
+    "start": "bash -c 'cd \"$HOME/deer-flow\" && make dev'",
+    "docker_start": "bash -c 'cd \"$HOME/deer-flow\" && make docker-start'",
+    "stop": "bash -c 'if cd \"$HOME/deer-flow\" && make down 2>/dev/null; then true; elif pkill -f \"deerflow\" 2>/dev/null; then true; else echo \"DeerFlow 未运行\"; fi'",
+    "check": "bash -c 'cd \"$HOME/deer-flow\" && make check'"
   },
   "status_check": [
     {

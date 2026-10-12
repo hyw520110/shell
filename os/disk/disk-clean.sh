@@ -155,6 +155,7 @@ SUDO_READY=0
 
 # 确保已获得一次管理员授权（仅首次请求密码，之后复用 sudo 时间戳缓存）
 # 并在后台定时刷新时间戳，保证长时间清理过程中不再提示密码
+# 用法: ensure_sudo [hint_command]  — 非交互模式下如传入 hint 命令则只输出不执行
 ensure_sudo() {
     if [[ $SUDO_READY -eq 1 ]]; then
         return 0
@@ -170,8 +171,14 @@ ensure_sudo() {
         return 0
     fi
     # 非交互模式不能安全读取密码，避免 sudo -v 阻塞或输出误导性提示
+    # 策略: 不执行提权命令, 仅输出需要手动运行的命令
     if [[ ! -t 0 || ! -t 1 ]]; then
-        echo -e "  ${YELLOW}-${NC} 非交互模式未检测到可用 sudo 授权，跳过需要提权的操作"
+        if [[ -n "${1:-}" ]]; then
+            echo -e "  ${YELLOW}⏭ 需要提权 (非交互模式已跳过)，请手动执行:${NC}"
+            echo -e "    ${GREEN}sudo ${1}${NC}"
+        else
+            echo -e "  ${YELLOW}-${NC} 非交互模式未检测到可用 sudo 授权，跳过需要提权的操作"
+        fi
         return 1
     fi
     echo -e "\n${YELLOW}以下操作需要管理员权限，请输入密码 (仅需一次):${NC}"
@@ -489,7 +496,7 @@ cleanup_generic() {
     local size_before="$size"
     
     if [[ "$need_sudo" == "true" ]]; then
-        ensure_sudo || return 1
+        ensure_sudo "find \"$dir\" -mindepth 1 -maxdepth 1 -not -name '.*' -exec rm -rf {} +" || return 1
         if sudo find "$dir" -mindepth 1 -maxdepth 1 -not -name ".*" -exec rm -rf {} + 2>/dev/null; then
             local size_after
             size_after=$(get_dir_size "$dir")
@@ -612,7 +619,7 @@ cleanup() {
     
     # 需要提权时先完成单次授权
     if [[ "$need_sudo" == "true" ]]; then
-        ensure_sudo || return 1
+        ensure_sudo "find \"$dir\" -mindepth 1 -maxdepth 1 -not -name '.*' -exec rm -rf {} +" || return 1
     fi
     
     local size_before size_after count
@@ -729,7 +736,7 @@ cleanup_macos_specific() {
         echo -e "\\n正在清理软件更新缓存 (/Library/Caches/com.apple.SoftwareUpdate)..."
         if [[ -d "/Library/Caches/com.apple.SoftwareUpdate" ]]; then
             echo -e "  - 检测到软件更新缓存，需要管理员权限"
-            ensure_sudo || return 1
+            ensure_sudo "rm -rf /Library/Caches/com.apple.SoftwareUpdate/*" || return 1
             read -r -p "  - 确认清理软件更新缓存? [y/N] " response
             if [[ "$response" =~ ^[Yy]$ ]]; then
                 if sudo rm -rf /Library/Caches/com.apple.SoftwareUpdate/* 2>/dev/null; then
@@ -1848,28 +1855,34 @@ if [[ "$OS_TYPE" == "macOS" ]]; then
         "6|清理开发工具缓存 (~/.cache: uv/codex/puppeteer)|true|macos|cleanup_dot_cache_dev"
         "7|清理 Gradle 缓存|true|macos|cleanup_gradle_cache"
         "8|清理 Cargo (Rust) 缓存|true|macos|cleanup_cargo_cache"
-        "9|清理 VS Code 扩展安装包缓存|true|macos|cleanup_vscode_extension_cache"
-        "10|清理 Qoder 工具缓存|true|macos|cleanup_qoder_cache"
-        "11|清理壁纸缓存|true|macos|cleanup_wallpaper_cache"
-        "12|清理过期备份目录 (open-webui)|true|macos|cleanup_expired_backups"
-        "13|清理系统诊断数据库 (diag)|true|macos|cleanup_system_diagnostics"
-        "14|清理审计日志 (/private/var/audit)|true|macos|cleanup_audit_logs"
-        "15|清理残留的卸载应用数据 (僵尸文件)|true|macos|cleanup_orphan_appdata"
-        "16|清理 Chrome 临时签名副本 (旧文件)|true|macos|cleanup_chrome_code_sign_clones"
+        "9|清理 Go 缓存 (pkg/bin)|true|macos|cleanup_go_cache"
+        "10|清理 VS Code 扩展安装包缓存|true|macos|cleanup_vscode_extension_cache"
+        "11|清理 Qoder 工具缓存|true|macos|cleanup_qoder_cache"
+        "12|清理壁纸缓存|true|macos|cleanup_wallpaper_cache"
+        "13|清理过期备份目录 (open-webui)|true|macos|cleanup_expired_backups"
+        "14|清理系统诊断数据库 (diag)|true|macos|cleanup_system_diagnostics"
+        "15|清理审计日志 (/private/var/audit)|true|macos|cleanup_audit_logs"
+        "16|清理残留的卸载应用数据 (僵尸文件)|true|macos|cleanup_orphan_appdata"
+        "17|清理 Chrome 临时签名副本 (旧文件)|true|macos|cleanup_chrome_code_sign_clones"
         # ========== 谨慎清理区 (需判断/可能影响构建或含用户数据, 默认不选) ==========
-        "17|智能清理 Maven 本地仓库 (保留活跃依赖)|false|macos|cleanup_maven_repo"
-        "18|清理 Xcode 衍生数据及归档|false|macos|cleanup_xcode_derived_data"
-        "19|清理 Git 仓库垃圾 (gc/prune)|false|both|cleanup_git_repos"
-        "20|清理下载目录及浏览历史|false|both|cleanup_downloads_history"
-        "21|清理空目录|false|both|cleanup_empty_dirs"
-        "22|清理音乐创作软件资源库 (GarageBand/Logic)|false|macos|cleanup_garageband_logic"
+        "18|清理豆包 (Doubao) 缓存与日志|true|macos|cleanup_doubao_cache"
+        "19|清理 Chrome 应用数据缓存 (组件/AI模型/Service Worker)|true|macos|cleanup_chrome_appdata_cache"
+        "20|清理微信表情与资源缓存|true|macos|cleanup_wechat_cache"
+        # ========== 谨慎清理区 (需判断/可能影响构建或含用户数据, 默认不选) ==========
+        "21|智能清理 Maven 本地仓库 (保留活跃依赖)|false|macos|cleanup_maven_repo"
+        "22|清理 TRAE AI Agent 沙箱工具链 (将重新初始化)|false|macos|cleanup_trae_agent_sandbox"
+        "23|清理 Xcode 衍生数据及归档|false|macos|cleanup_xcode_derived_data"
+        "24|清理 Git 仓库垃圾 (gc/prune)|false|both|cleanup_git_repos"
+        "25|清理下载目录及浏览历史|false|both|cleanup_downloads_history"
+        "26|清理空目录|false|both|cleanup_empty_dirs"
+        "27|清理音乐创作软件资源库 (GarageBand/Logic)|false|macos|cleanup_garageband_logic"
         # ========== 分析工具 (不删除, 仅扫描) ==========
-        "23|扫描大文件 (>100MB)|false|both|scan_large_files"
-        "24|检测重复文件|false|both|detect_duplicate_files"
+        "28|扫描大文件 (>100MB)|false|both|scan_large_files"
+        "29|检测重复文件|false|both|detect_duplicate_files"
         # ========== 高风险区 (需提权或不可逆, 默认不选) ==========
-        "25|删除 Xcode CommandLineTools|false|macos|cleanup_xcode_clt"
+        "30|删除 Xcode CommandLineTools|false|macos|cleanup_xcode_clt"
         # ========== 组合操作 ==========
-        "26|清理所有 (执行所有清理项目)|false|both|cleanup_all_macos"
+        "31|清理所有 (执行所有清理项目)|false|both|cleanup_all_macos"
         "0|退出|false|both|exit_script"
     )
 else
@@ -2441,6 +2454,173 @@ cleanup_cargo_cache() {
     fi
 }
 
+# 清理 Go 缓存 (~/.cache/go-build, ~/go/pkg/mod, ~/go/bin)
+# 优先使用 go clean 命令（更安全），回退到直接删除
+cleanup_go_cache() {
+    echo -e "\n${YELLOW}正在清理 Go 缓存...${NC}"
+    local go_dir="$HOME/go"
+    if [[ ! -d "$go_dir" ]]; then
+        echo -e "  ${YELLOW}-${NC} ~/go 目录不存在，跳过"
+        return 0
+    fi
+    local cleaned=0
+
+    # 优先使用 go clean 命令（处理 ~/.cache/go-build + ~/go/pkg/mod）
+    if command -v go &>/dev/null; then
+        local build_size
+        build_size=$(get_dir_size "$HOME/.cache/go-build")
+        if [[ "$build_size" != "0KB" && "$build_size" != "N/A" ]]; then
+            if [[ $BATCH_MODE -eq 0 ]]; then
+                if ! confirm_action "清理 Go build 缓存 (~/.cache/go-build)" "$build_size"; then
+                    echo -e "  ${YELLOW}-${NC} 已跳过 Go build 缓存"
+                else
+                    if go clean -cache 2>/dev/null; then
+                        echo -e "  ${GREEN}✓${NC} 已清理 Go build 缓存 ($build_size)"
+                        ((cleaned++))
+                    else
+                        echo -e "  ${RED}✗${NC} 清理 Go build 缓存失败"
+                    fi
+                fi
+            else
+                if go clean -cache 2>/dev/null; then
+                    echo -e "  ${GREEN}✓${NC} 已清理 Go build 缓存 ($build_size)"
+                    ((cleaned++))
+                fi
+            fi
+        fi
+        local mod_size
+        mod_size=$(get_dir_size "$HOME/go/pkg")
+        if [[ "$mod_size" != "0KB" && "$mod_size" != "N/A" ]]; then
+            if [[ $BATCH_MODE -eq 0 ]]; then
+                if ! confirm_action "清理 Go 模块缓存 (~/go/pkg)" "$mod_size"; then
+                    echo -e "  ${YELLOW}-${NC} 已跳过 Go 模块缓存"
+                else
+                    if go clean -modcache 2>/dev/null; then
+                        echo -e "  ${GREEN}✓${NC} 已清理 Go 模块缓存 ($mod_size)"
+                        ((cleaned++))
+                    else
+                        echo -e "  ${RED}✗${NC} 清理 Go 模块缓存失败"
+                    fi
+                fi
+            else
+                if go clean -modcache 2>/dev/null; then
+                    echo -e "  ${GREEN}✓${NC} 已清理 Go 模块缓存 ($mod_size)"
+                    ((cleaned++))
+                fi
+            fi
+        fi
+    else
+        # Go 未安装，直接删除 pkg 和 go-build 缓存目录
+        for sub in pkg; do
+            local d="$go_dir/$sub"
+            [[ -d "$d" ]] || continue
+            local size
+            size=$(get_dir_size "$d")
+            if [[ "$size" == "0KB" || "$size" == "N/A" ]]; then
+                continue
+            fi
+            if [[ $BATCH_MODE -eq 0 ]]; then
+                if ! confirm_action "清理 Go $sub" "$size"; then
+                    echo -e "  ${YELLOW}-${NC} 已跳过 Go $sub"
+                    continue
+                fi
+            fi
+            if find "$d" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null; then
+                echo -e "  ${GREEN}✓${NC} 已清理 Go $sub ($size)"
+            else
+                echo -e "  ${RED}✗${NC} 清理 Go $sub 失败"
+            fi
+            ((cleaned++))
+        done
+        local gocache="$HOME/.cache/go-build"
+        if [[ -d "$gocache" ]]; then
+            local size
+            size=$(get_dir_size "$gocache")
+            if [[ "$size" != "0KB" && "$size" != "N/A" ]]; then
+                if [[ $BATCH_MODE -eq 0 ]]; then
+                    if confirm_action "清理 Go build 缓存" "$size"; then
+                        rm -rf "$gocache"/* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理 Go build 缓存 ($size)" || echo -e "  ${RED}✗${NC} 清理 Go build 缓存失败"
+                        ((cleaned++))
+                    fi
+                else
+                    rm -rf "$gocache"/* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理 Go build 缓存 ($size)"
+                    ((cleaned++))
+                fi
+            fi
+        fi
+    fi
+
+    # 清理 ~/go/bin（已安装的二进制，可重新 go install）
+    local bin_dir="$go_dir/bin"
+    if [[ -d "$bin_dir" ]]; then
+        local bin_size
+        bin_size=$(get_dir_size "$bin_dir")
+        if [[ "$bin_size" != "0KB" && "$bin_size" != "N/A" ]]; then
+            if [[ $BATCH_MODE -eq 0 ]]; then
+                if ! confirm_action "清理 Go 已安装的二进制 (~/go/bin)" "$bin_size"; then
+                    echo -e "  ${YELLOW}-${NC} 已跳过 Go bin"
+                else
+                    rm -rf "$bin_dir"/* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理 Go bin ($bin_size)" || echo -e "  ${RED}✗${NC} 清理 Go bin 失败"
+                    ((cleaned++))
+                fi
+            else
+                rm -rf "$bin_dir"/* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理 Go bin ($bin_size)"
+                ((cleaned++))
+            fi
+        fi
+    fi
+
+    if [[ $cleaned -eq 0 ]]; then
+        echo -e "  - 未检测到可清理的 Cargo 缓存"
+    fi
+}
+
+# 清理 Go 缓存 (~/.go/pkg 与 ~/.go/bin，均可 go install/go mod 自动恢复)
+cleanup_go_cache() {
+    echo -e "\n${YELLOW}正在清理 Go 缓存...${NC}"
+    local go_root="${GOPATH:-$HOME/go}"
+    local cleaned=0
+    if [[ ! -d "$go_root" ]]; then
+        echo -e "  ${YELLOW}-${NC} $go_root 目录不存在，跳过"
+        return 0
+    fi
+    # 优先使用 go clean 命令（最安全）
+    if command -v go &>/dev/null; then
+        echo -e "  - 使用 go clean 清理缓存..."
+        if go clean -cache -modcache 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} 已清理 Go 构建缓存和模块缓存 (go clean -cache -modcache)"
+            ((cleaned++))
+        else
+            echo -e "  ${YELLOW}-${NC} go clean 部分失败，回退到 rm 清理"
+        fi
+    fi
+    # 回退: 直接清理 pkg/bin 目录内容
+    for sub in pkg/mod pkg/sumdb bin; do
+        local d="$go_root/$sub"
+        [[ -d "$d" ]] || continue
+        local size
+        size=$(get_dir_size "$d")
+        if [[ "$size" == "0KB" || "$size" == "N/A" ]]; then
+            continue
+        fi
+        if [[ $BATCH_MODE -eq 0 ]]; then
+            if ! confirm_action "清理 Go $sub" "$size"; then
+                echo -e "  ${YELLOW}-${NC} 已跳过 Go $sub"
+                continue
+            fi
+        fi
+        if find "$d" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} 已清理 Go $sub ($size)"
+        else
+            echo -e "  ${RED}✗${NC} 清理 Go $sub 失败"
+        fi
+        ((cleaned++))
+    done
+    if [[ $cleaned -eq 0 ]]; then
+        echo -e "  - 未检测到可清理的 Go 缓存"
+    fi
+}
+
 # 清理 VS Code 扩展安装包缓存
 cleanup_vscode_extension_cache() {
     echo -e "\n${YELLOW}正在清理 VS Code 扩展安装包缓存...${NC}"
@@ -2489,6 +2669,292 @@ cleanup_electron_app_caches() {
     fi
 }
 
+# 清理豆包 (Doubao) 电脑版缓存与日志
+# 安全范围: gecko 引擎缓存 / SDK 日志 / 旧热修复包 / 沙箱运行时 / 旧版本安装文件
+# 绝不触碰: Default (用户数据/会话/登录态)
+cleanup_doubao_cache() {
+    echo -e "\n${YELLOW}正在清理豆包 (Doubao) 缓存与日志...${NC}"
+    local app_dir="$HOME/Library/Application Support/Doubao"
+    if [[ ! -d "$app_dir" ]]; then
+        echo -e "  ${YELLOW}-${NC} 豆包数据目录不存在，跳过"
+        return 0
+    fi
+    local cleaned=0
+
+    # 1. Gecko 浏览器引擎缓存 (删除后自动重建)
+    local gecko="$app_dir/gecko_cache"
+    if [[ -d "$gecko" ]]; then
+        local sz
+        sz=$(get_dir_size "$gecko")
+        if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理豆包 Gecko 引擎缓存" "$sz"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过 Gecko 引擎缓存"
+        else
+            rm -rf "${gecko:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理 Gecko 引擎缓存 ($sz)" && ((cleaned++))
+        fi
+    fi
+
+    # 2. SDK 日志 (sdk_storage/log, 日志可安全删除)
+    local sdk_log="$app_dir/sdk_storage/log"
+    if [[ -d "$sdk_log" ]]; then
+        local lsz
+        lsz=$(get_dir_size "$sdk_log")
+        if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理豆包 SDK 日志" "$lsz"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过 SDK 日志"
+        else
+            rm -rf "${sdk_log:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理 SDK 日志 ($lsz)" && ((cleaned++))
+        fi
+    fi
+
+    # 3. 旧热修复包 (hot_fix, 保留最新版本)
+    local hotfix="$app_dir/hot_fix"
+    if [[ -d "$hotfix" ]]; then
+        local versions=() v
+        while IFS= read -r v; do [[ -n "$v" ]] && versions+=("$v"); done < <(ls -1 "$hotfix" 2>/dev/null)
+        if [[ ${#versions[@]} -gt 1 ]]; then
+            local kept="${versions[${#versions[@]}-1]}"
+            for v in "${versions[@]}"; do
+                [[ "$v" == "$kept" ]] && continue
+                local vsz
+                vsz=$(get_dir_size "$hotfix/$v")
+                if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "删除旧热修复包 $v" "$vsz"; then
+                    continue
+                fi
+                rm -rf "$hotfix/$v" 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理旧热修复包 $v ($vsz)" && ((cleaned++))
+            done
+            [[ $cleaned -gt 0 ]] && echo -e "  ${BLUE}  保留最新热修复包: $kept${NC}"
+        else
+            echo -e "  ${YELLOW}-${NC} 无旧热修复包，跳过"
+        fi
+    fi
+
+    # 4. 沙箱运行时 (sandbox_runtime, 删除后自动重建)
+    local sandbox="$app_dir/sandbox_runtime"
+    if [[ -d "$sandbox" ]]; then
+        local ssz
+        ssz=$(get_dir_size "$sandbox")
+        if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理豆包沙箱运行时 (将自动重建)" "$ssz"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过沙箱运行时"
+        else
+            rm -rf "${sandbox:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理沙箱运行时 ($ssz)" && ((cleaned++))
+        fi
+    fi
+
+    # 5. 旧版本安装文件 (installed_versions, 保留当前版本)
+    local iv="$app_dir/installed_versions"
+    if [[ -d "$iv" ]]; then
+        local ivs=() ivd
+        while IFS= read -r ivd; do [[ -n "$ivd" ]] && ivs+=("$ivd"); done < <(ls -1 "$iv" 2>/dev/null)
+        if [[ ${#ivs[@]} -gt 1 ]]; then
+            local iv_kept="${ivs[${#ivs[@]}-1]}"
+            for ivd in "${ivs[@]}"; do
+                [[ "$ivd" == "$iv_kept" ]] && continue
+                local vsz2
+                vsz2=$(get_dir_size "$iv/$ivd")
+                if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "删除豆包旧版本 $ivd" "$vsz2"; then
+                    continue
+                fi
+                rm -rf "$iv/$ivd" 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理旧版本 $ivd ($vsz2)" && ((cleaned++))
+            done
+            [[ $cleaned -gt 0 ]] && echo -e "  ${BLUE}  保留当前版本: $iv_kept${NC}"
+        else
+            echo -e "  ${YELLOW}-${NC} 无旧版本安装文件，跳过"
+        fi
+    fi
+
+    if [[ $cleaned -eq 0 ]]; then
+        echo -e "  - 未检测到可清理的豆包缓存"
+    fi
+}
+
+# 清理 Chrome 应用数据目录内的缓存 (组件/AI 模型/Service Worker 缓存)
+# 安全范围: component_crx_cache / screen_ai / optimization_guide_model_store /
+#           Default 下 Service Worker 缓存 / WasmTtsEngine / GPUCache 等引擎缓存
+# 绝不触碰: 书签/历史/密码/扩展配置/登录态 (Default 下除上述目录外均保留)
+cleanup_chrome_appdata_cache() {
+    echo -e "\n${YELLOW}正在清理 Chrome 应用数据缓存...${NC}"
+    local chrome_dir="$HOME/Library/Application Support/Google/Chrome"
+    if [[ ! -d "$chrome_dir" ]]; then
+        echo -e "  ${YELLOW}-${NC} Chrome 数据目录不存在，跳过"
+        return 0
+    fi
+
+    # 检查 Chrome 是否在运行（运行时清理 Service Worker 可能引发异常）
+    local chrome_running=false
+    if pgrep -x "Google Chrome" >/dev/null 2>&1 || pgrep -f "Google Chrome Helper" >/dev/null 2>&1; then
+        chrome_running=true
+        echo -e "  ${YELLOW}提示: Chrome 正在运行，Service Worker 缓存将跳过（其余项仍可清理）${NC}"
+    fi
+
+    local cleaned=0
+    # 1. 组件缓存 (component_crx_cache) — 自动重新下载
+    local comp="$chrome_dir/component_crx_cache"
+    if [[ -d "$comp" ]]; then
+        local csz
+        csz=$(get_dir_size "$comp")
+        if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理 Chrome 组件缓存" "$csz"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过组件缓存"
+        else
+            rm -rf "${comp:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理组件缓存 ($csz)" && ((cleaned++))
+        fi
+    fi
+
+    # 2. screen_ai (AI 屏幕理解模型缓存) — 自动重新下载
+    local sai="$chrome_dir/screen_ai"
+    if [[ -d "$sai" ]]; then
+        local ssz
+        ssz=$(get_dir_size "$sai")
+        if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理 Chrome screen_ai 模型缓存" "$ssz"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过 screen_ai"
+        else
+            rm -rf "${sai:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理 screen_ai 模型缓存 ($ssz)" && ((cleaned++))
+        fi
+    fi
+
+    # 3. optimization_guide_model_store (优化指南模型) — 自动重新下载
+    for mstore in "$chrome_dir/optimization_guide_model_store" "$chrome_dir/Default/optimization_guide_model_store"; do
+        if [[ -d "$mstore" ]]; then
+            local msz
+            msz=$(get_dir_size "$mstore")
+            if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理 Chrome 优化模型缓存" "$msz"; then
+                continue
+            fi
+            rm -rf "${mstore:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理优化模型缓存 ($msz)" && ((cleaned++))
+        fi
+    done
+
+    # 4. WasmTtsEngine (TTS 引擎缓存)
+    local tts="$chrome_dir/WasmTtsEngine"
+    if [[ -d "$tts" ]]; then
+        local tsz
+        tsz=$(get_dir_size "$tts")
+        if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理 Chrome TTS 引擎缓存" "$tsz"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过 TTS 引擎缓存"
+        else
+            rm -rf "${tts:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理 TTS 引擎缓存 ($tsz)" && ((cleaned++))
+        fi
+    fi
+
+    # 5. 各 Profile 下的引擎缓存 (GPUCache/ShaderCache 等)
+    local profiles=("Default" "Profile 2" "Profile 3" "Taobao")
+    local engine_subs=("GPUCache" "GrShaderCache" "DawnGraphiteCache" "DawnWebGPUCache" "ShaderCache" "GraphiteDawnCache")
+    for prof in "${profiles[@]}"; do
+        local pdir="$chrome_dir/$prof"
+        [[ -d "$pdir" ]] || continue
+        for sub in "${engine_subs[@]}"; do
+            local ed="$pdir/$sub"
+            [[ -d "$ed" ]] || continue
+            local esz
+            esz=$(get_dir_size "$ed")
+            if [[ "$esz" == "0KB" || "$esz" == "N/A" ]]; then
+                continue
+            fi
+            if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理 [$prof] $sub" "$esz"; then
+                continue
+            fi
+            rm -rf "${ed:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理 [$prof] $sub ($esz)" && ((cleaned++))
+        done
+    done
+
+    # 6. Service Worker 缓存 (站点缓存, 重新访问自动重建; Chrome 运行时跳过)
+    if [[ "$chrome_running" == false ]]; then
+        local sw_root="$chrome_dir/Default/Service Worker/CacheStorage"
+        if [[ -d "$sw_root" ]]; then
+            local wsz
+            wsz=$(get_dir_size "$sw_root")
+            if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理 Chrome Service Worker 缓存" "$wsz"; then
+                echo -e "  ${YELLOW}-${NC} 已跳过 Service Worker 缓存"
+            else
+                rm -rf "${sw_root:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理 Service Worker 缓存 ($wsz)" && ((cleaned++))
+            fi
+        fi
+    fi
+
+    if [[ $cleaned -eq 0 ]]; then
+        echo -e "  - 未检测到可清理的 Chrome 应用数据缓存"
+    fi
+}
+
+# 清理微信 (WeChat) 表情与资源缓存
+# 安全范围: Stickers (表情包缓存, 重新发送会重新下载) / MMResourceMgr / 容器 Caches
+# 绝不触碰: 聊天记录/收藏/账号数据
+cleanup_wechat_cache() {
+    echo -e "\n${YELLOW}正在清理微信表情与资源缓存...${NC}"
+    local wx_root="$HOME/Library/Containers/com.tencent.xinWeChat/Data"
+    if [[ ! -d "$wx_root" ]]; then
+        echo -e "  ${YELLOW}-${NC} 微信数据目录不存在，跳过"
+        return 0
+    fi
+    local cleaned=0
+
+    # 1. 表情包缓存 (Stickers)
+    local stickers=""
+    stickers=$(find "$wx_root/Library/Application Support/com.tencent.xinWeChat" -type d -name "Stickers" 2>/dev/null | head -1)
+    if [[ -n "$stickers" && -d "$stickers" ]]; then
+        local sz
+        sz=$(get_dir_size "$stickers")
+        if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理微信表情缓存" "$sz"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过表情缓存"
+        else
+            rm -rf "${stickers:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理表情缓存 ($sz)" && ((cleaned++))
+        fi
+    fi
+
+    # 2. 资源管理器缓存 (MMResourceMgr)
+    local resmgr=""
+    resmgr=$(find "$wx_root/Library/Application Support/com.tencent.xinWeChat" -type d -name "MMResourceMgr" 2>/dev/null | head -1)
+    if [[ -n "$resmgr" && -d "$resmgr" ]]; then
+        local rsz
+        rsz=$(get_dir_size "$resmgr")
+        if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理微信资源管理器缓存" "$rsz"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过资源管理器缓存"
+        else
+            rm -rf "${resmgr:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理资源管理器缓存 ($rsz)" && ((cleaned++))
+        fi
+    fi
+
+    # 3. 微信容器 Caches
+    local wx_caches="$wx_root/Library/Caches"
+    if [[ -d "$wx_caches" ]]; then
+        local csz
+        csz=$(get_dir_size "$wx_caches")
+        if [[ $BATCH_MODE -eq 0 ]] && ! confirm_action "清理微信容器缓存" "$csz"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过容器缓存"
+        else
+            rm -rf "${wx_caches:?}/"* 2>/dev/null && echo -e "  ${GREEN}✓${NC} 已清理容器缓存 ($csz)" && ((cleaned++))
+        fi
+    fi
+
+    if [[ $cleaned -eq 0 ]]; then
+        echo -e "  - 未检测到可清理的微信缓存"
+    fi
+}
+
+# 清理 TRAE AI Agent 沙箱工具链 (谨慎项, 默认不选)
+# 说明: ModularData/ai-agent/vm/tools 是 TRAE AI Agent 内置的沙箱工具链
+#       (opt/share/npm-global, 约 3GB)。删除后 TRAE 会在下次使用时重新初始化下载,
+#       期间 AI Agent 功能暂不可用。不影响编辑器的其他功能。
+cleanup_trae_agent_sandbox() {
+    echo -e "\n${YELLOW}正在清理 TRAE AI Agent 沙箱工具链...${NC}"
+    local tools_dir="$HOME/Library/Application Support/TRAE SOLO CN/ModularData/ai-agent/vm/tools"
+    if [[ ! -d "$tools_dir" ]]; then
+        echo -e "  ${YELLOW}-${NC} TRAE AI Agent 工具链目录不存在，跳过"
+        return 0
+    fi
+    local sz
+    sz=$(get_dir_size "$tools_dir")
+    echo -e "  ${YELLOW}警告: 此操作将删除 TRAE AI Agent 的沙箱工具链 ($sz)，${NC}"
+    echo -e "  ${YELLOW}      下次使用 AI Agent 时会重新初始化下载 (需联网)。${NC}"
+    if [[ $BATCH_MODE -eq 0 ]]; then
+        if ! confirm_action "删除 TRAE AI Agent 沙箱工具链 (将重新初始化)" "$sz"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过"
+            return 0
+        fi
+    fi
+    rm -rf "${tools_dir:?}/"* 2>/dev/null
+    echo -e "  ${GREEN}✓${NC} 已清理 TRAE AI Agent 沙箱工具链 ($sz)"
+    log_action "SUCCESS" "清理 TRAE AI Agent 沙箱工具链: $sz"
+}
+
 # 智能清理 Maven 本地仓库（复用 clean-maven.sh，保留活跃依赖，只删超期未用依赖）
 cleanup_maven_repo() {
     echo -e "\n${YELLOW}正在智能清理 Maven 本地仓库 (clean-maven.sh)...${NC}"
@@ -2534,7 +3000,7 @@ cleanup_system_diagnostics() {
         echo -e "  ${YELLOW}-${NC} 诊断数据库目录不存在，跳过"
         return
     fi
-    ensure_sudo || return 1
+    ensure_sudo "find \"$diag_dir\" -mindepth 1 -maxdepth 1 -exec rm -rf {} +" || return 1
     local size
     size=$(sudo du -sh "$diag_dir" 2>/dev/null | awk '{print $1}')
     echo -e "  - 系统诊断数据库大小: ${YELLOW}$size${NC}"
@@ -2630,7 +3096,7 @@ cleanup_garageband_logic() {
     fi
     
     if [[ -d "$logic_dir" ]]; then
-        ensure_sudo || return 1
+        ensure_sudo "rm -rf \"$logic_dir\"" || return 1
         local size
         size=$(get_dir_size "$logic_dir")
         echo -e "  - Logic Pro 资源库大小: ${YELLOW}$size${NC}"
@@ -2655,7 +3121,7 @@ cleanup_xcode_clt() {
         echo -e "  ${YELLOW}-${NC} CommandLineTools 未安装，跳过"
         return
     fi
-    ensure_sudo || return 1
+    ensure_sudo "rm -rf \"$clt_dir\"" || return 1
     local size
     size=$(get_dir_size "$clt_dir")
     echo -e "  - CommandLineTools 大小: ${YELLOW}$size${NC}"
@@ -2737,7 +3203,7 @@ cleanup_audit_logs() {
         echo -e "  ${YELLOW}-${NC} 审计日志目录不存在，跳过"
         return
     fi
-    ensure_sudo || return 1
+    ensure_sudo "find \"$audit_dir\" -name '[0-9]*' -not -name '*.not_terminated' -delete" || return 1
     local size_before size_after count
     size_before=$(sudo du -sh "$audit_dir" 2>/dev/null | awk '{print $1}')
     count=$(sudo find "$audit_dir" -name "[0-9]*" -not -name "*.not_terminated" 2>/dev/null | wc -l)
@@ -2776,6 +3242,7 @@ cleanup_all_macos() {
         cleanup_dot_cache_dev
         cleanup_gradle_cache
         cleanup_cargo_cache
+        cleanup_go_cache
         cleanup_vscode_extension_cache
         cleanup_maven_repo
         cleanup_xcode_derived_data
@@ -2785,6 +3252,9 @@ cleanup_all_macos() {
         cleanup_expired_backups
         cleanup_qoder_cache
         cleanup_chrome_code_sign_clones
+        cleanup_doubao_cache
+        cleanup_chrome_appdata_cache
+        cleanup_wechat_cache
         cleanup_garageband_logic
         cleanup_xcode_clt
         cleanup_wallpaper_cache
@@ -2853,7 +3323,7 @@ launch_ncdu_root() {
         if [[ -t 1 ]]; then
             echo -e "${YELLOW}启动 ncdu 分析根目录 (需要管理员权限)...${NC}"
             echo -e "${YELLOW}提示: 按 ? 键查看帮助，q 键退出${NC}"
-            ensure_sudo || return 1
+            ensure_sudo "ncdu /" || return 1
             sudo ncdu /
         else
             echo -e "${RED}错误: 无法在当前环境中启动 ncdu，需要终端支持${NC}"
@@ -3019,6 +3489,22 @@ scan_item() {
                 local ckb
                 ckb=$(du -sk "$cd" 2>/dev/null | cut -f1)
                 [[ "$ckb" =~ ^[0-9]+$ ]] && total_kb=$((total_kb + ckb))
+            done
+            if [[ $total_kb -gt 0 ]]; then
+                SCAN_RESULT_SIZES[$idx]=$(awk -v k="$total_kb" 'BEGIN { if (k>=1048576) printf "%.1fGB", k/1048576; else if (k>=1024) printf "%.1fMB", k/1024; else printf "%dKB", k }')
+            else
+                SCAN_RESULT_SIZES[$idx]="0KB"
+            fi
+            ;;
+        "cleanup_go_cache")
+            local total_kb=0
+            local go_root="${GOPATH:-$HOME/go}"
+            for gsub in pkg/mod pkg/sumdb bin; do
+                local gd="$go_root/$gsub"
+                [[ -d "$gd" ]] || continue
+                local gkb
+                gkb=$(du -sk "$gd" 2>/dev/null | cut -f1)
+                [[ "$gkb" =~ ^[0-9]+$ ]] && total_kb=$((total_kb + gkb))
             done
             if [[ $total_kb -gt 0 ]]; then
                 SCAN_RESULT_SIZES[$idx]=$(awk -v k="$total_kb" 'BEGIN { if (k>=1048576) printf "%.1fGB", k/1048576; else if (k>=1024) printf "%.1fMB", k/1024; else printf "%dKB", k }')
@@ -3267,6 +3753,69 @@ scan_item() {
             else
                 SCAN_RESULT_SIZES[$idx]="0KB"
             fi
+            ;;
+        "cleanup_doubao_cache")
+            local db_size=0
+            local db_root="$HOME/Library/Application Support/Doubao"
+            if [[ -d "$db_root" ]]; then
+                for dsub in gecko_cache sdk_storage/log hot_fix sandbox_runtime installed_versions; do
+                    local ddir="$db_root/$dsub"
+                    [[ -d "$ddir" ]] || continue
+                    local dkb
+                    dkb=$(du -sk "$ddir" 2>/dev/null | cut -f1)
+                    [[ "$dkb" =~ ^[0-9]+$ ]] && db_size=$((db_size + dkb))
+                done
+            fi
+            if [[ $db_size -gt 0 ]]; then
+                SCAN_RESULT_SIZES[$idx]=$(awk -v k="$db_size" 'BEGIN { if (k>=1048576) printf "%.1fGB", k/1048576; else if (k>=1024) printf "%.1fMB", k/1024; else printf "%dKB", k }')
+            else
+                SCAN_RESULT_SIZES[$idx]="0KB"
+            fi
+            ;;
+        "cleanup_chrome_appdata_cache")
+            local ch_size=0
+            local ch_root="$HOME/Library/Application Support/Google/Chrome"
+            if [[ -d "$ch_root" ]]; then
+                for csub in component_crx_cache screen_ai optimization_guide_model_store WasmTtsEngine; do
+                    local cdir="$ch_root/$csub"
+                    [[ -d "$cdir" ]] || continue
+                    local ckb
+                    ckb=$(du -sk "$cdir" 2>/dev/null | cut -f1)
+                    [[ "$ckb" =~ ^[0-9]+$ ]] && ch_size=$((ch_size + ckb))
+                done
+                local swd="$ch_root/Default/Service Worker/CacheStorage"
+                if [[ -d "$swd" ]]; then
+                    local swkb
+                    swkb=$(du -sk "$swd" 2>/dev/null | cut -f1)
+                    [[ "$swkb" =~ ^[0-9]+$ ]] && ch_size=$((ch_size + swkb))
+                fi
+            fi
+            if [[ $ch_size -gt 0 ]]; then
+                SCAN_RESULT_SIZES[$idx]=$(awk -v k="$ch_size" 'BEGIN { if (k>=1048576) printf "%.1fGB", k/1048576; else if (k>=1024) printf "%.1fMB", k/1024; else printf "%dKB", k }')
+            else
+                SCAN_RESULT_SIZES[$idx]="0KB"
+            fi
+            ;;
+        "cleanup_wechat_cache")
+            local wx_size=0
+            local wx_root="$HOME/Library/Containers/com.tencent.xinWeChat/Data"
+            if [[ -d "$wx_root" ]]; then
+                local swx
+                swx=$(find "$wx_root/Library/Application Support/com.tencent.xinWeChat" -type d -name "Stickers" 2>/dev/null | head -1)
+                [[ -n "$swx" && -d "$swx" ]] && wx_size=$((wx_size + $(du -sk "$swx" 2>/dev/null | cut -f1)))
+                local rwx
+                rwx=$(find "$wx_root/Library/Application Support/com.tencent.xinWeChat" -type d -name "MMResourceMgr" 2>/dev/null | head -1)
+                [[ -n "$rwx" && -d "$rwx" ]] && wx_size=$((wx_size + $(du -sk "$rwx" 2>/dev/null | cut -f1)))
+                [[ -d "$wx_root/Library/Caches" ]] && wx_size=$((wx_size + $(du -sk "$wx_root/Library/Caches" 2>/dev/null | cut -f1)))
+            fi
+            if [[ $wx_size -gt 0 ]]; then
+                SCAN_RESULT_SIZES[$idx]=$(awk -v k="$wx_size" 'BEGIN { if (k>=1048576) printf "%.1fGB", k/1048576; else if (k>=1024) printf "%.1fMB", k/1024; else printf "%dKB", k }')
+            else
+                SCAN_RESULT_SIZES[$idx]="0KB"
+            fi
+            ;;
+        "cleanup_trae_agent_sandbox")
+            SCAN_RESULT_SIZES[$idx]=$(get_dir_size "$HOME/Library/Application Support/TRAE SOLO CN/ModularData/ai-agent/vm/tools")
             ;;
         "scan_large_files"|"detect_duplicate_files"|"cleanup_empty_dirs"|"cleanup_git_repos")
             SCAN_RESULT_SIZES[$idx]="执行时扫描"

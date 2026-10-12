@@ -1,0 +1,58 @@
+{
+  "id": "microsoft-autogen",
+  "name": "Microsoft AutoGen",
+  "description": "Microsoft 的多智能体应用框架，提供 AgentChat、Core、Extensions 和 AutoGen Studio",
+  "category": "ai-agent",
+  "tags": ["ai", "agents", "multi-agent", "microsoft", "python", "studio"],
+  "install": {
+    "methods": [
+      {
+        "name": "独立虚拟环境安装（推荐）",
+        "type": "custom",
+        "command": "base=\"$HOME/.local/share/ai-hub/microsoft-autogen\"; mkdir -p \"$base\"; python3 -m venv \"$base/.venv\" && \"$base/.venv/bin/python\" -m pip install -U pip && \"$base/.venv/bin/pip\" install -U autogen-agentchat 'autogen-ext[openai]' autogenstudio",
+        "check": "test -x \"$HOME/.local/share/ai-hub/microsoft-autogen/.venv/bin/python\" && \"$HOME/.local/share/ai-hub/microsoft-autogen/.venv/bin/python\" -c 'import autogen_agentchat'",
+        "uninstall": ["rm -rf \"$HOME/.local/share/ai-hub/microsoft-autogen\""]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "\"$HOME/.local/share/ai-hub/microsoft-autogen/.venv/bin/pip\" install -U autogen-agentchat 'autogen-ext[openai]' autogenstudio",
+    "check": "\"$HOME/.local/share/ai-hub/microsoft-autogen/.venv/bin/python\" -c 'import autogen_agentchat'"
+  },
+  "post_install": [
+    {
+      "description": "显示 AutoGen Studio 启动方式",
+      "command": "echo 'AutoGen 已安装到 ~/.local/share/ai-hub/microsoft-autogen；Studio 可运行：ai-hub.sh 操作 -> start-studio'"
+    }
+  ],
+  "config": {
+    "path": "$HOME/.local/share/ai-hub/microsoft-autogen/.env",
+    "operations": {
+      "view": "sed -n '1,120p' \"$HOME/.local/share/ai-hub/microsoft-autogen/.env\" 2>/dev/null || echo '配置文件不存在（请通过环境变量配置 API Key）'",
+      "edit": "${EDITOR:-vi} \"$HOME/.local/share/ai-hub/microsoft-autogen/.env\""
+    }
+  },
+  "commands": {
+    "start-studio": "\"$HOME/.local/share/ai-hub/microsoft-autogen/.venv/bin/autogenstudio\" ui --port 8081",
+    "python": "\"$HOME/.local/share/ai-hub/microsoft-autogen/.venv/bin/python\"",
+    "version": "\"$HOME/.local/share/ai-hub/microsoft-autogen/.venv/bin/pip\" show autogen-agentchat"
+  },
+  "status_check": [
+    {
+      "name": "检查 AutoGen 环境",
+      "command": "test -x \"$HOME/.local/share/ai-hub/microsoft-autogen/.venv/bin/python\" && \"$HOME/.local/share/ai-hub/microsoft-autogen/.venv/bin/python\" -c 'import autogen_agentchat' && echo '已安装' || echo '未安装'"
+    },
+    {
+      "name": "检查 Studio",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:8081 >/dev/null 2>&1 && echo 'Studio 运行中' || echo 'Studio 未运行'"
+    }
+  ],
+  "requirements": {
+    "python": ">=3.10",
+    "docker": "代码执行器可选"
+  },
+  "homepage": "https://microsoft.github.io/autogen/",
+  "repository": "https://github.com/microsoft/autogen",
+  "notes": "官方仓库已说明 AutoGen 进入 maintenance mode；存量项目可继续使用，新项目建议评估 Microsoft Agent Framework。"
+}

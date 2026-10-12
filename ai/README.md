@@ -22,6 +22,12 @@
 - **插件化 Hook**：支持声明式插件安装，逻辑与配置彻底解耦。
 - **环境自检**：内置 Node.js 和 Python 运行时水位线检查。
 
+安装或更新 npm 类型工具时，若 Node.js/npm 缺失或不可运行，会自动调用相对于
+`ai/ai-hub.sh` 的 `../node/node.sh`，使用用户级 fnm 环境，无需 sudo。
+安装后会在当前 AI Hub 进程加载环境；也会识别已有的 fnm/nvm 默认版本，避免重复安装。
+仅查看状态或帮助不会触发 Node 安装。可通过 `AI_HUB_NODE_VERSION` 指定安装版本，
+不指定时继承 `node/node.sh` 的默认版本；安装失败会停止该工具安装并保留错误信息。
+
 ## 多版本工具与安装包清理
 
 所有菜单初次进入均不默认勾选，包括工具安装、版本卸载、MCP、Skills、场景和配置目标。切换标签页时只保留用户手动勾选的条目。
@@ -54,8 +60,6 @@ macOS TraeCode 使用各自的官方最新版本清单下载安装；中国版�
 bash ai/ide/trae/install-trae.sh --versions "2 4" --dry-run
 # 执行选定版本的安装/更新
 bash ai/ide/trae/install-trae.sh --versions "2 4"
-# 离线回归检查
-python3 -m unittest discover -s ai/tests -v
 ```
 
 官方入口：[国内下载中心](https://www.trae.cn/ide/download)、[国际下载中心](https://www.trae.ai/download)。
@@ -127,6 +131,7 @@ ai/
 | **智能与代码** | `codegraph` / `code-review-graph` / `postgres` | 图谱探索、代码审查与数据库 | 符号搜索、CR可视化、数据建模 |
 | **网络与搜索** | `fetch` / `brave-search` | HTTP 请求与外网检索 | API 测试、竞品调研 |
 | **基础设施** | `ssh` / `slack` / `pentest-mcp` / `headroom` | 服务器管理、通信与安全 | 部署、社群运营、漏洞扫描 |
+| **安全分析** | `semgrep` / `codeql` / `burp` / `zap` | 源码 SAST 与 Web DAST 扫描 | 授权环境静态审计、手工验证、主动扫描 |
 | **视觉与OCR** | `umi-ocr` / `bb-browser` | 离线 OCR 与浏览器 | 截图识别、PDF 提取、浏览器自动化 |
 
 ### Skills (按场景分类)
@@ -201,6 +206,13 @@ ai/
 
 > **独立 Agent 框架** (非 Skill，需单独部署):
 > - **[OpenManus](https://github.com/FoundationAgents/OpenManus)** ⭐ 46k — 通用 AI Agent，支持 Computer Use / Browser Use / MCP 工具调用 / 多 Agent 协同。由 MetaGPT 团队开源，`python main.py` 即可运行，需配置 LLM API。
+> - **[ChatDev](https://github.com/OpenBMB/ChatDev)** — 多智能体软件开发与工作流平台（已集成 `chatdev`）。
+> - **[CrewAI](https://github.com/crewAIInc/crewAI)** — 角色化 Agent 编排框架（已集成 `crewai`）。
+> - **[Microsoft AutoGen](https://github.com/microsoft/autogen)** — AgentChat/Core/Studio 多智能体框架（已集成 `microsoft-autogen`；官方已进入维护模式）。
+> - **[SuperAGI](https://github.com/TransformerOptimus/SuperAGI)** — Docker Compose 部署的自主 Agent 平台（已集成 `superagi`）。
+> - **[AutoGPT](https://github.com/Significant-Gravitas/AutoGPT)** — 可视化构建与自托管 Agent 平台（已集成 `autogpt`）。
+> - **[Multica](https://github.com/multica-ai/multica)** — 管理编码 Agent 团队的工作台（已集成 `multica`）。
+> - **[GitHub Agent HQ](https://github.blog/news-insights/company-news/welcome-home-agents/)** — GitHub 云端 Agent 工作流能力（已集成 `github-agent-hq`，无需本地安装）。
 
 #### 🔧 基础设施
 

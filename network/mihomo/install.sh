@@ -35,6 +35,15 @@ BINARY_NAME="mihomo"
 REPO="MetaCubeX/mihomo"
 # GitHub 镜像加速前缀（用户可通过 --mirror 覆盖）
 GITHUB_MIRROR=""
+# GitHub 镜像候选（自动检测用，按顺序尝试）
+MIRROR_CANDIDATES=(
+  "https://ghproxy.net"
+  "https://gh-proxy.com"
+  "https://ghfast.top"
+  "https://mirror.ghproxy.com"
+  "https://ghps.cc"
+)
+PROXY_MEMO_FILE=""   # 代理记忆文件（init_paths 后确定）
 
 # ---------------------------------------------------------------------------
 # 默认路径（根据安装模式动态设置）
@@ -64,6 +73,8 @@ ACTION（缺省时交互式询问）:
   --install        安装 mihomo
   --update         更新到最新版
   --uninstall      卸载 mihomo
+  --import-clashx [SOURCE]  从 ClashX Meta 导入配置（SOURCE: 本地路径 或 user@host:path，缺省交互输入）
+  --ui                     安装/更新 metacubexd Web 面板（external-ui）
 
 OPTIONS:
   --config URL        导入订阅链接（下载 config.yaml）
@@ -92,6 +103,11 @@ while [ $# -gt 0 ]; do
     --install)        ACTION="install" ;;
     --update)         ACTION="update" ;;
     --uninstall)      ACTION="uninstall" ;;
+    --import-clashx)
+      ACTION="clashx_import"
+      if [ $# -gt 1 ] && [[ "$2" != -* ]]; then shift; CLASHX_SOURCE="$1"; fi
+      ;;
+    --ui)                 ACTION="install_ui" ;;
     --config)         shift; SUB_CONFIG_URL="$1" ;;
     --user)           INSTALL_MODE="user" ;;
     --mirror)         shift; GITHUB_MIRROR="${1%/}" ;;
@@ -118,9 +134,11 @@ init_paths() {
     INSTALL_DIR="${HOME}/.local/bin"
     CONFIG_DIR="${CONFIG_DIR:-${HOME}/.config/mihomo}"
     SERVICE_FILE=""
+    PROXY_MEMO_FILE="${CONFIG_DIR}/.proxy.conf"
   else
     INSTALL_DIR="/usr/local/bin"
     CONFIG_DIR="${CONFIG_DIR:-/etc/mihomo}"
+    PROXY_MEMO_FILE="${CONFIG_DIR}/.proxy.conf"
     if [ "$(uname -s)" = "Darwin" ]; then
       SERVICE_FILE="${HOME}/Library/LaunchAgents/com.mihomo.plist"
     else
@@ -188,6 +206,129 @@ build_url() {
   else
     echo "$github_url"
   fi
+}
+
+# ---------------------------------------------------------------------------
+# 网络通道自动检测（直连 → 镜像 → 记忆代理 → 交互输入代理）
+# ---------------------------------------------------------------------------
+# 测试 URL 是否可达（返回 0 表示可达）
+test_url() {
+  local url="$1" proxy_args=""
+  [ -n "$PROXY_URL" ] && proxy_args="--proxy $PROXY_URL"
+  curl -s -o /dev/null -w '%{http_code}' -L --connect-timeout 8 --max-time 12 $proxy_args "$url" 2>/dev/null | grep -qE '^(200|301|302|307|308)$'
+}
+
+# 加载上次保存的代理
+load_proxy_memo() {
+  [ -n "$PROXY_MEMO_FILE" ] || return 0
+  [ -f "$PROXY_MEMO_FILE" ] || return 0
+  local saved old
+  saved="$(head -1 "$PROXY_MEMO_FILE" 2>/dev/null | tr -d '[:space:]')"
+  [ -z "$saved" ] && return 0
+  old="$PROXY_URL"
+  PROXY_URL="$saved"
+  if test_url "https://github.com"; then
+    ok "使用上次保存的代理: ${PROXY_URL}"
+  else
+    warn "上次保存的代理不可用: ${PROXY_URL}"
+    PROXY_URL="$old"
+  fi
+}
+
+# 保存代理记忆（下次自动复用）
+save_proxy_memo() {
+  [ -z "$PROXY_URL" ] && return 0
+  [ -n "$PROXY_MEMO_FILE" ] || return 0
+  mkdir -p "$(dirname "$PROXY_MEMO_FILE")" 2>/dev/null || true
+  echo "$PROXY_URL" > "$PROXY_MEMO_FILE" 2>/dev/null && info "已保存代理配置（下次自动复用）: ${PROXY_MEMO_FILE}"
+}
+
+# 交互式提示输入代理地址（IP + 端口）
+prompt_proxy() {
+  if [ "$FORCE" -eq 1 ] || [ ! -t 0 ]; then
+    warn "非交互模式，请手动指定: --proxy http://IP:PORT 或 --mirror URL"
+    return 1
+  fi
+  echo ""
+  warn "检测不到可用的 GitHub 通道（直连与镜像均失败）"
+  warn "必须通过代理才能访问 GitHub 下载 mihomo"
+  local input
+  read -r -p "请输入代理地址（如 http://192.168.1.100:7890，直接回车跳过）: " input
+  input="$(echo "$input" | tr -d '[:space:]')"
+  [ -z "$input" ] && return 1
+  # 补充协议前缀
+  [[ "$input" != http://* && "$input" != https://* && "$input" != socks5://* ]] && input="http://${input}"
+  # 格式校验: 协议://主机:端口
+  if ! echo "$input" | grep -qE '^(https?|socks5)://[^:/[:space:]]+:[0-9]{1,5}$'; then
+    warn "代理格式不正确: $input（应为 http://IP:端口）"
+    return 1
+  fi
+  PROXY_URL="$input"
+  if test_url "https://github.com"; then
+    ok "代理可用: ${PROXY_URL}"
+    return 0
+  fi
+  # 容错: https 前缀访问 http 代理端口常失败，自动改用 http 前缀再试一次
+  if [[ "$input" == https://* ]]; then
+    local alt="http://${input#https://}"
+    PROXY_URL="$alt"
+    if test_url "https://github.com"; then
+      warn "https 前缀不通，自动改用 http 前缀"
+      ok "代理可用: ${PROXY_URL}"
+      return 0
+    fi
+  fi
+  warn "代理不可达: ${PROXY_URL}（请确认代理服务和地址）"
+  PROXY_URL=""
+  return 1
+}
+
+# 自动检测可用下载通道（已显式指定则直接使用）
+detect_channel() {
+  # 容错: --mirror 误填了代理地址（形如 IP:端口 或 协议://IP:端口 且无路径）→ 自动转为代理
+  if [ -n "$GITHUB_MIRROR" ]; then
+    local m="$GITHUB_MIRROR"
+    if echo "$m" | grep -qE '^(https?|socks5)://[^/:]+:[0-9]{1,5}$' || echo "$m" | grep -qE '^[0-9a-zA-Z.-]+:[0-9]{1,5}$'; then
+      warn "检测到 --mirror 参数看起来像代理地址（${m}），自动转为 --proxy 使用"
+      PROXY_URL="$m"
+      [[ "$PROXY_URL" != http://* && "$PROXY_URL" != https://* && "$PROXY_URL" != socks5://* ]] && PROXY_URL="http://${PROXY_URL}"
+      GITHUB_MIRROR=""
+      ok "已转为代理: ${PROXY_URL}"
+      return 0
+    fi
+    ok "使用指定镜像: ${GITHUB_MIRROR}"
+    return 0
+  fi
+  [ -n "$PROXY_URL" ] && { ok "使用指定代理: ${PROXY_URL}"; return 0; }
+
+  info "自动检测 GitHub 访问通道..."
+
+  # 1) 直连
+  if test_url "https://github.com"; then
+    ok "直连 GitHub 可用"
+    return 0
+  fi
+  warn "直连 GitHub 失败"
+
+  # 2) 上次保存的代理
+  load_proxy_memo
+  [ -n "$PROXY_URL" ] && return 0
+
+  # 3) 镜像候选（依次测试）
+  local m
+  for m in "${MIRROR_CANDIDATES[@]}"; do
+    if test_url "${m}/https://github.com"; then
+      ok "镜像可用: ${m}"
+      GITHUB_MIRROR="$m"
+      return 0
+    fi
+  done
+  warn "所有 GitHub 镜像均不可用"
+
+  # 4) 交互式输入代理
+  prompt_proxy && return 0
+
+  return 1
 }
 
 # 下载文件（支持代理和镜像，自动重试）
@@ -273,18 +414,25 @@ query_release() {
     return 0
   fi
 
-  # 方案1: 通过 GitHub API 查询（需访问 api.github.com）
+  # 方案1: 通过 GitHub API 查询（直连，或经镜像代理 api.github.com）
   local api="https://api.github.com/repos/${REPO}/releases/latest"
+  local api_url="$api"
+  [ -n "$GITHUB_MIRROR" ] && api_url="${GITHUB_MIRROR}/${api}"
   local json
-  json=$(curl -sSL --max-time 15 $curl_proxy "$api" 2>/dev/null) || true
+  json=$(curl -sSL --max-time 15 $curl_proxy "$api_url" 2>/dev/null) || true
 
   if [ -n "$json" ]; then
-    # 通过环境变量传递 JSON 给 python3（避免 heredoc 覆盖 stdin）
+    # 通过临时文件传递 JSON 给 python3
+    # （环境变量传递在 JSON >128KB 时会触发 E2BIG 参数列表过长）
+    local json_tmp
+    json_tmp="$(mktemp)"
+    printf '%s' "$json" > "$json_tmp"
     local result
-    result=$(MIHOMO_JSON="$json" MIHOMO_OS="$os_name" MIHOMO_ARCH="$arch_name" python3 -c '
+    result=$(MIHOMO_JSON_FILE="$json_tmp" MIHOMO_OS="$os_name" MIHOMO_ARCH="$arch_name" python3 -c '
 import json, os, sys
 try:
-    release = json.loads(os.environ.get("MIHOMO_JSON", ""))
+    with open(os.environ.get("MIHOMO_JSON_FILE", ""), encoding="utf-8") as f:
+        release = json.load(f)
 except Exception:
     sys.exit(1)
 
@@ -305,7 +453,8 @@ v3 = []
 
 for a in assets:
     name = a["name"]
-    if not name.startswith(prefix):
+    # 只匹配 .gz 压缩包（install.sh 解压逻辑支持 .gz/.tar.gz，.deb/.rpm 等需排除）
+    if not name.startswith(prefix) or not name.endswith(".gz"):
         continue
     lower = name.lower()
     if "compatible" in lower:
@@ -328,6 +477,7 @@ if match is None:
 else:
     print(tag + "\t" + match["name"] + "\t" + match["browser_download_url"])
 ' 2>/dev/null) || true
+    rm -f "$json_tmp"
 
     if [ -n "$result" ] && [ "$result" != "NO_MATCH"$'\t'$'\t' ]; then
       printf "%s" "$result"
@@ -338,16 +488,18 @@ else:
   # 方案2: API 失败时，通过 redirect 获取版本号
   info "GitHub API 不可用，尝试通过 redirect 获取版本号..."
   local redirect_url tag=""
+  local latest_url="https://github.com/${REPO}/releases/latest"
 
-  # 先直连尝试
-  redirect_url=$(curl -sSL -o /dev/null -w '%{redirect_url}' --max-time 15 $curl_proxy \
-    "https://github.com/${REPO}/releases/latest" 2>/dev/null) || true
+  # 通过选定通道尝试（镜像优先，直连兜底）
+  # 注意: 不能用 -L（会跟随重定向导致 %{redirect_url} 为空），用 -sS 取 Location
+  local probe_url="$latest_url"
+  [ -n "$GITHUB_MIRROR" ] && probe_url="${GITHUB_MIRROR}/${latest_url}"
+  redirect_url=$(curl -sS -o /dev/null -w '%{redirect_url}' --max-time 15 $curl_proxy "$probe_url" 2>/dev/null) || true
   [ -n "$redirect_url" ] && tag="$(echo "$redirect_url" | grep -oE 'tag/v[0-9]+\.[0-9]+\.[0-9]+' | sed 's|tag/||')"
 
-  # 直连失败时通过镜像尝试
+  # 镜像 redirect 拿不到时，再直连尝试一次
   if [ -z "$tag" ] && [ -n "$GITHUB_MIRROR" ]; then
-    redirect_url=$(curl -sSL -o /dev/null -w '%{redirect_url}' --max-time 15 \
-      "${GITHUB_MIRROR}/https://github.com/${REPO}/releases/latest" 2>/dev/null) || true
+    redirect_url=$(curl -sS -o /dev/null -w '%{redirect_url}' --max-time 15 $curl_proxy "$latest_url" 2>/dev/null) || true
     [ -n "$redirect_url" ] && tag="$(echo "$redirect_url" | grep -oE 'tag/v[0-9]+\.[0-9]+\.[0-9]+' | sed 's|tag/||')"
   fi
 
@@ -686,6 +838,15 @@ secret: ""' "$cfg" && rm -f "$cfg.bak"
     changed=1
   fi
 
+  # 5) geodata-mode: true → false（mihomo 服务端默认用 geoip.metadb；
+  #    ClashX Meta 的 geodata-mode: true 需要 geoip.dat（v2ray-rules-dat 格式），
+  #    而 metadb 含 private 等完整分类，可避免 "country code private not found" 启动失败）
+  if grep -qE '^[[:space:]]*geodata-mode:[[:space:]]*true' "$cfg"; then
+    info "geodata-mode 切换为 false（改用 geoip.metadb，避免缺 geoip.dat 导致启动失败）"
+    sed -i.bak -E 's/^([[:space:]]*geodata-mode:[[:space:]]*)true/\1false/' "$cfg" && rm -f "$cfg.bak"
+    changed=1
+  fi
+
   if [ "$changed" -eq 1 ]; then
     ok "配置已适配服务器场景"
   fi
@@ -724,6 +885,161 @@ import_subscription() {
       systemctl restart mihomo 2>/dev/null || warn "服务重启失败，请手动: sudo systemctl restart mihomo"
     fi
   fi
+}
+
+# ---------------------------------------------------------------------------
+# 从 ClashX Meta（macOS 客户端）导入配置
+#   源格式: 本地路径 /path/to/config.yaml  或  scp 格式 user@host:/path/to/config.yaml
+# ---------------------------------------------------------------------------
+import_clashx_config() {
+  local src="$1"
+  local tmp=""
+
+  if [ -z "$src" ]; then
+    info "从 ClashX Meta 导入配置（支持两种源）:"
+    echo "  1. 本地文件: /path/to/config.yaml"
+    echo "  2. 远程 scp: user@mac-ip:/path/to/config.yaml"
+    printf "请输入配置源: "
+    read -r src || { error "未输入配置源"; return 1; }
+    [ -n "$src" ] || { error "未输入配置源"; return 1; }
+  fi
+
+  # 备份现有配置
+  if [ -f "${CONFIG_DIR}/config.yaml" ]; then
+    local backup="${CONFIG_DIR}/config.yaml.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "${CONFIG_DIR}/config.yaml" "$backup"
+    info "已备份现有配置到: $backup"
+  fi
+
+  # 远程 scp 源拉取
+  if [[ "$src" == *":"* ]] && [[ "$src" != /* ]]; then
+    tmp="$(mktemp /tmp/clashx-config.XXXXXX.yaml)" || tmp="/tmp/clashx-config.yaml"
+    info "从远程拉取: $src"
+    if ! scp -q "$src" "$tmp" 2>/dev/null; then
+      error "scp 拉取失败: $src"
+      return 1
+    fi
+    src="$tmp"
+  fi
+
+  [ -f "$src" ] || { error "配置源不存在: $src"; return 1; }
+  cp "$src" "${CONFIG_DIR}/config.yaml"
+  ok "配置已导入: ${CONFIG_DIR}/config.yaml ($(wc -l < "${CONFIG_DIR}/config.yaml") 行)"
+  [ -n "$tmp" ] && rm -f "$tmp"
+
+  # 服务器场景适配（external-controller/allow-lan/TUN/dns-hijack/geodata-mode）
+  patch_config_for_server
+
+  # 校验配置
+  info "校验配置..."
+  if mihomo -t -d "$CONFIG_DIR" -f "${CONFIG_DIR}/config.yaml" 2>&1 | tail -1 | grep -qi "successful"; then
+    ok "配置校验通过"
+  else
+    error "配置校验失败，请检查上面的错误信息"
+    info "可回滚: sudo cp ${CONFIG_DIR}/config.yaml.backup.* ${CONFIG_DIR}/config.yaml"
+    return 1
+  fi
+
+  # 重启服务
+  if [ "$INSTALL_MODE" = "system" ] && [ "$(uname -s)" != "Darwin" ]; then
+    info "重启 mihomo 服务..."
+    systemctl restart mihomo 2>/dev/null || {
+      warn "服务重启失败，请手动: sudo systemctl restart mihomo"
+      return 1
+    }
+    sleep 3
+  fi
+
+  # 代理出站自测
+  info "代理出站自测 (经 127.0.0.1:7890)..."
+  local code
+  code=$(curl -x http://127.0.0.1:7890 -s -o /dev/null -w "%{http_code}" --connect-timeout 8 -m 12 https://www.google.com 2>/dev/null || true)
+  case "$code" in
+    200|301|302)
+      ok "出站测试通过 (google → $code)"
+      ;;
+    *)
+      warn "出站测试未通过 (google → ${code:-FAIL})，请检查节点状态: sudo ./service.sh nodes"
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# 安装/更新 metacubexd Web 面板（external-ui）
+# ---------------------------------------------------------------------------
+UI_REPO="MetaCubeX/metacubexd"
+UI_ZIP_URL="https://github.com/${UI_REPO}/archive/refs/heads/gh-pages.zip"
+
+install_ui() {
+  info "安装/更新 metacubexd Web 面板..."
+  local tmp_zip="/tmp/metacubexd.zip"
+  local tmp_dir="/tmp/metacubexd-ui"
+  rm -f "$tmp_zip"
+  rm -rf "$tmp_dir"
+
+  # 下载通道：优先指定代理 → 记忆代理 → 直连
+  local proxy_opt=""
+  if [ -n "$PROXY_URL" ]; then
+    proxy_opt="-x $PROXY_URL"
+  elif [ -f "${CONFIG_DIR}/.proxy.conf" ]; then
+    local memo
+    memo="$(cat "${CONFIG_DIR}/.proxy.conf" 2>/dev/null || true)"
+    [ -n "$memo" ] && proxy_opt="-x $memo"
+  fi
+
+  info "下载面板: $UI_ZIP_URL${proxy_opt:+ (经代理)}"
+  if ! curl $proxy_opt -sSL --fail --connect-timeout 30 -o "$tmp_zip" "$UI_ZIP_URL"; then
+    error "面板下载失败"
+    info "可手动下载 ${UI_ZIP_URL} 放到 ${tmp_zip} 后重试"
+    return 1
+  fi
+  ok "面板下载完成 ($(du -h "$tmp_zip" | cut -f1))"
+
+  mkdir -p "$tmp_dir"
+  unzip -q "$tmp_zip" -d "$tmp_dir" || { error "解压失败"; return 1; }
+
+  # 定位面板根目录（含 index.html 的最上层目录）
+  local src_dir
+  src_dir="$(find "$tmp_dir" -maxdepth 3 -name index.html -exec dirname {} \; 2>/dev/null | head -1)"
+  [ -z "$src_dir" ] && { error "未找到面板文件"; return 1; }
+
+  mkdir -p "${CONFIG_DIR}/ui"
+  cp -r "$src_dir"/. "${CONFIG_DIR}/ui/"
+  ok "面板已安装到: ${CONFIG_DIR}/ui/"
+
+  # 配置写入 external-ui
+  local cfg="${CONFIG_DIR}/config.yaml"
+  if ! grep -qE '^[[:space:]]*external-ui:' "$cfg"; then
+    if grep -qE '^[[:space:]]*external-controller:' "$cfg"; then
+      sed -i.bak '/^[[:space:]]*external-controller:/a\
+external-ui: ./ui' "$cfg" && rm -f "$cfg.bak"
+    else
+      printf '\nexternal-ui: ./ui\n' >> "$cfg"
+    fi
+    info "已写入 external-ui: ./ui"
+  fi
+
+  # 重启服务
+  if [ "$INSTALL_MODE" = "system" ] && [ "$(uname -s)" != "Darwin" ]; then
+    info "重启 mihomo 服务..."
+    systemctl restart mihomo 2>/dev/null || {
+      warn "服务重启失败，请手动: sudo systemctl restart mihomo"
+      return 1
+    }
+    sleep 3
+  fi
+
+  # 验证
+  local code
+  code="$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "http://127.0.0.1:9090/ui/" 2>/dev/null || true)"
+  if [ "$code" = "200" ]; then
+    ok "面板访问正常: http://127.0.0.1:9090/ui/"
+  else
+    warn "面板状态: ${code:-未知}（浏览器访问 http://127.0.0.1:9090/ui 确认）"
+  fi
+
+  rm -f "$tmp_zip"
+  rm -rf "$tmp_dir"
 }
 
 # ---------------------------------------------------------------------------
@@ -823,14 +1139,18 @@ main() {
     echo "  2) 更新 mihomo"
     echo "  3) 卸载 mihomo"
     echo "  4) 仅导入订阅配置"
-    echo "  5) 取消"
-    printf "输入 [1-5]: "
-    read -r reply || reply="5"
+    echo "  5) 从 ClashX Meta 导入配置"
+    echo "  6) 安装/更新 Web 面板"
+    echo "  7) 取消"
+    printf "输入 [1-7]: "
+    read -r reply || reply="7"
     case "$reply" in
       1) ACTION="install" ;;
       2) ACTION="update" ;;
       3) ACTION="uninstall" ;;
       4) ACTION="config_only" ;;
+      5) ACTION="clashx_import" ;;
+      6) ACTION="install_ui" ;;
       *) exit 0 ;;
     esac
     echo ""
@@ -838,6 +1158,15 @@ main() {
 
   case "$ACTION" in
     install|update)
+      # 自动检测网络通道（直连/镜像/代理），失败时交互提示输入代理
+      detect_channel || {
+        error "无法访问 GitHub（直连/镜像/代理均不可用）"
+        info "手动方案:"
+        echo "  1. sudo $0 --install --version v1.19.32 --mirror https://可用镜像"
+        echo "  2. sudo $0 --install --proxy http://代理IP:端口"
+        echo "  3. 在能访问 GitHub 的机器下载 mihomo-linux-amd64-v1.19.32.gz 后手动安装"
+        exit 1
+      }
       # 查询最新版本
       info "查询 GitHub 最新版本..."
       local result
@@ -872,6 +1201,9 @@ main() {
       fi
 
       install_mihomo "$tag" "$asset_name" "$download_url"
+      # 安装完成后自动安装 Web 面板（失败不阻塞安装）
+      install_ui || warn "Web 面板安装失败（可稍后: sudo $0 --ui 重试）"
+      save_proxy_memo
       show_summary
       ;;
 
@@ -885,6 +1217,14 @@ main() {
         exit 1
       fi
       import_subscription "$SUB_CONFIG_URL"
+      ;;
+
+    clashx_import)
+      import_clashx_config "$CLASHX_SOURCE"
+      ;;
+
+    install_ui)
+      install_ui
       ;;
 
     *)

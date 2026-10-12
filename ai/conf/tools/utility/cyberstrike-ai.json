@@ -1,0 +1,68 @@
+{
+  "id": "cyberstrike-ai",
+  "name": "CyberStrikeAI 安全测试平台",
+  "description": "AI 原生安全测试与证据管理平台，支持授权资产管理、工具编排、MCP 和报告整理。默认仅本地运行，不自动启用高风险能力。",
+  "category": "ai-utility",
+  "tags": [
+    "安全",
+    "渗透测试",
+    "漏洞管理",
+    "MCP",
+    "Agent"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "本地源码构建（macOS/Linux）",
+        "type": "bash",
+        "command": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" install",
+        "check": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" status",
+        "uninstall": [
+          "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" uninstall --yes"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" update",
+    "check": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" status"
+  },
+  "commands": {
+    "status": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" status",
+    "start": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" start",
+    "stop": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" stop",
+    "restart": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" restart"
+  },
+  "process_check": "",
+  "status_check": [
+    {
+      "name": "检查 CyberStrikeAI 安装状态",
+      "command": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" status"
+    }
+  ],
+  "setup_guide": {
+    "manual": "安装后先编辑 ~/.local/share/cyberstrike-ai/config.yaml 配置 AI 通道，再执行 start，并仅通过 https://127.0.0.1:8080/ 访问。",
+    "workflows": [
+      {
+        "name": "安全启动",
+        "example": "bash security/platform/cyberstrikeai/cyberstrike-ai.sh start"
+      },
+      {
+        "name": "安全检查",
+        "example": "先确认目标授权、工具白名单和 HITL 审批，再在隔离环境运行低影响任务。"
+      }
+    ]
+  },
+  "notes": "CyberStrikeAI 是高权限安全平台。默认绑定 localhost，使用本地自签 HTTPS，不自动配置 API Key，不注册 Codex MCP，不启用 C2、WebShell 或外部 MCP；启用这些能力前必须审查授权、网络隔离和审计配置。",
+  "homepage": "https://github.com/AIPentest/CyberStrikeAI",
+  "repository": "https://github.com/Ed1s0nZ/CyberStrikeAI",
+  "scenarios": [
+    "security",
+    "qa-testing",
+    "ops-monitoring"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true
+}

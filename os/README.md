@@ -89,6 +89,13 @@ bash init/init_kernel.sh
 
 # 修复 SSH 文件权限
 ./sshm -R
+
+# 直连 IP；会自动探测 22/2222 端口
+./sshm sky@192.168.0.105
+
+# IP 后两段简写，默认展开为 192.168.0.105
+./sshm sky@0.105
+SSHM_IP_PREFIX=192.168 ./sshm 0.105
 ```
 
 ### 网络脚本（已整合到顶层 network/ 目录）

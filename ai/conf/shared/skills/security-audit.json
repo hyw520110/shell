@@ -1,0 +1,49 @@
+{
+  "id": "security-audit",
+  "name": "Cloudflare Security Audit",
+  "description": "基于 Cloudflare security-audit-skill 的证据化安全审计工作流：先建立覆盖范围，再发现候选问题、独立复核记录并输出可审查报告。默认只读，公网目标仅限明确授权范围。",
+  "category": "security",
+  "prompts": {
+    "audit": "按 Cloudflare Security Audit 的阶段化流程审计当前项目或明确授权的目标：侦察与范围确认 → 覆盖率驱动的候选发现 → 最小化验证 → 记录独立复核 → 生成结构化报告。每个发现必须绑定真实证据、目标、时间、工具/模板版本和影响边界；不把扫描器命中直接当作已确认漏洞。",
+    "coverage": "先列出已检查的入口、路由、权限边界、依赖、配置和未覆盖区域，再按 OWASP/CWE/项目特有攻击面建立检查矩阵。对无法确认的项目标记 needs_validation，并说明需要的安全、只读验证条件。",
+    "report": "输出 Markdown 安全审计报告和机器可读 findings.json（如当前任务允许写入报告目录）：包含唯一 ID、标题、严重性依据、资产/组件、复现步骤、请求响应或源码证据、实际影响、误报排除、修复建议、回归标准和授权/范围说明。不得写入密码、Token、Cookie 或完整敏感数据。"
+  },
+  "capabilities": [
+    "分阶段侦察与范围确认",
+    "覆盖率驱动的代码、配置、依赖和 Web 攻击面审计",
+    "候选漏洞的最小化、可重复、只读验证",
+    "独立记录复核与 findings.json 结构化输出",
+    "基于证据的 Markdown 报告、影响分析和修复建议"
+  ],
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": [
+      "node"
+    ]
+  },
+  "instructions": {
+    "workflow": "先确认授权范围和停止条件，再建立资产/代码覆盖矩阵；候选发现后逐条补充证据并独立复核；最后去重、分级并生成报告。若没有隔离沙箱或充分授权，不运行目标控制的构建、浏览器、模糊测试器或利用链。",
+    "safety": "默认只读和低影响；禁止 DoS、资源耗尽、高并发爆破、真实敏感数据导出、删除/修改业务数据、持久化、提权、横向移动、反弹 Shell 和绕过访问控制。公网验证只使用明确授权的 allowlist、限速、超时和最小请求。",
+    "anti_hallucination": "必须用源代码、配置、请求响应或其他可复核证据支撑结论。无法独立复现的结果只能标记为 candidate 或 needs_validation，不得写成 confirmed。"
+  },
+  "tags": [
+    "安全审计",
+    "漏洞扫描",
+    "代码审计",
+    "OWASP",
+    "CWE",
+    "Cloudflare",
+    "Security Audit"
+  ],
+  "scenarios": [
+    "security",
+    "code-review",
+    "coding"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/cloudflare/security-audit-skill",
+  "repository": "https://github.com/cloudflare/security-audit-skill",
+  "notes": "AI Hub 提供可审查的本地适配器，不自动执行上游仓库中的构建、浏览器、模糊测试或利用步骤。上游 Skill 要求 Node.js，并建议对目标控制的进程使用操作系统级沙箱；完整上游资源需在审查来源和权限后按官方说明单独安装。"
+}

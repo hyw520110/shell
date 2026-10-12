@@ -1,0 +1,43 @@
+{
+  "id": "github-agent-hq",
+  "name": "GitHub Agent HQ",
+  "description": "GitHub 的云端多智能体工作台，统一管理 Copilot 与第三方编码 Agent；无需本地安装独立运行时",
+  "category": "ai-builder",
+  "tags": ["github", "agents", "orchestration", "copilot", "cloud"],
+  "install": {
+    "methods": [
+      {
+        "name": "在线服务（无需本地安装）",
+        "type": "bash",
+        "command": "url='https://github.com/features/copilot'; if command -v open >/dev/null 2>&1; then open \"$url\"; elif command -v xdg-open >/dev/null 2>&1; then xdg-open \"$url\" >/dev/null 2>&1 & else echo \"请在浏览器打开：$url\"; fi; echo 'GitHub Agent HQ 是 GitHub 平台能力，请使用支持 Agent HQ 的 GitHub/Copilot 账户。'",
+        "check": "true",
+        "uninstall": ["echo 'GitHub Agent HQ 为云端能力，无本地组件可卸载。'"]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "echo 'GitHub Agent HQ 由 GitHub 服务端更新，无需本地更新。'",
+    "check": "true"
+  },
+  "process_check": "",
+  "status_check": [
+    {
+      "name": "平台状态",
+      "command": "echo '云端能力：需要 GitHub 账户及相应 Copilot/Agent HQ 权限'"
+    }
+  ],
+  "commands": {
+    "start": "if command -v open >/dev/null 2>&1; then open https://github.com/features/copilot; elif command -v xdg-open >/dev/null 2>&1; then xdg-open https://github.com/features/copilot >/dev/null 2>&1 & else echo 'https://github.com/features/copilot'; fi",
+    "version": "printf 'cloud-managed'"
+  },
+  "setup_guide": {
+    "manual": "Agent HQ 是 GitHub 的平台能力，不是可独立安装的本地框架；登录 GitHub 后按账户权限使用 Mission Control、Copilot CLI 与第三方 Agent。"
+  },
+  "references": {
+    "shared_mcp_servers": ["github"],
+    "shared_skills": ["git"]
+  },
+  "homepage": "https://github.blog/news-insights/company-news/welcome-home-agents/",
+  "notes": "GitHub Agent HQ 是 GitHub 的开放式 Agent 工作流和管理能力，不等同于某个可通过 pip/npm 安装的 CLI。"
+}

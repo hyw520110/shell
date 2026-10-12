@@ -27,7 +27,11 @@ readonly MAC_DB_URL="https://standards-oui.ieee.org/oui/oui.csv"
 readonly CACHE_DIR="${HOME}/.cache/netscan"
 readonly MAC_DB="${CACHE_DIR}/ieee_oui.csv"
 readonly MAC_DB_INDEX="${CACHE_DIR}/mac_oui_index.txt"
-readonly DEFAULT_TIMEOUT=120
+readonly MAC_DB_READY_MARKER="${CACHE_DIR}/.ieee_oui.ready"
+readonly MAC_DB_CONNECT_TIMEOUT=15
+readonly MAC_DB_TIMEOUT=45
+readonly MAC_DB_RETRIES=2
+readonly MAC_DB_RETRY_MAX_TIME=90
 readonly DEFAULT_PORTS="22,23,80,161,179,443,5060,5061"
 readonly QUICK_PORTS="22,80,443"
 
@@ -37,6 +41,7 @@ CUSTOM_INTERFACE=""
 CUSTOM_SUBNET=""
 CUSTOM_PORTS=""
 NO_MAC_DB=false
+MAC_DB_READY=false
 QUICK_MODE=false
 SCAN_ALL=false
 RAW_SORT=false
@@ -139,33 +144,102 @@ get_subnet() {
 # ==============================================================================
 
 # 加载 MAC 数据库
-load_mac_database() {
-    [[ "$NO_MAC_DB" == true ]] && return 0
-    mkdir -p "$CACHE_DIR"
+mac_db_is_valid() {
+    local db_file=$1
 
-    local curl_opts=("-sSLo" "$MAC_DB" "--max-time" "$DEFAULT_TIMEOUT")
-    # 如果文件存在，使用 -z (If-Modified-Since) 避免重复下载
-    [[ -f "$MAC_DB" ]] && curl_opts+=("-z" "$MAC_DB")
+    [[ -s "$db_file" ]] || return 1
 
-    if [[ ! -f "$MAC_DB" ]]; then
-        echo "正在初始化 IEEE OUI 数据库..."
+    # 只接受看起来完整的 IEEE OUI CSV。下载失败时不会让半截文件覆盖旧缓存。
+    awk -F, '
+        NR == 1 {
+            valid_header = ($0 ~ /Assignment/ && $0 ~ /Organization/)
+            next
+        }
+        NF >= 3 { rows++ }
+        END { exit !(valid_header && rows >= 1000) }
+    ' "$db_file" >/dev/null 2>&1
+}
+
+mac_db_index_is_valid() {
+    local index_file=$1
+
+    [[ -s "$index_file" ]] || return 1
+    awk -F'|' 'NF >= 2 { rows++ } END { exit !(rows >= 1000) }' \
+        "$index_file" >/dev/null 2>&1
+}
+
+build_mac_database_index() {
+    local index_tmp
+
+    index_tmp=$(mktemp "${CACHE_DIR}/.mac_oui_index.XXXXXX") || return 1
+    if ! awk -F, 'NR > 1 {
+        oui = tolower($2); gsub(/[" ]/, "", oui);
+        vendor = $3; gsub(/^"|"$/, "", vendor);
+        if (oui != "") print oui "|" substr(vendor, 1, 50)
+    }' "$MAC_DB" >"$index_tmp" 2>/dev/null || ! mac_db_index_is_valid "$index_tmp"; then
+        rm -f "$index_tmp"
+        return 1
     fi
 
-    if ! curl "${curl_opts[@]}" "$MAC_DB_URL"; then
-        if [[ ! -f "$MAC_DB" ]]; then
-            echo "【警告】MAC 数据库下载失败且本地无缓存。"
-            return 1
+    mv -f "$index_tmp" "$MAC_DB_INDEX" || {
+        rm -f "$index_tmp"
+        return 1
+    }
+    if printf '%s\n' "ready" >"$MAC_DB_READY_MARKER"; then
+        MAC_DB_READY=true
+    else
+        rm -f "$MAC_DB_READY_MARKER"
+        return 1
+    fi
+}
+
+load_mac_database() {
+    [[ "$NO_MAC_DB" == true ]] && return 0
+    mkdir -p "$CACHE_DIR" || return 0
+
+    local download_tmp headers_tmp
+    download_tmp=$(mktemp "${CACHE_DIR}/.ieee_oui.XXXXXX") || return 0
+    headers_tmp=$(mktemp "${CACHE_DIR}/.ieee_oui_headers.XXXXXX") || {
+        rm -f "$download_tmp"
+        return 0
+    }
+
+    # 使用临时文件下载，成功且通过校验后才替换正式缓存。
+    # 所有网络错误均静默处理：厂商库不可用不应阻断局域网扫描。
+    local curl_opts=(
+        --fail --location --silent
+        --connect-timeout "$MAC_DB_CONNECT_TIMEOUT"
+        --max-time "$MAC_DB_TIMEOUT"
+        --retry "$MAC_DB_RETRIES"
+        --retry-delay 2
+        --retry-max-time "$MAC_DB_RETRY_MAX_TIME"
+        --dump-header "$headers_tmp"
+        --output "$download_tmp"
+    )
+    [[ -f "$MAC_DB" ]] && curl_opts+=(--time-cond "$MAC_DB")
+
+    if curl "${curl_opts[@]}" "$MAC_DB_URL" >/dev/null 2>&1 && mac_db_is_valid "$download_tmp"; then
+        if mv -f "$download_tmp" "$MAC_DB"; then
+            echo "正在更新 MAC 厂商索引..."
+            if ! build_mac_database_index; then
+                MAC_DB_READY=false
+                rm -f "$MAC_DB_READY_MARKER"
+            fi
+        fi
+    else
+        rm -f "$download_tmp"
+        # 仅回退到本脚本确认过的完整缓存，避免继续使用旧版本留下的半截 CSV。
+        if [[ -f "$MAC_DB_READY_MARKER" ]] &&
+            mac_db_is_valid "$MAC_DB" && mac_db_index_is_valid "$MAC_DB_INDEX"; then
+            MAC_DB_READY=true
+        else
+            MAC_DB_READY=false
+            echo "MAC 厂商数据库暂不可用，跳过厂商识别。"
         fi
     fi
 
-    if [[ ! -f "$MAC_DB_INDEX" ]] || [[ "$MAC_DB" -nt "$MAC_DB_INDEX" ]]; then
-        echo "正在更新 MAC 厂商索引..."
-        awk -F, 'NR > 1 {
-            oui = tolower($2); gsub(/[" ]/, "", oui);
-            vendor = $3; gsub(/^"|"$/, "", vendor);
-            if (oui != "") print oui "|" substr(vendor, 1, 50)
-        }' "$MAC_DB" > "$MAC_DB_INDEX"
-    fi
+    rm -f "$headers_tmp" "$download_tmp"
+    return 0
 }
 
 # 获取厂商和设备类型
@@ -175,7 +249,7 @@ identify_device() {
 
     if [[ -n "$mac" ]]; then
         local oui=$(echo "$mac" | tr -d ':' | tr '[:upper:]' '[:lower:]' | cut -c1-6)
-        if [[ -f "$MAC_DB_INDEX" ]]; then
+        if [[ "$MAC_DB_READY" == true && -f "$MAC_DB_INDEX" ]]; then
             vendor=$(grep "^$oui|" "$MAC_DB_INDEX" | head -1 | cut -d'|' -f2)
             [[ -z "$vendor" ]] && vendor="未知厂商"
         fi

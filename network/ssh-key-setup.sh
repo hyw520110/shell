@@ -9,6 +9,9 @@ KEY_TYPE="ed25519"  # 使用更安全的密钥类型
 DEBUG_MODE=false
 NO_CONNECT=false    # 设置密钥后不自动连接
 TARGET_PASSWORD=""  # 目标主机密码（用于非交互式）
+USER_EXPLICIT=false   # 用户是否显式指定了用户名
+PORT_EXPLICIT=false  # 用户是否显式指定了端口
+PORT_AUTO_DETECTED=false
 
 # 检查是否有nc命令（用于连接测试）
 if command -v nc >/dev/null 2>&1; then
@@ -127,21 +130,114 @@ test_ssh_connectivity() {
     fi
 }
 
-# 检查目标主机是否在known_hosts中
+# 仅检查 TCP 端口，不输出错误信息，供自动探测流程使用
+check_tcp_port() {
+    local host="$1"
+    local port="$2"
+
+    if [ "$HAS_NC" = true ]; then
+        nc -z -w5 "$host" "$port" >/dev/null 2>&1
+        return $?
+    fi
+
+    # 没有 nc 时，用 SSH 建立连接测试；255 可能是认证失败，但说明 TCP 端口已响应。
+    ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no \
+        -p "$port" "root@$host" exit >/dev/null 2>&1
+    local result=$?
+    [ "$result" -eq 0 ] || [ "$result" -eq 255 ]
+}
+
+# 检测主机是否在线。macOS 与 Linux 的 ping 超时参数不同。
+host_is_online() {
+    local host="$1"
+    if ! command -v ping >/dev/null 2>&1; then
+        return 1
+    fi
+
+    if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+        # macOS 的 -W 单位是毫秒；-t 是 TTL，不能用作超时参数。
+        ping -c 1 -W 1000 "$host" >/dev/null 2>&1
+    else
+        ping -c 1 -W 1 "$host" >/dev/null 2>&1
+    fi
+}
+
+# 自动选择 SSH 端口：22 -> 主机在线检查 -> 2222。
+# 两个候选端口都不可用但主机在线时，留给交互模式提示用户输入端口。
+auto_detect_ssh_port() {
+    local host="$1"
+    PORT_AUTO_DETECTED=false
+
+    if check_tcp_port "$host" 22; then
+        target_port="22"
+        PORT_AUTO_DETECTED=true
+        log_info "检测到 $host 的 SSH 服务运行在 22 端口。"
+        return 0
+    fi
+
+    log_info "$host 的 22 端口不可用，正在检查主机是否在线..."
+    if ! host_is_online "$host"; then
+        log_error "$host 不可达，请检查主机是否开机及网络连接。"
+        return 1
+    fi
+
+    log_info "主机在线，正在检测备用 SSH 端口 2222..."
+    if check_tcp_port "$host" 2222; then
+        target_port="2222"
+        PORT_AUTO_DETECTED=true
+        log_info "检测到 $host 的 SSH 服务运行在 2222 端口。"
+        return 0
+    fi
+
+    target_port=""
+    log_info "主机在线，但 22 和 2222 端口均不可用。"
+    return 0
+}
+
+# 检查目标主机是否在known_hosts中 (兼容带端口/无端口两种记录格式)
 check_known_hosts() {
     local host="$1"
     local port="$2"
     
     if [ -f "$KNOWN_HOSTS_FILE" ]; then
-        if ssh-keygen -F "[$host]:$port" -f "$KNOWN_HOSTS_FILE" >/dev/null 2>&1; then
+        if ssh-keygen -F "$host" -f "$KNOWN_HOSTS_FILE" >/dev/null 2>&1 \
+           || ssh-keygen -F "[$host]:$port" -f "$KNOWN_HOSTS_FILE" >/dev/null 2>&1; then
             log_debug "主机 $host:$port 已在known_hosts中"
             return 0
-        else
-            log_debug "主机 $host:$port 不在known_hosts中"
-            return 1
         fi
     fi
     return 1
+}
+
+# 检测 known_hosts 中记录的主机密钥是否与目标机当前密钥不一致
+# (目标机重装系统 / 重新生成 SSH 密钥时会发生，导致 StrictHostKeyChecking 拒绝连接)
+# 原理: 以严格模式做一次 BatchMode 连接探测, 若报 HOST IDENTIFICATION HAS CHANGED 说明密钥已变更
+# 返回 0 = 密钥已变更 (需要清理旧记录); 1 = 无记录或未变更
+host_key_changed() {
+    local host="$1" port="$2"
+    local err
+    # 无 known_hosts 记录 → 首次连接，不算变更
+    if ! check_known_hosts "$host" "$port"; then
+        return 1
+    fi
+    err="$(ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=5 \
+        -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" -p "$port" "root@$host" exit 2>&1)"
+    case "$err" in
+        *"REMOTE HOST IDENTIFICATION HAS CHANGED"*|*"Host key verification failed"*)
+            log_debug "主机 $host:$port 的密钥已变更（known_hosts 中为旧记录）"
+            return 0 ;;
+    esac
+    return 1
+}
+
+# 清理 known_hosts 中的旧主机密钥记录 (兼容带端口/无端口两种格式)
+remove_stale_host_key() {
+    local host="$1" port="$2"
+    if [ -f "$KNOWN_HOSTS_FILE" ]; then
+        ssh-keygen -R "$host" -f "$KNOWN_HOSTS_FILE" >/dev/null 2>&1
+        ssh-keygen -R "[$host]:$port" -f "$KNOWN_HOSTS_FILE" >/dev/null 2>&1
+        log_info "已移除 known_hosts 中 $host:$port 的旧密钥记录"
+    fi
 }
 
 # 修复本地 ~/.ssh 目录及所有文件权限
@@ -169,29 +265,77 @@ add_to_ssh_config() {
     local host="$1"
     local user="$2"
     local port="$3"
-    
-    # 检查是否已经存在此主机的配置
-    if [ -f "$SSH_CONFIG_FILE" ] && grep -q "Host $host$" "$SSH_CONFIG_FILE" 2>/dev/null; then
-        log_debug "主机 $host 已在SSH配置中"
-        return 0
-    fi
-    
+
     # 创建SSH配置文件（如果不存在）
     mkdir -p "$(dirname "$SSH_CONFIG_FILE")"
-    
-    # 添加主机配置到SSH配置文件
-    {
-        echo ""
-        echo "Host $host"
-        echo "    User $user"
-        echo "    Port $port"
-        echo "    StrictHostKeyChecking no"
-    } >> "$SSH_CONFIG_FILE"
-    
+
+    if [ ! -f "$SSH_CONFIG_FILE" ]; then
+        {
+            echo "Host $host"
+            echo "    User $user"
+            echo "    Port $port"
+            echo "    StrictHostKeyChecking no"
+        } > "$SSH_CONFIG_FILE"
+        log_info "已将主机 $host 添加到SSH配置文件"
+    elif grep -Eq "^[[:space:]]*Host[[:space:]]+([^#]*[[:space:]])?$host([[:space:]]|$)" "$SSH_CONFIG_FILE" 2>/dev/null; then
+        # OpenSSH 对同一 Host 块采用“先出现的值优先”，不能简单在文件末尾追加覆盖块。
+        # 因此更新已有块中的 User/Port，并保留其它配置。
+        local tmp backup
+        tmp=$(mktemp)
+        backup="${SSH_CONFIG_FILE}.bak.$(date +%Y%m%d%H%M%S)"
+        if awk -v target="$host" -v new_user="$user" -v new_port="$port" '
+            function flush_target() {
+                if (in_target) {
+                    if (!user_seen) print "    User " new_user
+                    if (!port_seen) print "    Port " new_port
+                }
+            }
+            /^[[:space:]]*[Hh][Oo][Ss][Tt][[:space:]]/ {
+                flush_target()
+                in_target = 0
+                user_seen = 0
+                port_seen = 0
+                for (i = 2; i <= NF; i++) {
+                    if ($i == target) in_target = 1
+                }
+                print
+                next
+            }
+            in_target && tolower($1) == "user" {
+                print "    User " new_user
+                user_seen = 1
+                next
+            }
+            in_target && tolower($1) == "port" {
+                print "    Port " new_port
+                port_seen = 1
+                next
+            }
+            { print }
+            END { flush_target() }
+        ' "$SSH_CONFIG_FILE" > "$tmp"; then
+            cp "$SSH_CONFIG_FILE" "$backup"
+            mv "$tmp" "$SSH_CONFIG_FILE"
+            log_info "已更新主机 $host 的 SSH 配置：用户 $user，端口 $port"
+            log_debug "原 SSH 配置备份: $backup"
+        else
+            rm -f "$tmp"
+            log_error "更新 SSH 配置失败，原配置未修改"
+            return 1
+        fi
+    else
+        {
+            echo ""
+            echo "Host $host"
+            echo "    User $user"
+            echo "    Port $port"
+            echo "    StrictHostKeyChecking no"
+        } >> "$SSH_CONFIG_FILE"
+        log_info "已将主机 $host 添加到SSH配置文件"
+    fi
+
     # 确保 config 文件权限正确
     chmod 600 "$SSH_CONFIG_FILE" 2>/dev/null
-    
-    log_info "已将主机 $host 添加到SSH配置文件"
 }
 
 # 修复目标机器上的 .ssh 权限（解决 symlink home、StrictModes 等问题）
@@ -312,8 +456,8 @@ get_target_ip() {
             log_error "目标主机的IP或主机名不能为空。"
         elif ! validate_host "$target_ip"; then
             log_error "无效的主机格式: $target_ip"
-        elif ! ping -c 1 -W 1 "$target_ip" &> /dev/null; then
-            log_error "$target_ip 不可达，请重新输入。"
+        elif ! auto_detect_ssh_port "$target_ip"; then
+            :
         else
             break
         fi
@@ -326,13 +470,22 @@ get_target_user() {
 }
 
 get_target_port() {
-    read -t 8 -p "请输入目标主机的SSH端口 (默认为$TARGET_PORT): " target_port
-    target_port="${target_port:-$TARGET_PORT}"
-    
-    if ! validate_port "$target_port"; then
-        log_error "无效的端口号: $target_port，使用默认值 $TARGET_PORT"
-        target_port="$TARGET_PORT"
+    if [ "$PORT_AUTO_DETECTED" = true ]; then
+        return 0
     fi
+
+    while true; do
+        read -t 8 -p "请输入目标主机的SSH端口（例如 2222）: " target_port
+        if ! validate_port "$target_port"; then
+            log_error "无效的端口号: ${target_port:-空}"
+            continue
+        fi
+        if check_tcp_port "$target_ip" "$target_port"; then
+            log_info "检测到 SSH 端口 $target_port 可用。"
+            return 0
+        fi
+        log_error "$target_ip:$target_port 不可用，请重新输入。"
+    done
 }
 
 get_key_type() {
@@ -370,11 +523,13 @@ while [[ $# -gt 0 ]]; do
             ;;
         -u|--user)
             TARGET_USER="$2"
+            USER_EXPLICIT=true
             shift 2
             ;;
         -p|--port)
             if validate_port "$2"; then
                 TARGET_PORT="$2"
+                PORT_EXPLICIT=true
                 shift 2
             else
                 log_error "无效的端口号: $2"
@@ -425,11 +580,13 @@ while [[ $# -gt 0 ]]; do
                 fi
                 TARGET_IP="$1"
                 INTERACTIVE=false
-            elif [[ -z "$TARGET_USER" ]]; then
+            elif [ "$USER_EXPLICIT" = false ]; then
                 TARGET_USER="$1"
-            elif [[ -z "$TARGET_PORT" ]]; then
+                USER_EXPLICIT=true
+            elif [ "$PORT_EXPLICIT" = false ]; then
                 if validate_port "$1"; then
                     TARGET_PORT="$1"
+                    PORT_EXPLICIT=true
                 else
                     log_error "无效的端口号: $1"
                     exit 1
@@ -474,6 +631,18 @@ if ! validate_host "$target_ip"; then
     exit 1
 fi
 
+# 未显式指定端口时，非交互模式也自动尝试 22 和 2222。
+if [ "$INTERACTIVE" = false ] && [ "$PORT_EXPLICIT" = false ]; then
+    if ! auto_detect_ssh_port "$target_ip"; then
+        exit 1
+    fi
+fi
+
+if [ -z "$target_port" ]; then
+    log_error "22 和 2222 端口均不可用；请使用 -p/--port 指定自定义 SSH 端口。"
+    exit 1
+fi
+
 # 测试SSH连通性
 if ! test_ssh_connectivity "$target_ip" "$target_port"; then
     log_error "无法连接到 $target_ip:$target_port"
@@ -483,6 +652,13 @@ fi
 # 检查目标主机是否在known_hosts中
 if ! check_known_hosts "$target_ip" "$target_port"; then
     log_info "主机 $target_ip:$target_port 不在known_hosts中，连接时可能需要确认主机密钥"
+else
+    # 在 known_hosts 中但密钥已变更（重装系统等）：自动清理旧记录，避免 StrictHostKeyChecking 拒绝
+    if host_key_changed "$target_ip" "$target_port"; then
+        log_info "检测到 $target_ip:$target_port 的主机密钥已变更（可能重装过系统）"
+        remove_stale_host_key "$target_ip" "$target_port"
+        log_info "已准备重新接受新密钥，请继续。"
+    fi
 fi
 
 # 生成SSH密钥对
@@ -539,8 +715,8 @@ EOF
         exit 1
     fi
 else
-    # 交互式复制
-    if ssh-copy-id -i "$pub_key_path" -p "$target_port" "$target_user@$target_ip"; then
+    # 交互式复制 (accept-new: 首次连接自动接受新主机密钥, 已清理过旧记录时无需人工确认)
+    if ssh-copy-id -i "$pub_key_path" -p "$target_port" -o StrictHostKeyChecking=accept-new "$target_user@$target_ip"; then
         setup_success=true
     else
         log_error "无法设置 $target_ip:$target_port 的免密登录。"

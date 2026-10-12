@@ -1,0 +1,64 @@
+{
+  "id": "semgrep",
+  "name": "Semgrep MCP",
+  "description": "Semgrep 官方 MCP 服务器，在编辑器/聊天中直接扫描代码，查找安全漏洞与代码质量问题；支持 registry 规则与自定义规则。",
+  "category": "security",
+  "install": {
+    "type": "bash",
+    "pre_install": [
+      "command -v uv >/dev/null 2>&1 || command -v pipx >/dev/null 2>&1 || echo '未检测到 uv/pipx，将回退到 pip3 安装'"
+    ],
+    "command": "if command -v uv >/dev/null 2>&1; then uv tool install semgrep-mcp; elif command -v pipx >/dev/null 2>&1; then pipx install semgrep-mcp; else pip3 install --user semgrep-mcp; fi"
+  },
+  "compatibility": {
+    "check": "case \"$(uname -s 2>/dev/null)\" in Darwin|Linux) exit 0 ;; *) exit 1 ;; esac",
+    "reason": "支持 macOS/Linux。"
+  },
+  "config": {
+    "command": "uvx",
+    "args": [
+      "-y",
+      "semgrep-mcp"
+    ],
+    "transportType": "stdio"
+  },
+  "required_tools": ["uv"],
+  "status_check": [
+    {
+      "name": "检查 uv 运行时",
+      "command": "command -v uv >/dev/null 2>&1 && echo 'uv 可用' || echo 'uv 未安装'"
+    },
+    {
+      "name": "检查 semgrep-mcp 启动器",
+      "command": "command -v semgrep-mcp >/dev/null 2>&1 && echo 'semgrep-mcp 已安装' || echo 'semgrep-mcp 未安装（由 uv tool install 提供）'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "security_check",
+      "description": "扫描代码中的安全漏洞"
+    },
+    {
+      "name": "semgrep_scan",
+      "description": "使用给定 config 扫描代码"
+    },
+    {
+      "name": "semgrep_scan_with_custom_rule",
+      "description": "使用自定义 Semgrep 规则扫描代码"
+    },
+    {
+      "name": "get_abstract_syntax_tree",
+      "description": "解析并分析代码结构（AST）"
+    }
+  ],
+  "tags": ["安全", "静态分析", "源码扫描", "MCP", "SAST"],
+  "scenarios": ["security", "code-review"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://semgrep.dev",
+  "repository": "https://github.com/semgrep/mcp",
+  "recommended_scenarios": "授权代码仓库的静态安全扫描与代码评审；快速定位注入、密钥泄露、不安全配置等规则命中。",
+  "unsuitable_scenarios": "线上运行态扫描、需要上下文感知的多语言大型工程深度分析（建议结合 codegraph 定位后再命中规则）。",
+  "notes": "官方 OSS 语义分析工具，规则库超 5000 条；semgrep-mcp 已并入 semgrep 主仓库 cli/src/semgrep/mcp。也可用 Docker：docker run -i --rm ghcr.io/semgrep/mcp -t stdio。"
+}

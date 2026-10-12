@@ -177,6 +177,11 @@ operate_tool() {
     local index=$1; local op=$2; local skip_ext="${3:-false}"
     parse_tool_data "${TOOLS[$index]}" "OP"
 
+    # 配置中的 npm 命令也需要运行环境，不能仅在 exec_pkg_op 的兜底分支检查。
+    if [[ "$OP_type" == "npm" && ( "$op" == "install" || "$op" == "update" ) ]]; then
+        ensure_node_runtime || return $?
+    fi
+
     # 仅在需要网络的安装/更新操作前检测代理，避免每次启动阻塞 5 秒
     if [[ "$op" == "install" || "$op" == "update" ]]; then
         check_proxy_connectivity
@@ -238,7 +243,7 @@ operate_tool() {
         fi
     else
         info_log "➜ 正在执行 $op $OP_name..."
-        run_configured_command "$run_cmd" "$OP_name $op"
+        run_configured_command "$(expand_vars "$run_cmd")" "$OP_name $op"
         core_rc=$?
     fi
 
@@ -269,7 +274,7 @@ operate_tool() {
                     d=$(echo "$commands_json" | jq -r ".[$i].description // \"执行步骤 $((i+1))\"")
                     c=$(echo "$commands_json" | jq -r ".[$i].command")
                     echo -e "${YELLOW}[$((i+1))/$count] $d${NC}"
-                    run_configured_command "$c" "$d" || warn_log "步骤失败: $d"
+                    run_configured_command "$(expand_vars "$c")" "$d" || warn_log "步骤失败: $d"
                 done
             fi
         fi
@@ -312,18 +317,52 @@ execute_extended_commands() {
         fi
         [[ -z "$c" ]] && continue
         echo -e "${YELLOW}[$((i+1))/$count] $d${NC}"
-        run_configured_command "$c" "$d" || warn_log "步骤失败: $d"
+        local ext_cmd ext_safe ext_pfx
+        ext_cmd=$(expand_vars "$c")
+        # 扩展命令（post_install/post_uninstall/uninstall_extended/status_check 等）多为复合 shell
+        # 语句（echo/cd/if/&& 等），不以白名单动词开头时用 bash -c 包装执行；
+        # 破坏性命令（rm -rf 等）仍由 run_configured_command 统一拦截确认
+        if [[ "${AI_HUB_ALLOW_CUSTOM_CMD:-0}" != "1" ]]; then
+            ext_safe=false
+            for ext_pfx in npm npx pip pip3 uv brew curl wget bash sh python python3 node rm mkdir cp mv ln chmod chown tar zip unzip git docker sudo; do
+                if [[ "$ext_cmd" == "$ext_pfx "* || "$ext_cmd" == "$ext_pfx" ]]; then
+                    ext_safe=true
+                    break
+                fi
+            done
+            [[ "$ext_safe" == true ]] || ext_cmd="bash -c $(printf '%q' "$ext_cmd")"
+        fi
+        run_configured_command "$ext_cmd" "$d" || warn_log "步骤失败: $d"
     done
 }
 
 safe_remove_config_path() {
     local target="$1"
     local tool_name="$2"
+    local allowed_dir="${3:-}"
     [[ -z "$target" ]] && return 1
 
     local expanded real home_real
     expanded=$(expand_path "$target")
-    real=$(cd "$(dirname "$expanded")" 2>/dev/null && pwd -P)/$(basename "$expanded") || return 1
+    # 父目录存在时解析真实路径（处理符号链接）；不存在（如已随卸载删除）时沿路径
+    # 向上找最近存在目录做符号链接解析，再拼接缺失部分，保证与 allowed_dir 归一化一致
+    if cd "$(dirname "$expanded")" 2>/dev/null; then
+        real=$(pwd -P)/$(basename "$expanded")
+    else
+        local _ap="$expanded" _tail="" _base _adir
+        while [[ ! -d "$_ap" ]]; do
+            _adir=$(dirname "$_ap")
+            _base=$(basename "$_ap")
+            _tail="$_base${_tail:+/$_tail}"
+            [[ "$_adir" == "$_ap" ]] && break
+            _ap="$_adir"
+        done
+        if [[ -d "$_ap" ]]; then
+            real=$(cd "$_ap" 2>/dev/null && pwd -P)${_tail:+/$_tail}
+        else
+            real="$expanded"
+        fi
+    fi
     home_real=$(cd "$HOME" 2>/dev/null && pwd -P)
 
     case "$real" in
@@ -336,6 +375,23 @@ safe_remove_config_path() {
             return 1
             ;;
     esac
+
+    # 规范化并校验允许目录（工具自身声明的配置目录），避免其落入高风险路径
+    if [[ -n "$allowed_dir" ]]; then
+        allowed_dir=$(expand_path "$allowed_dir")
+        if [[ -d "$allowed_dir" ]]; then
+            allowed_dir=$(cd "$allowed_dir" 2>/dev/null && pwd -P)
+        else
+            local _allowed_parent
+            _allowed_parent=$(cd "$(dirname "$allowed_dir")" 2>/dev/null && pwd -P) || _allowed_parent=""
+            [[ -n "$_allowed_parent" ]] && allowed_dir="$_allowed_parent/$(basename "$allowed_dir")"
+        fi
+        case "$allowed_dir" in
+            "/"|"$home_real"|"$home_real/"|"/Users"|"/Users/"|"/Applications"|"/Applications/")
+                allowed_dir=""
+                ;;
+        esac
+    fi
 
     local _os
     _os="$(uname -s 2>/dev/null)"
@@ -352,8 +408,12 @@ safe_remove_config_path() {
             fi
             ;;
         *)
-            error_log "拒绝删除不在允许配置目录内的路径: $real"
-            return 1
+            if [[ -n "$allowed_dir" && ( "$real" == "$allowed_dir" || "$real" == "$allowed_dir/"* ) ]]; then
+                :
+            else
+                error_log "拒绝删除不在允许配置目录内的路径: $real"
+                return 1
+            fi
             ;;
     esac
 
@@ -367,12 +427,29 @@ uninstall_tool_extended() {
     execute_extended_commands "$UN_id" "post_uninstall" "$UN_name"
     execute_extended_commands "$UN_id" "uninstall_extended" "$UN_name"
     execute_extended_commands "$UN_id" "uninstall_cleanup" "$UN_name"
-    [[ -n "$UN_conf" ]] && { read -p "是否删除配置文件 $UN_conf? (y/N): " rm_c; [[ "$rm_c" == "y" ]] && safe_remove_config_path "$UN_conf" "$UN_name"; }
+    if [[ -n "$UN_conf" ]]; then
+        read -p "是否删除配置文件 $UN_conf? (y/N): " rm_c
+        if [[ "$rm_c" == "y" ]]; then
+            local conf_root
+            if [[ -d "$UN_conf" ]]; then
+                conf_root="$UN_conf"
+            else
+                conf_root=$(dirname "$UN_conf")
+            fi
+            safe_remove_config_path "$UN_conf" "$UN_name" "$conf_root"
+        fi
+    fi
 }
 
 show_tool_usage_guide() {
     local file="$1" name="$2" operation="${3:-安装}"
     [[ -f "$file" ]] || return 0
+
+    # trae 安装/更新后不打印「使用指南」输出（其他工具不受影响）。
+    # 恢复显示时，把对应名称从下面列表去掉即可。
+    case "$name" in
+        [Tt]rae|[Tt]raecode|[Tt]raework) return 0 ;;
+    esac
 
     local manual notes homepage repository docs
     manual=$(jq -r '.setup_guide.manual // .usage_guide.manual // empty' "$file" 2>/dev/null)
@@ -1043,6 +1120,7 @@ profile_skill_dir_for_config() {
 
     case "$kind" in
         codex) echo "$profile_dir/skills/ai-hub" ;;
+        opencode) echo "$HOME/.config/opencode/skills" ;;
         qwen) echo "$profile_dir/skills" ;;
         *) skill_target_dir "$kind" ;;
     esac
@@ -1096,6 +1174,23 @@ collect_extra_profile_targets() {
         IFS=';'
     done
     IFS="$old_ifs"
+}
+
+# 收集所有已发现且支持 MCP 写入的客户端配置文件
+# 输出格式: "name<TAB>config_path"，每行一个；由调用方负责按 config_path 去重。
+collect_mcp_config_targets() {
+    detect_tool_status "fast"
+    local i
+    for i in "${!INSTALLED_MCP_CONFIGS[@]}"; do
+        if [[ -n "${INSTALLED_MCP_CONFIGS[$i]}" ]] && is_supported_mcp_config_path "${INSTALLED_MCP_CONFIGS[$i]}"; then
+            printf '%s\t%s\n' "${INSTALLED_MCP_TOOLS[$i]}" "${INSTALLED_MCP_CONFIGS[$i]}"
+        fi
+    done
+    local _pid _pname _pkind _pconf _pskills
+    while IFS=$'\t' read -r _pid _pname _pkind _pconf _pskills; do
+        [[ -n "$_pid" && -n "$_pconf" ]] || continue
+        printf '%s\t%s\n' "$_pname" "$_pconf"
+    done < <(collect_extra_profile_targets)
 }
 
 config_path_in_list() {
@@ -3151,6 +3246,7 @@ skill_target_kind() {
         claude|claude-code) echo "claude" ;;
         hermes|hermes-agent) echo "hermes" ;;
         codex|codex-cli) echo "codex" ;;
+        opencode|opencode-ai) echo "opencode" ;;
         qwen|qwen-code|qwen-cli) echo "qwen" ;;
         *)
             case "$tool_name" in
@@ -3158,6 +3254,7 @@ skill_target_kind() {
                 *Claude*) echo "claude" ;;
                 *Hermes*) echo "hermes" ;;
                 *Codex*) echo "codex" ;;
+                *OpenCode*) echo "opencode" ;;
                 *Qwen*) echo "qwen" ;;
                 *) echo "fallback" ;;
             esac
@@ -3172,6 +3269,7 @@ skill_target_dir() {
         claude) echo "$HOME/.claude/skills" ;;
         hermes) echo "$HOME/.hermes/skills/ai-hub" ;;
         codex) echo "$HOME/.codex/skills/ai-hub" ;;
+        opencode) echo "$HOME/.config/opencode/skills" ;;
         qwen) echo "$HOME/.qwen/skills" ;;
         *) echo "$HOME/.ai-hub/generated-skills" ;;
     esac
@@ -3392,20 +3490,13 @@ manage_mcp_servers_menu() {
 
     local targets=()
     local names=()
-    detect_tool_status "fast"
-    for i in "${!INSTALLED_MCP_CONFIGS[@]}"; do
-        if [[ -n "${INSTALLED_MCP_CONFIGS[$i]}" ]] && is_supported_mcp_config_path "${INSTALLED_MCP_CONFIGS[$i]}"; then
-            targets+=("${INSTALLED_MCP_CONFIGS[$i]}")
-            names+=("${INSTALLED_MCP_TOOLS[$i]}")
-        fi
-    done
-    local _pid _pname _pkind _pconf _pskills
-    while IFS=$'\t' read -r _pid _pname _pkind _pconf _pskills; do
-        [[ -n "$_pid" && -n "$_pconf" ]] || continue
-        config_path_in_list "$_pconf" "${targets[@]}" && continue
-        targets+=("$_pconf")
-        names+=("$_pname")
-    done < <(collect_extra_profile_targets)
+    local _cname _cconf
+    while IFS=$'\t' read -r _cname _cconf; do
+        [[ -n "$_cname" && -n "$_cconf" ]] || continue
+        config_path_in_list "$_cconf" "${targets[@]}" && continue
+        targets+=("$_cconf")
+        names+=("$_cname")
+    done < <(collect_mcp_config_targets)
 
     [[ ${#targets[@]} -eq 0 ]] && { warn_log "未发现支持 MCP 写入的工具/profile 配置"; return 1; }
 
@@ -3445,6 +3536,126 @@ manage_mcp_servers_menu() {
 
 manage_mcp_servers() {
     manage_mcp_servers_menu
+}
+
+# 从 MCP 安装命令中提取包名（供卸载使用）
+extract_mcp_pkg_from_install_cmd() {
+    local type="$1"
+    local cmd="$2"
+    [[ -n "$cmd" && "$cmd" != "null" ]] || return 0
+    case "$type" in
+        npm)
+            sed -nE 's/.*npm install -g ([^ ]+).*/\1/p' <<< "$cmd" | cut -d' ' -f1
+            ;;
+        brew|app)
+            sed -nE 's/.*brew install( --cask)? ([^ ;|&]+).*/\2/p' <<< "$cmd" | cut -d' ' -f1
+            ;;
+        pip|pip_official)
+            sed -nE 's/.*pip(3)? install( -[^ ]+ +)?([^ ;|&]+).*/\3/p' <<< "$cmd" | cut -d' ' -f1
+            ;;
+        uv)
+            sed -nE 's/.*uv tool install ([^ ]+).*/\1/p' <<< "$cmd" | cut -d' ' -f1
+            ;;
+    esac
+}
+
+# 卸载指定 MCP 服务器的软件包（安装命令对应的包）
+uninstall_mcp_server_package() {
+    local server_id="$1"
+    local file="${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/mcp-servers/${server_id}.json"
+    [[ -f "$file" ]] || return 0
+
+    local install_type cmd pkg
+    install_type=$(jq -r '.install.type // ""' "$file" 2>/dev/null)
+    cmd=$(jq -r '.install.command // ""' "$file" 2>/dev/null)
+    [[ -z "$install_type" || "$install_type" == "custom" || "$install_type" == "manual" || "$install_type" == "download" ]] && return 0
+
+    pkg=$(extract_mcp_pkg_from_install_cmd "$install_type" "$cmd")
+    [[ -n "$pkg" ]] || return 0
+    if [[ "$install_type" == "npm" && "$cmd" != *"npm install -g"* ]]; then
+        return 0
+    fi
+
+    local un_cmd=""
+    case "$install_type" in
+        npm)         un_cmd="npm uninstall -g '$pkg' 2>/dev/null" ;;
+        brew)        un_cmd="brew uninstall --cask '$pkg' 2>/dev/null || brew uninstall '$pkg' 2>/dev/null" ;;
+        pip|pip_official) un_cmd="pip3 uninstall -y '$pkg' 2>/dev/null" ;;
+        uv)          un_cmd="uv tool uninstall '$pkg' 2>/dev/null" ;;
+        *)           return 0 ;;
+    esac
+
+    # 未安装对应包时直接跳过，不当作错误
+    local check_found=false
+    case "$install_type" in
+        npm)  npm list -g "$pkg" >/dev/null 2>&1 && check_found=true ;;
+        brew) brew list --cask "$pkg" >/dev/null 2>&1 && check_found=true ;;
+        pip)  pip3 show "$(printf '%s' "$pkg" | sed 's/==.*//')" >/dev/null 2>&1 && check_found=true ;;
+        uv)   uv tool list 2>/dev/null | grep -qF "$pkg" && check_found=true ;;
+    esac
+    [[ "$check_found" == "true" ]] || return 0
+
+    info_log "➜ 卸载 MCP 软件包: $pkg"
+    eval "$un_cmd"
+}
+
+# 一键卸载 MCP：从所有已发现的客户端配置文件移除，并卸载对应软件包
+# 用法: remove_mcp_servers_cli <id1[,id2,...]>
+remove_mcp_servers_cli() {
+    local ids_csv="$1"
+    command_exists jq || { error_log "--remove-mcp 需要 jq 支持"; return 1; }
+    if [[ -z "$ids_csv" ]]; then
+        error_log "用法: $0 --remove-mcp <mcp_id[,mcp_id...]>"
+        return 2
+    fi
+
+    local want=() id
+    IFS=',' read -ra want <<< "$ids_csv"
+    [[ ${#want[@]} -gt 0 ]] || { error_log "未提供任何 MCP id"; return 2; }
+
+    local valid_ids=() missing=()
+    for id in "${want[@]}"; do
+        [[ -n "$id" ]] || continue
+        id=$(echo "$id" | xargs)
+        if is_id_in_words "$id" "${MCP_SERVERS_NAMES[@]}"; then
+            valid_ids+=("$id")
+        else
+            missing+=("$id")
+        fi
+    done
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        warn_log "MCP 配置目录中未找到，跳过: ${missing[*]}"
+    fi
+    [[ ${#valid_ids[@]} -gt 0 ]] || { error_log "没有可卸载的 MCP 服务器"; return 1; }
+
+    # 1. 收集所有已发现客户端配置文件
+    local targets=() names=() _cname _cconf
+    while IFS=$'\t' read -r _cname _cconf; do
+        [[ -n "$_cname" && -n "$_cconf" ]] || continue
+        config_path_in_list "$_cconf" "${targets[@]}" && continue
+        targets+=("$_cconf")
+        names+=("$_cname")
+    done < <(collect_mcp_config_targets)
+
+    local removed=0 failed=0 i target
+    for i in "${!targets[@]}"; do
+        target="${targets[$i]}"
+        if remove_mcp_configs_from_file "$target" "${valid_ids[@]}" >/dev/null 2>&1; then
+            info_log "已从 ${names[$i]} ($target) 移除 MCP: ${valid_ids[*]}"
+            removed=$((removed + 1))
+        else
+            warn_log "从 ${names[$i]} ($target) 移除 MCP 失败"
+            failed=$((failed + 1))
+        fi
+    done
+
+    # 2. 卸载软件包（幂等：未安装则跳过）
+    for id in "${valid_ids[@]}"; do
+        uninstall_mcp_server_package "$id"
+    done
+
+    success_log "完成: ${#valid_ids[@]} 个 MCP 从 ${removed} 个客户端配置移除 (失败 ${failed})"
+    return 0
 }
 manage_skills() {
     echo -e "\n${CYAN}🎯 Skills 技能管理${NC}"
@@ -3490,6 +3701,10 @@ manage_skills() {
 manage_ai_docs() { info_log "管理文档功能暂通过交互菜单直接调用库函数"; }
 
 show_help() {
+    # 帮助页也展示当前工具清单；main 在处理 --help 时尚未初始化配置。
+    if [[ ${#TOOLS[@]} -eq 0 ]]; then
+        init_config
+    fi
     echo -e "${BOLD}AI 工具中枢 (AI Hub) - 极致优化版${NC}"
     echo "=========================================="
     echo ""
@@ -3520,10 +3735,11 @@ show_help() {
     echo "    默认发现 ~/.codex-token173/config.toml、~/.qwen-studio/settings.json、~/qwen-studio/settings.json"
     echo "    AI_HUB_INCLUDE_EXTRA_PROFILES=0 可关闭默认发现"
     echo "    AI_HUB_EXTRA_PROFILE_TARGETS='id|name|kind|config|skills_dir;...' 可追加目标"
-    echo "    kind 支持 codex、qwen、claude、antigravity、hermes"
+    echo "    kind 支持 codex、opencode、qwen、claude、antigravity、hermes"
     echo ""
     echo "  工具操作 (命令行模式):"
     echo "    $0 -u, --uninstall <ID> # 卸载指定工具"
+    echo "    $0 --remove-mcp <id[,id...]>  # 卸载 MCP 并从所有已安装 AI 客户端配置移除"
     echo "    $0 --update <ID>        # 更新指定工具"
     echo "    $0 --status <ID>        # 查看工具状态"
     echo "    $0 -c, --config <ID>    # 查看工具配置"
@@ -3653,7 +3869,7 @@ non_interactive_install_tools() {
     done
 
     echo -e "\n📊 非交互式安装结果"
-    echo "   请求: ${#requested_targets[@]}，有效: $total，成功: ${install_ok}，失败: ${install_failed}，需手动: ${install_manual}，未知: ${#unknown_targets[@]}"
+    echo "   请求: ${#requested_targets[@]}，有效: ${total}，成功: ${install_ok}，失败: ${install_failed}，需手动: ${install_manual}，未知: ${#unknown_targets[@]}"
     [[ ${#successful_ids[@]} -gt 0 ]] && echo -e "   ${GREEN}成功: ${successful_ids[*]}${NC}"
     [[ ${#failed_ids[@]} -gt 0 ]] && echo -e "   ${RED}失败: ${failed_ids[*]}${NC}"
     [[ ${#manual_ids[@]} -gt 0 ]] && echo -e "   ${YELLOW}需手动安装: ${manual_ids[*]}${NC}"
@@ -3737,6 +3953,7 @@ main() {
 
     local log="quiet"; local dm=""; local op=""; local tgt=""; local want_help=false; local do_validate=false
     local do_batch=false; local do_install=false; local batch_tags=""; local targets_raw=""
+    local remove_mcp_ids=""
     local positional_args=()
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -3748,6 +3965,8 @@ main() {
             --update) op="update" ;;
             --status) op="status" ;;
             -c|--config) op="config" ;;
+            --remove-mcp) remove_mcp_ids="${2:-}"; shift ;;
+            --remove-mcp=*) remove_mcp_ids="${1#*=}" ;;
             -i|--install) do_install=true ;;
             --install=*) do_install=true; positional_args+=("${1#*=}") ;;
             -h|--help) want_help=true ;;
@@ -3784,6 +4003,12 @@ main() {
     if [[ -n "$batch_tags" && "$do_batch" == false ]]; then
         error_log "--tags 必须与 --batch-apply 一起使用"
         exit 2
+    fi
+    
+    if [[ -n "$remove_mcp_ids" ]]; then
+        [[ "$do_batch" == false && "$do_install" == false && -z "$op" && -z "$dm" ]] || { error_log "--remove-mcp 不能与 -i/-u/--batch-apply/-m 等同用"; exit 2; }
+        remove_mcp_servers_cli "$remove_mcp_ids"
+        exit $?
     fi
     
     if [[ "$do_batch" == true ]]; then

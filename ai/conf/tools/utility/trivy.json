@@ -18,7 +18,7 @@
         "command": "brew install trivy",
         "check": "trivy --version",
         "uninstall": [
-          "brew uninstall trivy"
+          "bash -c 'if brew list --formula trivy >/dev/null 2>&1; then brew uninstall trivy; elif [ -f \"$HOME/.local/bin/trivy\" ]; then rm -f \"$HOME/.local/bin/trivy\" && echo \"已移除 ~/.local/bin/trivy\"; elif [ -f \"/usr/local/bin/trivy\" ]; then rm -f /usr/local/bin/trivy && echo \"已移除 /usr/local/bin/trivy\"; elif [ -f \"/opt/homebrew/bin/trivy\" ]; then rm -f /opt/homebrew/bin/trivy && echo \"已移除 /opt/homebrew/bin/trivy\"; else echo \"未检测到可卸载的 trivy（未安装）\"; fi'"
         ]
       }
     ],

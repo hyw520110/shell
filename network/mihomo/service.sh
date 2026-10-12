@@ -124,7 +124,7 @@ is_macos() { [ "$(uname -s)" = "Darwin" ]; }
 load_api_config() {
   [ -f "$CONFIG_FILE" ] || return 0
   local secret
-  secret="$(grep -E '^[[:space:]]*secret:' "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/^[[:space:]]*secret:[[:space:]]*//' | sed 's/^"\(.*\)"$/\1/' | sed "s/^'\(.*\)'$/\1/")"
+  secret="$(grep -E '^[[:space:]]*secret:' "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/^[[:space:]]*secret:[[:space:]]*//' | sed 's/^"\(.*\)"$/\1/' | sed "s/^'\(.*\)'$/\1/" || true)"
   [ -n "$secret" ] && API_SECRET="$secret"
   if [ -n "$API_SECRET" ]; then
     API_BASE="http://${API_HOST}:${API_PORT}?secret=${API_SECRET}"
@@ -290,6 +290,33 @@ cmd_status() {
   version="$(api_get '/version' 2>/dev/null || true)"
   if [ -n "$version" ]; then
     ok "API: $version"
+    # 运行模式
+    api_get '/configs' 2>/dev/null | python3 -c '
+import json,sys
+try:
+    d=json.load(sys.stdin)
+    print(f"    模式: {d.get(\"mode\",\"\")}  端口: {d.get(\"mixed-port\",\"\")}  allow-lan: {d.get(\"allow-lan\",\"\")}")
+except Exception:
+    pass' 2>/dev/null || true
+    # 代理组当前选择
+    api_get '/proxies' 2>/dev/null | python3 -c '
+import json,sys
+try:
+    d=json.load(sys.stdin).get("proxies",{})
+    gs=[(k,v.get("now","")) for k,v in d.items() if v.get("type") in ("Selector","URLTest") and v.get("now")]
+    if gs:
+        print("    代理组: " + ", ".join(f"{k}={v}" for k,v in gs))
+    else:
+        print("    代理组: (无)")
+except Exception:
+    pass' 2>/dev/null || true
+    # 出站自测（经 7890 代理访问 google）
+    local egress
+    egress=$(curl -x http://127.0.0.1:7890 -s -o /dev/null -w "%{http_code}" --connect-timeout 6 -m 10 https://www.google.com 2>/dev/null || true)
+    case "$egress" in
+      200|301|302) ok "出站: google → $egress ✓" ;;
+      *)           warn "出站未通: google → ${egress:-FAIL}（检查节点: $0 nodes）" ;;
+    esac
   else
     warn "API 不可达（服务未运行或配置未启用 external-controller）"
   fi

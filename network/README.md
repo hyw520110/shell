@@ -14,7 +14,7 @@
 | `publish-dev-https.sh` | 开发环境 HTTPS 发布 | 通过 nginx + 可选 frp 发布服务并申请证书 |
 | `register-domain.sh` | 域名注册 | 域名注册/购买脚本 |
 | `find_ports.sh` | 端口查找 | 查找占用端口的进程 |
-| `ssh_key_setup.sh` | SSH 密钥配置 | 配置免密登录 |
+| `ssh-key-setup.sh` | SSH 密钥配置 | 配置免密登录，自动探测 22/2222 端口 |
 | `ssh-exec-remote.sh` | 远程命令执行 | 自动连接目标主机执行命令 |
 | `vpn.sh` | VPN 连接 | 通过 openconnect 连接 VPN（凭据走环境变量） |
 | `wol.sh` | 网络唤醒 | Wake-on-LAN 远程开机 |
@@ -59,7 +59,8 @@ cd network
 
 ```bash
 cd network
-./ssh_key_setup.sh            # 配置 SSH 免密登录
+./ssh-key-setup.sh            # 配置 SSH 免密登录，自动探测 22；失败后尝试 2222
+./ssh-key-setup.sh -h 192.168.0.105 -u sky -p 2222
 ./ssh-exec-remote.sh          # 远程执行命令（支持密钥/密码认证）
 ./update-hosts.sh             # 下载更新 /etc/hosts 并配置每小时定时任务
 ./set-hosts-aliases.sh        # 将主机名别名指向本机 IP（需 root）
@@ -68,6 +69,9 @@ cd network
 ./find_ports.sh               # 查找占用端口的进程
 ./install-hosts-font.sh       # CentOS/RHEL 安装中文字体
 ```
+
+`ssh-key-setup.sh` 的交互式端口探测顺序为：先检查 22 端口；22 不通时确认主机在线，再检查 2222；两个端口都不可用时提示输入自定义端口。命令行显式传入 `-p/--port` 时，以指定端口为准。
+如果 `~/.ssh/config` 中已经存在同名 Host，脚本会备份并更新该 Host 的用户名和端口，不会继续沿用旧配置。
 
 ## 🔧 详细说明
 

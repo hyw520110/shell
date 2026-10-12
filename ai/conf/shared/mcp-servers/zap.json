@@ -1,0 +1,67 @@
+{
+  "id": "zap",
+  "name": "ZAP MCP Integration",
+  "description": "OWASP ZAP 官方 MCP Integration 插件，让 AI 客户端以自然语言驱动 ZAP 的 spider、主动扫描、告警分析与报告生成。",
+  "category": "security",
+  "install": {
+    "type": "manual",
+    "setup": [
+      "先安装并启动 ZAP（macOS 可用 security/web-security/zap/zap.sh install）",
+      "在 ZAP 的市场（Marketplace）安装 MCP Integration 插件",
+      "在 ZAP 的 Options → MCP Integration 配置端口（默认 8282）与 Security Key",
+      "MCP 客户端通过 https://127.0.0.1:8282 连接，并在 Authorization 头携带 Security Key",
+      "注意：MCP 服务仅监听本地 localhost，不应暴露到外部网络"
+    ]
+  },
+  "compatibility": {
+    "check": "case \"$(uname -s 2>/dev/null)\" in Darwin|Linux) exit 0 ;; *) exit 1 ;; esac",
+    "reason": "需要图形界面运行 ZAP；支持 macOS/Linux。"
+  },
+  "config": {
+    "command": "sh",
+    "args": [
+      "-c",
+      "if command -v curl >/dev/null 2>&1 && curl -sk --max-time 2 -o /dev/null https://127.0.0.1:8282; then echo 'ZAP MCP HTTP 服务在线 (127.0.0.1:8282)'; else echo 'ZAP MCP 未运行（需先启动 ZAP 并安装 MCP Integration 插件）；本服务走 HTTP 传输，请在支持的客户端中配置 url 与 Authorization 头。'; fi"
+    ],
+    "transportType": "stdio"
+  },
+  "required_tools": ["curl"],
+  "status_check": [
+    {
+      "name": "检查 ZAP MCP 服务",
+      "command": "if command -v curl >/dev/null 2>&1 && curl -sk --max-time 3 -o /dev/null https://127.0.0.1:8282; then echo 'ZAP MCP HTTP 服务在线 (127.0.0.1:8282)'; else echo 'ZAP MCP 未运行（需先启动 ZAP 并安装 MCP Integration 插件）'; fi"
+    }
+  ],
+  "tools": [
+    {
+      "name": "zap_start_spider",
+      "description": "启动传统 spider 爬虫"
+    },
+    {
+      "name": "zap_start_active_scan",
+      "description": "启动主动扫描"
+    },
+    {
+      "name": "zap_get_spider_status",
+      "description": "查询爬虫进度与结果"
+    },
+    {
+      "name": "zap_get_active_scan_status",
+      "description": "查询主动扫描进度"
+    },
+    {
+      "name": "zap_generate_report",
+      "description": "生成本地扫描报告"
+    }
+  ],
+  "tags": ["安全", "Web", "漏洞扫描", "MCP", "DAST"],
+  "scenarios": ["security", "qa-testing"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://www.zaproxy.org/docs/desktop/addons/mcp-integration/",
+  "repository": "https://github.com/zaproxy/zaproxy",
+  "recommended_scenarios": "授权 Web 应用的 DAST 扫描与告警分析：spider（含 AJAX）、主动扫描、报告生成，可在 ZAP 内直接与扫描器联动校验。",
+  "unsuitable_scenarios": "无 ZAP 图形实例的无头 CI 环境（官方暂不直接支持自动写入 HTTP MCP，需手动配置）；未授权目标扫描。",
+  "notes": "官方插件为 alpha（2026-04 发布）。本服务为 HTTP 传输（127.0.0.1:8282 + Security Key），需在客户端支持 HTTP/SSE 时手动配置；默认不自动写入 stdio 配置。"
+}

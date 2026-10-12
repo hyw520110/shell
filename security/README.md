@@ -9,7 +9,9 @@
 | `code-security/` | 代码安全扫描工具 | - |
 | `host-security/` | 主机安全加固工具 | - |
 | `monitor/` | 安全监控工具 | - |
+| `platform/` | 安全测试与运营平台 | - |
 | `protection/` | 安全防护工具 | - |
+| `recon-tools/` | 资产侦察与代码泄露扫描工具 | - |
 | `scanner/` | 漏洞扫描工具 | - |
 | `web-security/` | Web 应用安全工具 | - |
 
@@ -34,6 +36,26 @@ cd security
 - 安全合规检查
 - Shell 脚本检查可执行: `bash code-security/install-shellcheck.sh`
 - Guardrails AI 输出校验/安全门禁: `bash code-security/guardrails-ai.sh install`
+- AutoCVE：授权源码项目的 CVE 发现、验证和报告平台
+- AutoCVE 脚本位置：`code-security/autocve/autocve.sh`
+
+##### AutoCVE
+
+AutoCVE 面向源码审计和 CVE 研究，不用于公网 Web URL 扫描。脚本下载固定版本的官方 Docker Compose 文件，默认只准备配置，不自动启动容器；启动必须显式确认授权。
+
+```bash
+# 准备固定版本 Compose（不启动）
+bash code-security/autocve/autocve.sh install
+
+# 编辑 ~/.local/share/autocve/.env 配置模型后，在隔离且已授权环境启动
+bash code-security/autocve/autocve.sh start --ack-authorized
+
+# 查看状态/日志
+bash code-security/autocve/autocve.sh status
+bash code-security/autocve/autocve.sh logs
+```
+
+上游 AutoCVE Compose 包含 Agent Worker，并挂载宿主机 Docker socket；本封装将端口限制在 `127.0.0.1`，不自动导入源码、执行 PoC 或提交漏洞。`uninstall --yes` 保留数据卷，确认无需保留数据后再使用 `purge --yes`。
 
 #### host-security/
 **主机安全加固**
@@ -56,13 +78,53 @@ cd security
 - 数据加密
 - 访问控制
 
+#### platform/
+**安全测试与运营平台**
+
+- CyberStrikeAI：授权资产、漏洞、工具编排和证据报告管理平台
+- 脚本位置：`platform/cyberstrikeai/cyberstrike-ai.sh`
+- 支持 macOS/Linux；源码构建需要 Go 1.25+、Python 3.10+ 和 Git
+- 默认仅绑定 `127.0.0.1`，使用本地 HTTPS；安装后需手动配置 AI 通道
+- 不自动启用 C2、WebShell、外部 MCP、命令执行或远程扫描
+
+```bash
+# 安装/构建
+bash platform/cyberstrikeai/cyberstrike-ai.sh install
+
+# 查看状态并启动本地服务
+bash platform/cyberstrikeai/cyberstrike-ai.sh status
+bash platform/cyberstrikeai/cyberstrike-ai.sh start
+```
+
+CyberStrikeAI 属于高权限安全平台，使用前必须确认目标授权、工具白名单、人工审批和审计配置；不要将其直接接入公益 SRC 自动扫描编排器。
+
 #### scanner/
 **漏洞扫描**
 - 系统漏洞扫描
 - 网络漏洞扫描
 - Web 漏洞扫描
 - 数据库漏洞扫描
+- Terrapin-Scanner（RUB-NDS）：检测 SSH 端点是否受 Terrapin 攻击（CVE-2023-48795），单连接、不做认证与攻击。脚本位置：`scanner/terrapin/terrapin.sh`
 - TscanClient/TscanPlus：跨平台资产识别、URL 指纹和低影响 JS 收集
+
+##### Terrapin-Scanner
+
+Terrapin-Scanner 用于判定单个 SSH 端点是否受 Terrapin 攻击（CVE-2023-48795）影响。它只对目标做一次 TCP 连接并收集其支持的算法与 countermeasure（strict key exchange）支持情况，不执行完整密钥交换、不尝试认证、也不实际发起攻击，属于低影响探测。
+
+```bash
+# 安装（默认 go install；也可指定 Homebrew）
+bash scanner/terrapin/terrapin.sh install
+bash scanner/terrapin/terrapin.sh install brew
+
+# 查看状态
+bash scanner/terrapin/terrapin.sh status
+
+# 扫描单个 SSH 端点（host:port，缺失端口默认 22），可输出 JSON
+bash scanner/terrapin/terrapin.sh scan --connect example.com:22
+bash scanner/terrapin/terrapin.sh scan --connect 192.168.1.10:2222 --json
+```
+
+报告默认写入 `~/security-scans/terrapin/`，不会写入当前仓库。请仅扫描你有权测试的主机。卸载需显式 `uninstall --yes`。
 
 ##### TscanPlus/TscanClient
 
@@ -114,6 +176,45 @@ bash scanner/tscanplus/tscanplus.sh install mcp
 - testssl.sh：`web-security/install-testssl.sh`
 - Semgrep：`web-security/install-semgrep.sh`
 - CodeQL CLI：`web-security/install-codeql.sh`
+
+#### recon-tools/
+**资产侦察与代码泄露扫描**
+
+- Subfinder（被动子域名发现）、Naabu（端口扫描）、Amass（被动资产枚举）、Feroxbuster（目录爆破）、Gitleaks（Git 密钥泄露扫描）
+- 脚本位置：`recon-tools/subfinder.sh`、`recon-tools/naabu.sh`、`recon-tools/amass.sh`、`recon-tools/feroxbuster.sh`、`recon-tools/gitleaks.sh`
+- 共享函数：`recon-tools/recon-common.sh`
+- 支持 macOS / Linux，安装到 `~/.local/bin`，数据与配置写入 `~/.local/share/recon-tools/` 与 `~/.config/<工具>/`
+
+```bash
+# 一键安装并生成基础配置
+bash security/recon-tools/subfinder.sh install
+
+# 查看状态 / 更新 / 卸载
+bash security/recon-tools/subfinder.sh status
+bash security/recon-tools/subfinder.sh update
+bash security/recon-tools/subfinder.sh uninstall --yes
+```
+
+各工具默认只启用低影响模式，涉及目标的主动动作均需 `--ack-authorized` 显式确认授权：
+
+```bash
+# Subfinder：被动子域名枚举
+bash security/recon-tools/subfinder.sh subdomains -d example.com --ack-authorized
+
+# Naabu：端口扫描（默认只扫 80/443）
+bash security/recon-tools/naabu.sh scan example.com -p 80,443,8080-8090 --ack-authorized
+
+# Amass：被动资产枚举（不主动爆破）
+bash security/recon-tools/amass.sh enum -d example.com --ack-authorized
+
+# Feroxbuster：目录爆破（低并发）
+bash security/recon-tools/feroxbuster.sh fuzz -u https://example.com -t 10 --ack-authorized
+
+# Gitleaks：扫描本地仓库，不触碰网络
+bash security/recon-tools/gitleaks.sh detect /path/to/repo
+```
+
+扫描结果默认写入 `~/security-scans/<工具>/`，不会写入仓库。Subfinder/Amass 配置模板位于 `~/.config/subfinder/provider-config.yaml`、`~/.config/amass/config.ini`，请勿把 API 密钥提交到仓库。
 
 ### 文章中的 Skills/MCP 对照
 

@@ -423,6 +423,10 @@ curl_with_timeout() {
 # 从多个镜像源下载文件
 download_from_mirrors() {
     local filename="$1"
+    # filename 可含远端版本目录（例如 v1.39.0/fnm-linux.zip），
+    # 本地调用方按 basename 读取下载文件，不能将远端目录用作保存路径。
+    local destination
+    destination=$(basename "$filename")
     shift
     local mirrors=("$@")
     
@@ -430,7 +434,7 @@ download_from_mirrors() {
     local user_download_dir="$HOME/Downloads"
     if [ -f "$user_download_dir/$(basename "$filename")" ]; then
         echo_info "在下载目录中找到已有文件: $user_download_dir/$(basename "$filename")"
-        cp "$user_download_dir/$(basename "$filename")" "$filename"
+        cp "$user_download_dir/$(basename "$filename")" "$destination"
         return 0
     fi
     
@@ -449,7 +453,7 @@ download_from_mirrors() {
             mkdir -p "$user_download_dir"
             cp "$temp_file" "$user_download_dir/$(basename "$filename")" 2>/dev/null || true
             
-            mv "$temp_file" "$filename" 2>/dev/null || {
+            mv "$temp_file" "$destination" 2>/dev/null || {
                 echo_error "移动文件失败"
                 rm -f "$temp_file"
                 return 1

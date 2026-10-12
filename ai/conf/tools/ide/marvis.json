@@ -1,0 +1,106 @@
+{
+  "id": "marvis",
+  "name": "Marvis 马维斯",
+  "description": "腾讯出品的操作系统级 AI 助手，支持本地大模型、手机远控电脑、文件智能整理、一句话完成系统设置，每日 1000 万免费 Token",
+  "category": "ai-ide",
+  "sort_order": 40,
+  "sort_key": "Marvis",
+  "tags": [
+    "ai",
+    "assistant",
+    "desktop",
+    "tencent",
+    "agent",
+    "system-level"
+  ],
+  "scenarios": ["productivity", "agent-workbench", "file-management"],
+  "experimental": false,
+  "optional": false,
+
+  "install": {
+    "methods": [
+      {
+        "name": "官方源自动下载安装 (macOS DMG)",
+        "type": "bash",
+        "command": "bash ide/marvis/install-marvis.sh",
+        "check": "[ -d \"/Applications/Marvis.app\" ]",
+        "uninstall": [
+          "echo '正在卸载 Marvis...'",
+          "osascript -e 'quit app \"Marvis\"' 2>/dev/null || true",
+          "sleep 1",
+          "rm -rf /Applications/Marvis.app 2>/dev/null || sudo rm -rf /Applications/Marvis.app",
+          "read -p '是否同时删除配置和数据目录？[y/N] ' _mvAns && [[ \"$_mvAns\" == 'y' ]] && {",
+          "  rm -rf \"$HOME/Library/Application Support/Marvis\" 2>/dev/null || true",
+          "  rm -rf \"$HOME/Library/Caches/com.tencent.marvis\" 2>/dev/null || true",
+          "  rm -rf \"$HOME/Library/Preferences/com.tencent.marvis.plist\" 2>/dev/null || true",
+          "  rm -rf \"$HOME/Library/Logs/Marvis\" 2>/dev/null || true",
+          "  echo '已清理用户数据目录'",
+          "}",
+          "echo '✅ Marvis 已卸载'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash ide/marvis/install-marvis.sh --yes",
+    "check": "[ -d \"/Applications/Marvis.app\" ]",
+    "pre_update": []
+  },
+
+  "post_install": [
+    {
+      "description": "首次使用提示",
+      "command": "echo -e '\\n🎉 Marvis 安装完成！\\n\\n首次使用请：\\n1. 打开 Marvis 应用\\n2. 使用 QQ 或微信扫码登录\\n3. 授予系统必要权限\\n\\n官网: https://marvis.qq.com'"
+    }
+  ],
+
+  "post_uninstall": [
+    {
+      "description": "清理提示",
+      "command": "echo '如需彻底清理，可删除 ~/Library/Application Support/Marvis 与 ~/Library/Caches/com.tencent.marvis'"
+    }
+  ],
+
+  "config": {
+    "path": "$HOME/Library/Application Support/Marvis/",
+    "operations": {
+      "view": "ls -la \"$HOME/Library/Application Support/Marvis/\" 2>/dev/null | head -20 || echo '数据目录不存在'",
+      "edit": "open -a Marvis",
+      "reset": [
+        "cp -R \"$HOME/Library/Application Support/Marvis\" \"$HOME/Library/Application Support/Marvis.backup.$(date +%Y%m%d_%H%M%S)\" 2>/dev/null || true",
+        "echo '已备份数据目录；如需重置登录状态，请手动删除 ~/Library/Application Support/Marvis 后重新打开 Marvis'"
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "open -a Marvis",
+    "version": "defaults read /Applications/Marvis.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo '未安装'",
+    "homepage": "open https://marvis.qq.com",
+    "open_data_dir": "open \"$HOME/Library/Application Support/Marvis\" 2>/dev/null || echo '数据目录不存在'"
+  },
+
+  "process_check": "Marvis",
+
+  "status_check": [
+    {"name": "检查应用", "command": "[ -d \"/Applications/Marvis.app\" ] && echo '已安装' || echo '未安装'"},
+    {"name": "检查版本", "command": "defaults read /Applications/Marvis.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo '未安装'"},
+    {"name": "检查运行状态", "command": "pgrep -f 'Marvis' >/dev/null 2>&1 && echo '运行中' || echo '未运行'"},
+    {"name": "检查数据目录", "command": "ls -la \"$HOME/Library/Application Support/Marvis/\" 2>/dev/null | head -5 || echo '数据目录不存在'"}
+  ],
+
+  "mcp_servers": {},
+
+  "skills": {},
+
+  "references": {
+    "homepage": "https://marvis.qq.com",
+    "docs": "https://marvis.qq.com/docs/",
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+
+  "notes": "Marvis 是腾讯应用宝团队出品的操作系统级 AI 助手，支持 Windows、macOS、Android、iOS 四端。注意：macOS 版仅支持 Apple Silicon (M 系列芯片)，不支持 Intel Mac。安装脚本自动解析官网最新 DMG 并安装到 /Applications/Marvis.app。Windows 版请前往官网手动下载。"
+}

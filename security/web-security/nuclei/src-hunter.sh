@@ -127,6 +127,8 @@ parse_options() {
 
 run_scan() {
   local target="$1" vendor="$2" domain="$3" target_dir prefix json_file report_file log_file scan_rc=0 verify_rc check check_target
+  # Keep an explicit fallback for interrupted pipelines under `set -u`.
+  scan_rc=0
   target_dir="$OUTPUT_ROOT/$domain"; prefix="nuclei-$(date +%Y%m%d-%H%M%S)"
   json_file="$target_dir/$prefix.json"; report_file="$target_dir/$prefix.md"; log_file="$target_dir/$prefix.log"
   mkdir -p "$target_dir"
@@ -136,7 +138,7 @@ run_scan() {
   "$NUCLEI_SCRIPT" -l all -u "$target" -f json -o "$prefix" -d "$target_dir" \
     -r "$RATE_LIMIT" -c "$CONCURRENCY" -b "$BULK_SIZE" -t "$TIMEOUT_SECONDS" \
     -R "$RETRIES" -m "$MAX_TIME" --no-auto-verify 2>&1 | tee "$log_file"
-  scan_rc=${PIPESTATUS[0]}
+  scan_rc="${PIPESTATUS[0]:-1}"
   set -e
 
   python3 "$REPORTER" analyze --json "$json_file" --output "$report_file" \
@@ -155,19 +157,20 @@ run_scan() {
     done < <(python3 "$REPORTER" checks --json "$json_file")
   fi
 
-  if [ "$scan_rc" -eq 0 ]; then
+  if [ "${scan_rc:-1}" -eq 0 ]; then
     python3 "$REPORTER" mark-scanned --history "$HISTORY_FILE" --target "$target" >/dev/null
     ok "扫描完成并已记录历史：$domain"; ok "主报告：$report_file"
     [ -s "$json_file" ] && log "原始 JSON：$json_file"
     return 0
   fi
-  warn "Nuclei 扫描退出码为 $scan_rc，未写入扫描历史；请检查日志后决定是否重试。"
-  return "$scan_rc"
+  warn "Nuclei 扫描退出码为 ${scan_rc:-1}，未写入扫描历史；请检查日志后决定是否重试。"
+  return "${scan_rc:-1}"
 }
 
 run_scan_batch() {
   local list_file="$1" batch_name="$2"
   local target_dir prefix json_file report_file log_file scan_rc=0 verify_rc check check_target
+  scan_rc=0
   target_dir="$OUTPUT_ROOT/$batch_name"; prefix="nuclei-$(date +%Y%m%d-%H%M%S)"
   json_file="$target_dir/$prefix.json"; report_file="$target_dir/$prefix.md"; log_file="$target_dir/$prefix.log"
   mkdir -p "$target_dir"
@@ -177,7 +180,7 @@ run_scan_batch() {
   "$NUCLEI_SCRIPT" -l all -L "$list_file" -f json -o "$prefix" -d "$target_dir" \
     -r "$RATE_LIMIT" -c "$CONCURRENCY" -b "$BULK_SIZE" -t "$TIMEOUT_SECONDS" \
     -R "$RETRIES" -m "$MAX_TIME" --no-auto-verify 2>&1 | tee "$log_file"
-  scan_rc=${PIPESTATUS[0]}
+  scan_rc="${PIPESTATUS[0]:-1}"
   set -e
 
   python3 "$REPORTER" analyze --json "$json_file" --output "$report_file" \
@@ -196,7 +199,7 @@ run_scan_batch() {
     done < <(python3 "$REPORTER" checks --json "$json_file")
   fi
 
-  if [ "$scan_rc" -eq 0 ]; then
+  if [ "${scan_rc:-1}" -eq 0 ]; then
     while IFS=$'\t' read -r vendor target source; do
       python3 "$REPORTER" mark-scanned --history "$HISTORY_FILE" --target "$target" >/dev/null
     done < "$CURRENT_CLAIM_BATCH"
@@ -204,8 +207,8 @@ run_scan_batch() {
     [ -s "$json_file" ] && log "原始 JSON：$json_file"
     return 0
   fi
-  warn "Nuclei 扫描退出码为 $scan_rc，未写入扫描历史；请检查日志后决定是否重试。"
-  return "$scan_rc"
+  warn "Nuclei 扫描退出码为 ${scan_rc:-1}，未写入扫描历史；请检查日志后决定是否重试。"
+  return "${scan_rc:-1}"
 }
 
 cmd_select_next() {

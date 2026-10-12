@@ -2,8 +2,8 @@
   "id": "whichllm",
   "name": "WhichLLM",
   "description": "自动检测 GPU/CPU/RAM，从 HuggingFace 排名推荐最适合本地运行的 LLM 模型，支持 vLLM/Ollama/llama.cpp",
-  "category": "ai-coding",
-  "sort_key": "WhichLLM 02",
+  "category": "ai-runtime",
+  "sort_key": "WhichLLM 01",
   "tags": [
     "ai",
     "python",
