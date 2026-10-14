@@ -40,6 +40,14 @@ GITER_REFRESH_BRANCH_CACHE="${GITER_REFRESH_BRANCH_CACHE:-auto}"
 GITER_INPUT_TIMEOUT="${GITER_INPUT_TIMEOUT:-5}"
 GITER_PUSH_ALL_REMOTES="${GITER_PUSH_ALL_REMOTES:-1}"
 
+# clone 子命令配置（复用 adl 的代理探测思路，但只服务 git 网络操作）。
+GITER_CLONE_SSH_MODE="${GITER_CLONE_SSH_MODE:-auto}"     # auto|socks|https
+GITER_CLONE_DEPTH="${GITER_CLONE_DEPTH:-1}"             # 浅克隆深度，0 表示完整克隆
+GITER_CLONE_PROXY="${GITER_CLONE_PROXY:-}"              # 显式代理，如 socks5h://127.0.0.1:7890
+GITER_CLONE_HTTP_VERSION="${GITER_CLONE_HTTP_VERSION:-HTTP/1.1}"  # 规避 GitHub HTTP/2 断连
+GITER_CLONE_PROXY_TIMEOUT="${GITER_CLONE_PROXY_TIMEOUT:-5}"
+GITER_CLONE_TIMEOUT="${GITER_CLONE_TIMEOUT:-0}"         # clone 整体超时秒数，0 表示不限制
+
 # 未显式指定 -d/--dir 时默认处理当前执行目录所属仓库。
 AUTO_DISCOVER=0
 DISCOVER_DEPTH=2
@@ -70,6 +78,13 @@ MAX_STAGE_FILE_MB="${GITER_MAX_STAGE_FILE_MB:-50}"
 [[ "$GITER_SSH_CONNECT_TIMEOUT" =~ ^[0-9]+$ ]] || GITER_SSH_CONNECT_TIMEOUT=10
 [[ "$GITER_INPUT_TIMEOUT" =~ ^[0-9]+$ ]] || GITER_INPUT_TIMEOUT=5
 [[ "$GITER_PUSH_ALL_REMOTES" =~ ^[01]$ ]] || GITER_PUSH_ALL_REMOTES=1
+case "$GITER_CLONE_SSH_MODE" in
+    auto|socks|https) ;;
+    *) GITER_CLONE_SSH_MODE=auto ;;
+esac
+[[ "$GITER_CLONE_DEPTH" =~ ^[0-9]+$ ]] || GITER_CLONE_DEPTH=1
+[[ "$GITER_CLONE_PROXY_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || GITER_CLONE_PROXY_TIMEOUT=5
+[[ "$GITER_CLONE_TIMEOUT" =~ ^[0-9]+$ ]] || GITER_CLONE_TIMEOUT=0
 
 # 默认跳过的敏感路径/文件名模式。
 SENSITIVE_PATH_PATTERNS=(
@@ -140,6 +155,14 @@ GITER_SYNC_FAILURE_STATUS=""
 GITER_SYNC_FAILURE_DETAIL=""
 GITER_LAST_FETCH_ERROR=""
 GITER_STALE_STASH_RESTORED=0
+
+# clone 子命令状态
+CLONE_REPO=""
+CLONE_DIR=""
+CLONE_BRANCH=""
+CLONE_DEPTH=""
+CLONE_SSH_MODE=""
+CLONE_NO_PROXY=0
 
 # 远程 fetch 状态跟踪（避免重复 fetch 同一个 remote）
 GITER_FETCHED_REMOTES=()
@@ -373,6 +396,7 @@ show_help() {
 Git 批量更新推送脚本 (增强版)
 
 用法: $0 [选项] [-p path1 path2 ...]
+      $0 clone <repo> [dir] [选项]   # 带代理探测与浅克隆加速
 
 选项:
   -m, --message MSG  指定提交注释
@@ -397,6 +421,8 @@ Git 批量更新推送脚本 (增强版)
   --last, --lc NUM   配合 -v 显示最近 NUM 次提交详情（默认: 1，最大: 20）
   --no-files         配合 -v 隐藏最近提交详情中的文件列表
   -h, --help         显示帮助
+  clone <repo> [dir] 克隆仓库（子命令）：自动探测代理，SSH 可走 SOCKS 或转 HTTPS，
+                     默认浅克隆。详见: $0 clone --help
 
 环境变量:
   GITER_ADD_ALL=1              允许直接 git add -A（默认使用安全过滤暂存）
@@ -412,6 +438,12 @@ Git 批量更新推送脚本 (增强版)
   GITER_PUSH_ALL_REMOTES=1    提交后自动发现并推送当前仓库全部可 push 远程；设为 0 时仅推送上游和显式 --push-remotes
   GITER_REFRESH_BRANCH_CACHE=auto 分支列表远程缓存刷新策略: auto, 1, 0
   GITER_SSH_CONNECT_TIMEOUT=10 SSH 连接超时秒数
+  GITER_CLONE_SSH_MODE=auto    clone 的 SSH 处理策略: auto|socks|https
+  GITER_CLONE_DEPTH=1          clone 默认浅克隆深度，0 表示完整克隆
+  GITER_CLONE_PROXY=           clone 默认显式代理，如 socks5h://127.0.0.1:7890
+  GITER_CLONE_HTTP_VERSION=HTTP/1.1  HTTPS 克隆使用的 HTTP 版本
+  GITER_CLONE_PROXY_TIMEOUT=5  clone 代理探测超时秒数
+  GITER_CLONE_TIMEOUT=0        clone 整体超时秒数，0 表示不限制
   GITER_NESTED_POLICIES=       嵌套仓库策略，格式: "path|strategy|remote|branch"
                                strategy: vendor-copy, vendor-copy-push, independent-push, update-only, reference, submodule
   GITER_EXTRA_PUSH_REMOTES=()   额外推送远程数组，例如: ("gitea")
@@ -436,6 +468,8 @@ Git 批量更新推送脚本 (增强版)
   $0 --dry-run -d /path/to/project
   $0 --show-config -d /path/to/project
   $0 -m "只提交脚本" -p ai/ai-hub.sh ai/conf/tools/cli/claude.json
+  $0 clone git@github.com:owner/repo.git
+  $0 clone https://github.com/owner/repo.git ~/work/repo --depth 1
 
 说明:
   无参数运行时默认以脚本所在目录为工作根目录。
@@ -4280,9 +4314,377 @@ maintain_gitignore() {
     ensure_parent_gitignore_entries "$repo_root"
 }
 
+# --- 5.5 clone 子命令 ---
+# 目标：在保持 giter 单一 Git 领域职责的前提下，为 clone 注入代理与加速参数。
+# 代理探测逻辑参考 network/tools/adl，但只服务 git 网络操作，不做 HTTP 文件下载。
+
+# 判定仓库地址类型：ssh / url / path
+clone_repo_kind() {
+    local repo="$1"
+    case "$repo" in
+        ssh://*) printf 'ssh\n' ;;
+        *://*) printf 'url\n' ;;
+        *@*:*) printf 'ssh\n' ;;
+        *) printf 'path\n' ;;
+    esac
+}
+
+# 提取仓库主机名（用于 SOCKS 可达性探测）
+clone_repo_host() {
+    local repo="$1" rest host
+    case "$repo" in
+        ssh://*)
+            rest="${repo#ssh://}"
+            rest="${rest#*@}"
+            host="${rest%%/*}"
+            printf '%s\n' "${host%%:*}"
+            ;;
+        *@*:*)
+            rest="${repo#*@}"
+            printf '%s\n' "${rest%%:*}"
+            ;;
+        *://*)
+            rest="${repo#*://}"
+            rest="${rest#*@}"
+            printf '%s\n' "${rest%%/*}"
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+# scp 形式 git@host:path 与 ssh:// 形式统一转为 https://
+clone_ssh_to_https() {
+    local repo="$1" host path
+    case "$repo" in
+        ssh://*)
+            repo="${repo#ssh://}"
+            repo="${repo#*@}"
+            printf 'https://%s\n' "$repo"
+            ;;
+        *@*:*)
+            host="${repo#*@}"
+            host="${host%%:*}"
+            path="${repo#*:}"
+            printf 'https://%s/%s\n' "$host" "$path"
+            ;;
+        *) printf '%s\n' "$repo" ;;
+    esac
+}
+
+# 由仓库地址推导默认克隆目录名
+clone_default_dir() {
+    local repo="$1" base
+    repo="${repo%/}"
+    base="${repo##*/}"
+    base="${base%.git}"
+    [[ -n "$base" ]] || base="repo"
+    printf '%s\n' "$base"
+}
+
+# 代理端点 host:port 提取
+clone_proxy_host_port() {
+    local proxy="$1" endpoint
+    endpoint="${proxy#*://}"
+    endpoint="${endpoint#*@}"
+    endpoint="${endpoint%%/*}"
+    [[ "$endpoint" == *:* ]] || return 1
+    printf '%s\n' "$endpoint"
+}
+
+# 探测一个代理是否可用（以 github favicon 作连通性校验）
+clone_verify_proxy() {
+    local proxy="$1"
+    local timeout="${GITER_CLONE_PROXY_TIMEOUT:-5}"
+    command -v curl >/dev/null 2>&1 || return 1
+    env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
+        -u no_proxy -u NO_PROXY \
+        curl -fsS --connect-timeout "$timeout" --max-time "$((timeout * 2))" \
+        --proxy "$proxy" -o /dev/null "https://github.com/favicon.ico" >/dev/null 2>&1
+}
+
+# 按优先级探测可用代理：显式配置 > 环境变量 > 常见本地端口
+clone_detect_proxy() {
+    local -a candidates=()
+    local var proxy
+    [[ -n "${GITER_CLONE_PROXY:-}" ]] && candidates+=("$GITER_CLONE_PROXY")
+    for var in http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY; do
+        [[ -n "${!var:-}" ]] && candidates+=("${!var}")
+    done
+    candidates+=(
+        "http://127.0.0.1:7890"
+        "socks5h://127.0.0.1:7890"
+        "http://127.0.0.1:7897"
+        "socks5h://127.0.0.1:7891"
+        "socks5h://127.0.0.1:1080"
+        "http://127.0.0.1:8118"
+    )
+    for proxy in "${candidates[@]}"; do
+        [[ -n "$proxy" ]] || continue
+        if clone_verify_proxy "$proxy"; then
+            printf '%s\n' "$proxy"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# 检测 nc 是否支持 SOCKS（-X）。注意：nc -h 退出码非 0，不能直接用于 pipefail 管道。
+clone_nc_supports_socks() {
+    command -v nc >/dev/null 2>&1 || return 1
+    local help_text
+    help_text="$(nc -h 2>&1 || true)"
+    [[ "$help_text" == *"-X"* ]]
+}
+
+# 生成 SOCKS5 ProxyCommand（优先内置 nc，其次 ncat）
+clone_socks_connector() {
+    local endpoint="$1"
+    if clone_nc_supports_socks; then
+        printf 'nc -X 5 -x %s %%h %%p\n' "$endpoint"
+        return 0
+    fi
+    if command -v ncat >/dev/null 2>&1; then
+        printf 'ncat --proxy %s --proxy-type socks5 %%h %%p\n' "$endpoint"
+        return 0
+    fi
+    return 1
+}
+
+# 校验 SOCKS 代理能否抵达目标主机端口（默认 SSH 22）
+clone_socks_reachable() {
+    local endpoint="$1" target_host="$2" target_port="$3"
+    local timeout="${GITER_CLONE_PROXY_TIMEOUT:-5}"
+    if clone_nc_supports_socks; then
+        nc -X 5 -x "$endpoint" -w "$timeout" -z "$target_host" "$target_port" >/dev/null 2>&1 && return 0
+    fi
+    if command -v ncat >/dev/null 2>&1; then
+        ncat --proxy "$endpoint" --proxy-type socks5 -w "$timeout" -z "$target_host" "$target_port" >/dev/null 2>&1 && return 0
+    fi
+    return 1
+}
+
+giter_clone() {
+    local repo="$CLONE_REPO"
+    local dir="$CLONE_DIR"
+    local branch="$CLONE_BRANCH"
+    local ssh_mode="${CLONE_SSH_MODE:-$GITER_CLONE_SSH_MODE}"
+    local depth="${CLONE_DEPTH:-$GITER_CLONE_DEPTH}"
+    local kind
+
+    if [[ -z "$repo" ]]; then
+        log_error "clone 需要仓库地址，例如: giter clone git@github.com:owner/repo.git"
+        return 2
+    fi
+    [[ "$depth" =~ ^[0-9]+$ ]] || depth="$GITER_CLONE_DEPTH"
+
+    kind="$(clone_repo_kind "$repo")"
+    [[ -n "$dir" ]] || dir="$(clone_default_dir "$repo")"
+    if [[ "$dir" != /* ]]; then
+        dir="$ORIGINAL_PWD/$dir"
+    fi
+
+    if [[ -e "$dir" ]]; then
+        if [[ -d "$dir" && -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
+            log_info "目标目录已存在且为空，继续克隆: $dir"
+        else
+            log_error "目标目录已存在且非空，放弃克隆: $dir"
+            return 1
+        fi
+    fi
+
+    # --- 代理探测 ---
+    local proxy=""
+    local use_proxy=0
+    if [[ "${CLONE_NO_PROXY:-0}" -eq 1 || "${GITER_CLONE_NO_PROXY:-0}" == "1" ]]; then
+        log_info "已禁用代理（--no-proxy）"
+    elif proxy="$(clone_detect_proxy)"; then
+        use_proxy=1
+        log_info "检测到可用代理: $proxy"
+    else
+        log_warn "未检测到可用代理，将直连操作"
+    fi
+
+    local clone_url="$repo"
+    local -a git_opts=()
+    local -a clone_args=(clone)
+    local ssh_proxy_used=0
+
+    # --- SSH 分支：socks 或转 https ---
+    if [[ "$kind" == "ssh" ]]; then
+        local repo_host proxy_endpoint=""
+        repo_host="$(clone_repo_host "$repo" 2>/dev/null || true)"
+        [[ -n "$repo_host" ]] || repo_host="github.com"
+        if [[ "$use_proxy" -eq 1 ]]; then
+            proxy_endpoint="$(clone_proxy_host_port "$proxy" 2>/dev/null || true)"
+        fi
+
+        local want_socks=0
+        case "$ssh_mode" in
+            socks) want_socks=1 ;;
+            auto) [[ -n "$proxy_endpoint" ]] && want_socks=1 ;;
+        esac
+
+        if [[ "$want_socks" -eq 1 && -n "$proxy_endpoint" ]]; then
+            local connector=""
+            if connector="$(clone_socks_connector "$proxy_endpoint")" \
+                && clone_socks_reachable "$proxy_endpoint" "$repo_host" 22; then
+                export GIT_SSH_COMMAND="ssh -o ProxyCommand='${connector}' -o ConnectTimeout=${GITER_SSH_CONNECT_TIMEOUT} -o ServerAliveInterval=5 -o ServerAliveCountMax=1"
+                ssh_proxy_used=1
+                log_debug "SOCKS 连接器: $connector"
+                log_info "SSH 经 SOCKS5 代理: $proxy_endpoint"
+            elif [[ "$ssh_mode" == "socks" ]]; then
+                log_warn "socks 模式不可用（缺 SOCKS 连接器或代理不通），回退直连 SSH"
+            fi
+        fi
+
+        if [[ "$ssh_proxy_used" -eq 0 ]]; then
+            if [[ "$ssh_mode" == "https" ]]; then
+                clone_url="$(clone_ssh_to_https "$repo")"
+                log_info "SSH 地址转为 HTTPS: $clone_url"
+            elif [[ "$ssh_mode" == "auto" && "$use_proxy" -eq 1 ]]; then
+                clone_url="$(clone_ssh_to_https "$repo")"
+                log_info "SOCKS 不可用，SSH 转为 HTTPS 并走代理: $clone_url"
+            fi
+        fi
+    fi
+
+    # --- HTTPS/URL：注入 http.proxy 与 http.version ---
+    case "$clone_url" in
+        http://*|https://*)
+            if [[ "$use_proxy" -eq 1 ]]; then
+                git_opts+=(-c "http.proxy=$proxy" -c "https.proxy=$proxy")
+                [[ -n "${GITER_CLONE_HTTP_VERSION:-}" ]] && git_opts+=(-c "http.version=$GITER_CLONE_HTTP_VERSION")
+                log_info "HTTPS 走代理: $proxy (http.version=${GITER_CLONE_HTTP_VERSION:-默认})"
+            fi
+            ;;
+    esac
+
+    if [[ "$depth" -gt 0 ]]; then
+        clone_args+=("--depth" "$depth")
+    fi
+    if [[ -n "$branch" ]]; then
+        clone_args+=("--branch" "$branch")
+    fi
+    clone_args+=("$clone_url" "$dir")
+
+    log_info "开始克隆: $clone_url -> $dir (depth=${depth})"
+
+    local status=0
+    run_git_network_command_with_timeout "$GITER_CLONE_TIMEOUT" "${git_opts[@]+"${git_opts[@]}"}" "${clone_args[@]}" || status=$?
+
+    if [[ "$status" -ne 0 ]]; then
+        log_error "克隆失败（退出码 $status）"
+        if [[ "$kind" == "ssh" ]]; then
+            log_error "可尝试: giter clone --ssh-mode https $repo"
+        fi
+        return "$status"
+    fi
+
+    log_info "克隆完成: $dir"
+}
+
+show_clone_help() {
+    cat <<EOF
+giter clone - 带代理探测与浅克隆加速的 git clone 封装
+
+用法: giter clone <repo> [dir] [选项]
+
+选项:
+  --depth NUM         浅克隆深度（默认: ${GITER_CLONE_DEPTH}，0 表示完整克隆）
+  -b, --branch NAME   克隆指定分支
+  --ssh-mode MODE     SSH 地址处理策略: auto|socks|https（默认: ${GITER_CLONE_SSH_MODE}）
+                        auto  - 优先 SOCKS 代理 SSH，不可用时转 HTTPS
+                        socks - 强制通过 SOCKS5 代理 SSH
+                        https - 将 SSH 地址转为 HTTPS 并走 HTTP 代理
+  --proxy URL         显式指定代理，如 socks5h://127.0.0.1:7890
+  --no-proxy          禁用代理探测，强制直连
+  -v, --verbose       显示详细日志
+  -h, --help          显示帮助
+
+环境变量:
+  GITER_CLONE_SSH_MODE=auto     默认 SSH 处理策略
+  GITER_CLONE_DEPTH=1           默认浅克隆深度
+  GITER_CLONE_PROXY=            默认显式代理
+  GITER_CLONE_HTTP_VERSION=HTTP/1.1  HTTPS 克隆使用的 HTTP 版本（规避 GitHub HTTP/2 断连）
+  GITER_CLONE_PROXY_TIMEOUT=5   代理探测超时秒数
+  GITER_CLONE_TIMEOUT=0         clone 整体超时秒数，0 表示不限制
+
+示例:
+  giter clone git@github.com:owner/repo.git
+  giter clone https://github.com/owner/repo.git ~/work/repo
+  giter clone git@github.com:owner/repo.git --ssh-mode https --depth 1
+  giter clone https://github.com/owner/repo.git --proxy socks5h://127.0.0.1:7890
+EOF
+}
+
+giter_clone_cli() {
+    CLONE_REPO=""
+    CLONE_DIR=""
+    CLONE_BRANCH=""
+    CLONE_DEPTH=""
+    CLONE_SSH_MODE=""
+    CLONE_NO_PROXY=0
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --depth)
+                [[ $# -ge 2 && "$2" =~ ^[0-9]+$ ]] || { log_error "$1 需要数字参数"; return 2; }
+                CLONE_DEPTH="$2"; shift 2
+                ;;
+            -b|--branch)
+                [[ $# -ge 2 && -n "$2" ]] || { log_error "$1 需要 BRANCH 参数"; return 2; }
+                CLONE_BRANCH="$2"; shift 2
+                ;;
+            --ssh-mode)
+                [[ $# -ge 2 && -n "$2" ]] || { log_error "$1 需要模式参数"; return 2; }
+                case "$2" in
+                    auto|socks|https) CLONE_SSH_MODE="$2" ;;
+                    *) log_error "无效 --ssh-mode: $2 (auto|socks|https)"; return 2 ;;
+                esac
+                shift 2
+                ;;
+            --proxy)
+                [[ $# -ge 2 && -n "$2" ]] || { log_error "$1 需要 URL 参数"; return 2; }
+                GITER_CLONE_PROXY="$2"; shift 2
+                ;;
+            --no-proxy)
+                CLONE_NO_PROXY=1; shift
+                ;;
+            -v|--verbose)
+                VERBOSE=1; shift
+                ;;
+            -h|--help)
+                show_clone_help; return 0
+                ;;
+            -*)
+                log_error "clone: 未知选项 $1"; return 2
+                ;;
+            *)
+                if [[ -z "$CLONE_REPO" ]]; then
+                    CLONE_REPO="$1"
+                elif [[ -z "$CLONE_DIR" ]]; then
+                    CLONE_DIR="$1"
+                else
+                    log_error "clone: 多余参数 $1"; return 2
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    giter_clone
+    return $?
+}
+
 # --- 6. 主程序 ---
 
 main() {
+    if [[ "${1:-}" == "clone" ]]; then
+        shift
+        giter_clone_cli "$@"
+        exit $?
+    fi
+
     local original_argc=$#
     local fail_count=0
     GITER_SUMMARY_FILE="$(mktemp)"

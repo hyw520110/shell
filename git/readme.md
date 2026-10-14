@@ -121,6 +121,23 @@ git-diff.sh -b -m                          # 合并工作量评估
 ~/work/shell/git/giter.sh "提交说明" -- path/to/file.sh
 ```
 
+**clone 子命令**: 带代理探测与浅克隆加速的 `git clone` 封装。
+
+```bash
+giter clone <repo> [dir] [选项]
+giter clone git@github.com:owner/repo.git                 # 自动探测代理
+giter clone git@github.com:owner/repo.git --ssh-mode https # SSH 转 HTTPS 走代理
+giter clone https://github.com/owner/repo.git ~/work/repo --depth 1
+```
+
+- 按地址形式（`git@host:path`、`ssh://`、`https://`）自动识别 SSH / HTTPS。
+- 默认探测可用代理（显式配置 > 环境变量 > 常见本地端口），连不上则直连。
+- SSH 地址默认 `--ssh-mode auto`：优先经 SOCKS5 代理 SSH，不可用时转 HTTPS 走 HTTP 代理。
+- 默认浅克隆 `--depth 1`，可通过 `--depth 0` 关闭。
+- HTTPS 克隆默认注入 `http.version=HTTP/1.1`，规避 GitHub HTTP/2 断连。
+- 相关环境变量：`GITER_CLONE_SSH_MODE`、`GITER_CLONE_DEPTH`、`GITER_CLONE_PROXY`、
+  `GITER_CLONE_HTTP_VERSION`、`GITER_CLONE_PROXY_TIMEOUT`、`GITER_CLONE_TIMEOUT`。
+
 ## 🔗 相关链接
 
 - [Git 官方网站](https://git-scm.com/)
