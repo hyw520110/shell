@@ -10,11 +10,11 @@ REPORTER="$SCRIPT_DIR/src-hunter-report.py"
 TARGETS_FILE="${SRC_TARGETS_FILE:-${HOME}/nuclei_scan/butian-public-src-targets.tsv}"
 HISTORY_FILE="${SRC_SCAN_HISTORY_FILE:-${HOME}/nuclei_scan/scanned-domains.txt}"
 OUTPUT_ROOT="${SRC_SCAN_OUTPUT_DIR:-${HOME}/nuclei_scan}"
-RATE_LIMIT="${SRC_NUCLEI_RATE_LIMIT:-30}"
-CONCURRENCY="${SRC_NUCLEI_CONCURRENCY:-10}"
+RATE_LIMIT="${SRC_NUCLEI_RATE_LIMIT:-10}"
+CONCURRENCY="${SRC_NUCLEI_CONCURRENCY:-5}"
 BULK_SIZE="${SRC_NUCLEI_BULK_SIZE:-5}"
-TIMEOUT_SECONDS="${SRC_NUCLEI_TIMEOUT:-8}"
-RETRIES="${SRC_NUCLEI_RETRIES:-0}"
+TIMEOUT_SECONDS="${SRC_NUCLEI_TIMEOUT:-12}"
+RETRIES="${SRC_NUCLEI_RETRIES:-1}"
 MAX_TIME="${SRC_NUCLEI_MAX_TIME:-15m}"
 CURRENT_CLAIM_TARGET=""
 CURRENT_CLAIM_BATCH=""
@@ -45,6 +45,7 @@ show_help() {
 用法：$(basename "$0") <命令> [选项]
 
 命令：
+  doctor                 检查系统和工具能力，不扫描目标
   scan-next              从公益 SRC TSV 中选择第一个未扫描目标并扫描
   scan-batch             批量认领并扫描多个未扫描目标（配合 --count 使用）
   scan --url <URL>       扫描指定目标；不在目标表中时需双重授权确认
@@ -75,6 +76,14 @@ show_help() {
 
 安全边界：仅使用 nuclei.sh 安全默认模式；不自动执行代码执行、DoS、爆破、
 默认口令、钓鱼或其他主动利用，也不会自动提交补天。
+
+Kali 环境增强（自动启用，KALI_RECON=0 可关闭；其他系统可置 1 启用）：
+  默认：curl 可达性、dig DNS、httpx-toolkit/httpx 指纹、WhatWeb 强度 1
+  KALI_RECON_SUBDOMAINS=1   启用子域发现；主动探测需 SRC_RECON_ALLOWLIST_FILE
+  SRC_RECON_ALLOWLIST_FILE 每行一个明确授权 URL/主机，不支持通配符，最多 20 项
+  KALI_RECON_NMAP=1        显式启用当前目标 TOP 20 端口探测，限速且不运行 NSE
+  KALI_RECON_WAF=1         显式启用 wafw00f；默认仅使用 HTTPX CDN/WAF 指纹
+  辅助工具均限时执行，错误记录到 recon/*.stderr.log，不会静默忽略。
 EOF
 }
 
@@ -92,6 +101,7 @@ validate_parameters() {
   is_positive_integer "$BULK_SIZE" || die '批量请求数必须是大于 0 的整数。'
   is_positive_integer "$TIMEOUT_SECONDS" || die '超时必须是大于 0 的整数。'
   is_nonnegative_integer "$RETRIES" || die '重试次数必须是非负整数。'
+  is_positive_integer "$BATCH_COUNT" || die '批量目标数量必须是正整数。'
   is_duration "$MAX_TIME" || die '最长运行时间格式无效，如 10m、30s、1h。'
 }
 target_domain() { python3 "$REPORTER" domain --target "$1"; }
@@ -125,15 +135,24 @@ parse_options() {
   done
 }
 
+source "$SCRIPT_DIR/src-hunter-recon.sh"
+
 run_scan() {
   local target="$1" vendor="$2" domain="$3" target_dir prefix json_file report_file log_file scan_rc=0 verify_rc check check_target
   # Keep an explicit fallback for interrupted pipelines under `set -u`.
   scan_rc=0
+  python3 "$REPORTER" host --target "$target" >/dev/null || die '目标 URL 无效。'
   target_dir="$OUTPUT_ROOT/$domain"; prefix="nuclei-$(date +%Y%m%d-%H%M%S)"
   json_file="$target_dir/$prefix.json"; report_file="$target_dir/$prefix.md"; log_file="$target_dir/$prefix.log"
   mkdir -p "$target_dir"
   log "厂商：${vendor:-未提供}"; log "目标：$target"; log "输出目录：$target_dir"
   log "安全全量扫描：请求速率 ${RATE_LIMIT}/s，并发 ${CONCURRENCY}，最长 ${MAX_TIME}"
+  # Kali 增强：扫描前先做被动/轻量侦察
+  local recon_dir="$target_dir/$prefix-recon"
+  if kali_recon_enabled; then
+    log "检测到 Kali 环境，启用系统工具增强侦察（KALI_RECON=1）"
+    run_kali_recon "$domain" "$recon_dir" "$target"
+  fi
   set +e
   "$NUCLEI_SCRIPT" -l all -u "$target" -f json -o "$prefix" -d "$target_dir" \
     -r "$RATE_LIMIT" -c "$CONCURRENCY" -b "$BULK_SIZE" -t "$TIMEOUT_SECONDS" \
@@ -157,6 +176,29 @@ run_scan() {
     done < <(python3 "$REPORTER" checks --json "$json_file")
   fi
 
+  # Kali 增强：存活子域扩展扫描（低影响模板，独立报告）
+  if kali_recon_enabled && [ "${KALI_RECON_SUBDOMAINS:-0}" = "1" ] && [ -n "${SRC_RECON_ALLOWLIST_FILE:-}" ] && [ -s "$recon_dir/live-urls.txt" ]; then
+    local sub_urls="$recon_dir/live-urls.txt" sub_prefix sub_json sub_report sub_log sub_rc=0
+    sub_prefix="nuclei-sub-$(date +%Y%m%d-%H%M%S)"
+    sub_json="$target_dir/$sub_prefix.json"; sub_report="$target_dir/$sub_prefix.md"; sub_log="$target_dir/$sub_prefix.log"
+    log "子域扩展扫描：$(wc -l < "$sub_urls") 个存活子域"
+    set +e
+    "$NUCLEI_SCRIPT" -l all -L "$sub_urls" -f json -o "$sub_prefix" -d "$target_dir" \
+      -r "$RATE_LIMIT" -c "$CONCURRENCY" -b "$BULK_SIZE" -t "$TIMEOUT_SECONDS" \
+      -R "$RETRIES" -m "$MAX_TIME" --no-auto-verify 2>&1 | tee "$sub_log"
+    sub_rc="${PIPESTATUS[0]:-1}"
+    set -e
+    python3 "$REPORTER" analyze --json "$sub_json" --output "$sub_report" \
+      --vendor "$vendor" --target "$target" --scan-status "$sub_rc" --log "$sub_log" || true
+    log "子域扩展报告：$sub_report"
+  fi
+  append_recon_summary "$domain" "$recon_dir" "$report_file"
+
+  if [ "$scan_rc" -eq 0 ] && ! python3 "$REPORTER" health --log "$log_file"; then
+    warn '扫描覆盖不足或目标无响应，未写入成功历史；检查报告和网络后可重试。'
+    return 3
+  fi
+
   if [ "${scan_rc:-1}" -eq 0 ]; then
     python3 "$REPORTER" mark-scanned --history "$HISTORY_FILE" --target "$target" >/dev/null
     ok "扫描完成并已记录历史：$domain"; ok "主报告：$report_file"
@@ -171,11 +213,18 @@ run_scan_batch() {
   local list_file="$1" batch_name="$2"
   local target_dir prefix json_file report_file log_file scan_rc=0 verify_rc check check_target
   scan_rc=0
+  while IFS= read -r check_target; do
+    [ -z "$check_target" ] || python3 "$REPORTER" host --target "$check_target" >/dev/null || die '批量目标包含无效 URL。'
+  done < "$list_file"
   target_dir="$OUTPUT_ROOT/$batch_name"; prefix="nuclei-$(date +%Y%m%d-%H%M%S)"
   json_file="$target_dir/$prefix.json"; report_file="$target_dir/$prefix.md"; log_file="$target_dir/$prefix.log"
   mkdir -p "$target_dir"
   log "批量扫描目标数量：$(wc -l < "$list_file")"; log "输出目录：$target_dir"
   log "安全全量扫描：请求速率 ${RATE_LIMIT}/s，并发 ${CONCURRENCY}，最长 ${MAX_TIME}"
+  local recon_dir="$target_dir/$prefix-recon"
+  if kali_recon_enabled; then
+    run_kali_batch_recon "$list_file" "$recon_dir"
+  fi
   set +e
   "$NUCLEI_SCRIPT" -l all -L "$list_file" -f json -o "$prefix" -d "$target_dir" \
     -r "$RATE_LIMIT" -c "$CONCURRENCY" -b "$BULK_SIZE" -t "$TIMEOUT_SECONDS" \
@@ -185,6 +234,11 @@ run_scan_batch() {
 
   python3 "$REPORTER" analyze --json "$json_file" --output "$report_file" \
     --scan-status "$scan_rc" --log "$log_file"
+  append_recon_summary "$batch_name" "$recon_dir" "$report_file"
+  if [ "$scan_rc" -eq 0 ] && ! python3 "$REPORTER" health --log "$log_file"; then
+    warn '批量扫描不完整，未写入成功历史。'
+    return 3
+  fi
   if [ -s "$json_file" ]; then
     while IFS=$'\t' read -r check check_target; do
       [ -n "$check" ] && [ -n "$check_target" ] || continue
@@ -266,7 +320,8 @@ cmd_scan() {
   local domain; domain="$(target_domain "$URL")" || die "无法解析目标主域名：$URL"
   local claim_args=()
   [ "$FORCE" -eq 1 ] && claim_args+=(--force)
-  python3 "$REPORTER" claim-target --history "$HISTORY_FILE" --target "$URL" "${claim_args[@]}" || die '目标已被其他任务占用或已扫描；如需重扫请检查 --force。'
+  python3 "$REPORTER" host --target "$URL" >/dev/null || die '目标 URL 无效。'
+  python3 "$REPORTER" claim-target --history "$HISTORY_FILE" --target "$URL" --output-root "$OUTPUT_ROOT" "${claim_args[@]}" || die '目标已被其他任务占用或已扫描；如需重扫请检查 --force。'
   CURRENT_CLAIM_TARGET="$URL"
   if run_scan "$URL" "$VENDOR" "$domain"; then
     CURRENT_CLAIM_TARGET=""
@@ -299,6 +354,7 @@ cmd_report() {
 main() {
   [ "$#" -gt 0 ] || { show_help; exit 1; }; local command="$1"; shift
   case "$command" in
+    doctor) require_dependencies; doctor ;;
     scan-next) parse_options "$@"; cmd_scan_next ;;
     scan-batch) parse_options "$@"; cmd_scan_batch ;;
     scan) parse_options "$@"; cmd_scan ;;

@@ -1610,7 +1610,7 @@ cleanup_homebrew() {
         fi
         
         echo -e "  - 正在执行 brew cleanup（最多等待 60 秒）..."
-        if run_with_timeout 60 brew cleanup --prune=all 2>&1; then
+        if run_with_timeout 60 brew cleanup --prune=all -s 2>&1; then
             local cache_size_after
             cache_size_after=$(get_dir_size "$brew_cache_dir")
             echo -e "  ${GREEN}✓${NC} 已清理 Homebrew 缓存: $cache_size -> $cache_size_after"
@@ -1881,8 +1881,14 @@ if [[ "$OS_TYPE" == "macOS" ]]; then
         "29|检测重复文件|false|both|detect_duplicate_files"
         # ========== 高风险区 (需提权或不可逆, 默认不选) ==========
         "30|删除 Xcode CommandLineTools|false|macos|cleanup_xcode_clt"
+        # ========== 磁盘大头专项 (2026-10 新增: Hermes/临时文件/Eclipse/Codex/uv) ==========
+        "31|清理 Hermes 缓存与 git 历史|true|macos|cleanup_hermes_cache"
+        "32|清理系统临时目录残留 (/private/var/folders 7天前)|true|macos|cleanup_var_folders_tmp"
+        "33|清理 Eclipse P2 残留数据 (~/.p2)|false|macos|cleanup_eclipse_p2"
+        "34|清理 Codex 历史会话 (30天前)|false|macos|cleanup_codex_sessions"
+        "35|清理 uv 工具数据 (~/.local/share/uv)|false|macos|cleanup_uv_tool_data"
         # ========== 组合操作 ==========
-        "31|清理所有 (执行所有清理项目)|false|both|cleanup_all_macos"
+        "36|清理所有 (执行所有清理项目)|false|both|cleanup_all_macos"
         "0|退出|false|both|exit_script"
     )
 else
@@ -3161,39 +3167,80 @@ cleanup_wallpaper_cache() {
 cleanup_orphan_appdata() {
     echo -e "\n${YELLOW}正在扫描残留的卸载应用数据 (僵尸文件)...${NC}"
     if [[ ! -d "$HOME/Library/Application Support" ]]; then
+        echo -e "  ${YELLOW}-${NC} 未找到 Application Support 目录，跳过"
         return
     fi
-    local found=0
+    local min_kb=$(( ${UNINSTALLED_RESIDUE_MIN_MB:-100} * 1024 ))
+    local found=0 total_freed=0
+    local -a candidates=()
+    local app_dir=""
     for app_dir in "$HOME/Library/Application Support/"*; do
-        if [[ -d "$app_dir" ]]; then
-            local app_name=$(basename "$app_dir")
-            if [[ "$app_name" == "Apple" || "$app_name" == "CloudDocs" || "$app_name" == "Knowledge" || "$app_name" == "MobileSync" || "$app_name" == "CrashReporter" || "$app_name" == "SyncServices" ]]; then
-                continue
-            fi
-            local exists=0
-            if [[ -d "/Applications/${app_name}.app" ]] || [[ -d "/System/Applications/${app_name}.app" ]] || [[ -d "$HOME/Applications/${app_name}.app" ]]; then
-                exists=1
-            else
-                if ls /Applications/*"${app_name}"*.app >/dev/null 2>&1; then
+        [[ -d "$app_dir" ]] || continue
+        local app_name=$(basename "$app_dir")
+        # 系统/共享目录黑名单（绝不建议删除）
+        case "$app_name" in
+            Apple|CloudDocs|Knowledge|MobileSync|CrashReporter|SyncServices|AddressBook|CallHistoryDB|com.apple.*)
+                continue ;;
+        esac
+        # 判断对应 App 是否仍安装（精确匹配 + 通配匹配 + bundle-id 精确比对）
+        local exists=0
+        if [[ -d "/Applications/${app_name}.app" || -d "/System/Applications/${app_name}.app" || -d "$HOME/Applications/${app_name}.app" ]]; then
+            exists=1
+        elif ls /Applications/*"${app_name}"*.app >/dev/null 2>&1; then
+            exists=1
+        else
+            # 目录名可能是 bundle id（如 com.metacubex.ClashX.meta），比对 /Applications 下 App 的 CFBundleIdentifier
+            local app_path bundle_id
+            for app_path in /Applications/*.app /System/Applications/*.app "$HOME/Applications"/*.app; do
+                [[ -e "$app_path" ]] || continue
+                bundle_id=$(defaults read "$app_path/Contents/Info" CFBundleIdentifier 2>/dev/null || true)
+                if [[ -n "$bundle_id" && "$bundle_id" == "$app_name" ]]; then
                     exists=1
+                    break
                 fi
-            fi
-            if [[ $exists -eq 0 ]]; then
-                local size=$(get_dir_size "$app_dir")
-                if [[ "$size" != "0KB" && "$size" != "0B" && "$size" != "" ]]; then
-                    echo -e "  - 发现潜在残留数据: ${BLUE}${app_name}${NC} ($size)"
-                    echo -e "    路径: ${app_dir}"
-                    found=1
-                fi
-            fi
+            done
         fi
+        [[ $exists -eq 0 ]] || continue
+        # 大小阈值：仅处理超过阈值的残留
+        local size_kb; size_kb=$(get_dir_size_kb "$app_dir" 2>/dev/null || echo 0)
+        [[ $size_kb -ge $min_kb ]] || continue
+        candidates+=("$app_dir|$size_kb")
+        found=1
     done
     if [[ $found -eq 0 ]]; then
-        echo -e "  ${GREEN}未发现明显的大型残留应用数据${NC}"
-    else
-        echo -e "  ${YELLOW}提示: 残留数据可能有误判，建议手动确认后删除：${NC}"
-        echo -e "  ${YELLOW}  rm -rf \"~/Library/Application Support/<应用名>\"${NC}"
+        echo -e "  ${GREEN}未发现明显的大型残留应用数据 (阈值: ${UNINSTALLED_RESIDUE_MIN_MB:-100}MB)${NC}"
+        return
     fi
+    echo -e "  - 发现 ${YELLOW}${#candidates[@]}${NC} 个已卸载应用的残留数据 (>${UNINSTALLED_RESIDUE_MIN_MB:-100}MB):"
+    local entry app_name size_kb human
+    for entry in "${candidates[@]}"; do
+        app_dir="${entry%%|*}"; size_kb="${entry##*|}"
+        human=$(format_size_kb "$size_kb")
+        echo -e "    • ${BLUE}$(basename "$app_dir")${NC} (${human})"
+        echo -e "      路径: $app_dir"
+    done
+    # 交互模式：确认后删除（默认删除）；非交互模式（--auto/--run）：直接删除
+    if [[ $BATCH_MODE -eq 0 ]]; then
+        read -r -p "  - 确认删除以上 ${#candidates[@]} 个残留目录? [Y/n] " response
+        if [[ "$response" =~ ^[Nn]$ ]]; then
+            echo -e "  ${YELLOW}-${NC} 已跳过残留清理"
+            return
+        fi
+    else
+        echo -e "  ${YELLOW}-${NC} 非交互模式，直接删除已确认残留"
+    fi
+    for entry in "${candidates[@]}"; do
+        app_dir="${entry%%|*}"; size_kb="${entry##*|}"
+        if rm -rf "$app_dir" 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} 已删除残留: $(basename "$app_dir") (${size_kb}KB)"
+            log_action "SUCCESS" "删除已卸载应用残留: $(basename "$app_dir")"
+            total_freed=$(( total_freed + size_kb ))
+        else
+            echo -e "  ${RED}✗${NC} 删除失败: $(basename "$app_dir")（可能被占用或权限不足）"
+            log_action "ERROR" "删除已卸载应用残留失败: $(basename "$app_dir")"
+        fi
+    done
+    echo -e "  ${GREEN}残留清理完成，预计释放: ${YELLOW}$(format_size_kb "$total_freed")${NC}"
 }
 # 清理审计日志 (/private/var/audit)
 cleanup_audit_logs() {
@@ -3230,6 +3277,143 @@ cleanup_audit_logs() {
 
 # =======================================================
 
+# 清理 Hermes AI 助手缓存与 git 历史 (~/.hermes/cache + hermes-agent/.git)
+cleanup_hermes_cache() {
+    echo -e "\n${YELLOW}正在清理 Hermes 缓存与 git 历史...${NC}"
+    local targets=(
+        "$HOME/.hermes/cache"
+        "$HOME/.hermes/hermes-agent/.git"
+    )
+    local cleaned=0 t
+    for t in "${targets[@]}"; do
+        [[ -e "$t" ]] || continue
+        local size
+        size=$(get_dir_size "$t")
+        if [[ $BATCH_MODE -eq 0 ]]; then
+            if ! confirm_action "清理 Hermes 数据: ${t#$HOME/}" "$size"; then
+                echo -e "  ${YELLOW}-${NC} 已跳过 ${t#$HOME/}"
+                continue
+            fi
+        fi
+        if rm -rf "$t" 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} 已清理 ${t#$HOME/} ($size)"
+            log_action "SUCCESS" "清理 Hermes 数据: $t"
+            ((cleaned++))
+        else
+            echo -e "  ${RED}✗${NC} 清理 ${t#$HOME/} 失败 (可能被占用)"
+            log_action "ERROR" "清理 Hermes 数据失败: $t"
+        fi
+    done
+    if [[ $cleaned -eq 0 ]]; then
+        echo -e "  - 未检测到可清理的 Hermes 缓存/git 历史"
+    fi
+}
+
+# 清理系统临时目录残留 (/private/var/folders 中 7 天前的临时文件, 需 sudo)
+cleanup_var_folders_tmp() {
+    echo -e "\n${YELLOW}正在清理系统临时目录残留 (/private/var/folders, 7天前)...${NC}"
+    if [[ ! -d "/private/var/folders" ]]; then
+        echo -e "  ${YELLOW}-${NC} 目录不存在，跳过"
+        return 0
+    fi
+    local size_before size_after count
+    size_before=$(sudo du -sh /private/var/folders 2>/dev/null | awk '{print $1}')
+    count=$(sudo find /private/var/folders -type f -mtime +7 2>/dev/null | wc -l | tr -d ' ')
+    echo -e "  - 临时目录当前大小: ${YELLOW}${size_before}${NC}，7天前的文件数: $count"
+    if [[ "$count" -eq 0 ]]; then
+        echo -e "  ${YELLOW}-${NC} 无可清理的过期临时文件，已跳过"
+        return 0
+    fi
+    if [[ $BATCH_MODE -eq 0 ]]; then
+        if ! confirm_action "删除 7 天前的系统临时文件 (需要管理员权限)" "$size_before"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过"
+            return 0
+        fi
+    fi
+    ensure_sudo "find /private/var/folders -type f -mtime +7 -delete" || return 1
+    size_after=$(sudo du -sh /private/var/folders 2>/dev/null | awk '{print $1}')
+    echo -e "  ${GREEN}✓${NC} 已清理系统临时文件: ${size_before} → ${size_after}"
+    log_action "SUCCESS" "清理系统临时文件: ${size_before} → ${size_after}"
+}
+
+# 清理 Eclipse P2 残留 (~/.p2 插件池/仓库, 需确认不使用 Eclipse/Java IDE)
+cleanup_eclipse_p2() {
+    echo -e "\n${YELLOW}正在扫描 Eclipse P2 残留数据...${NC}"
+    local p2="$HOME/.p2"
+    [[ -d "$p2" ]] || { echo -e "  - 未发现 ~/.p2 (Eclipse 已卸载或无残留)"; return 0; }
+    local size
+    size=$(get_dir_size "$p2")
+    echo -e "  - 检测到 Eclipse P2 数据: ${BLUE}~/.p2${NC} ($size)"
+    echo -e "    说明: Eclipse IDE 插件池/仓库缓存，删除后 Eclipse 需要重新安装插件"
+    if [[ $BATCH_MODE -eq 0 ]]; then
+        if ! confirm_action "删除整个 ~/.p2" "$size"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过"
+            return 0
+        fi
+    fi
+    if rm -rf "$p2" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} 已删除 ~/.p2 ($size)"
+        log_action "SUCCESS" "删除 Eclipse P2 残留: $p2"
+    else
+        echo -e "  ${RED}✗${NC} 删除 ~/.p2 失败"
+        log_action "ERROR" "删除 Eclipse P2 残留失败: $p2"
+    fi
+}
+
+# 清理 Codex 历史会话 (删除 30 天前的 session 目录, 不可恢复)
+cleanup_codex_sessions() {
+    echo -e "\n${YELLOW}正在清理 Codex 历史会话 (30天前)...${NC}"
+    local sess="$HOME/.codex/sessions"
+    [[ -d "$sess" ]] || { echo -e "  - 未发现 Codex 会话目录"; return 0; }
+    local count size
+    count=$(find "$sess" -mindepth 2 -maxdepth 2 -type d -mtime +30 2>/dev/null | wc -l | tr -d ' ')
+    size=$(get_dir_size "$sess")
+    echo -e "  - 会话目录: $size，30天前的会话数: $count"
+    if [[ "$count" -eq 0 ]]; then
+        echo -e "  ${YELLOW}-${NC} 无 30 天前的会话，已跳过"
+        return 0
+    fi
+    if [[ $BATCH_MODE -eq 0 ]]; then
+        if ! confirm_action "删除 30 天前的 Codex 会话 (不可恢复)" "$size"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过"
+            return 0
+        fi
+    fi
+    if find "$sess" -mindepth 2 -maxdepth 2 -type d -mtime +30 -exec rm -rf {} + 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} 已删除 30 天前的 Codex 会话"
+        log_action "SUCCESS" "清理 Codex 历史会话: $sess"
+    else
+        echo -e "  ${RED}✗${NC} 清理 Codex 会话失败"
+        log_action "ERROR" "清理 Codex 会话失败: $sess"
+    fi
+}
+
+# 清理 uv 工具数据 (~/.local/share/uv: uv tool 安装的工具与独立 Python 环境)
+cleanup_uv_tool_data() {
+    echo -e "\n${YELLOW}正在扫描 uv 工具数据...${NC}"
+    local uv_dir="$HOME/.local/share/uv"
+    [[ -d "$uv_dir" ]] || { echo -e "  - 未发现 ~/.local/share/uv"; return 0; }
+    local size
+    size=$(get_dir_size "$uv_dir")
+    echo -e "  - uv 工具数据: ${BLUE}~/.local/share/uv${NC} ($size)"
+    echo -e "    说明: uv tool 安装的工具/独立 Python 环境，删除后需重新 uv tool install"
+    if [[ $BATCH_MODE -eq 0 ]]; then
+        if ! confirm_action "删除 ~/.local/share/uv" "$size"; then
+            echo -e "  ${YELLOW}-${NC} 已跳过"
+            return 0
+        fi
+    fi
+    if rm -rf "$uv_dir" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} 已删除 ~/.local/share/uv ($size)"
+        log_action "SUCCESS" "删除 uv 工具数据: $uv_dir"
+    else
+        echo -e "  ${RED}✗${NC} 删除失败"
+        log_action "ERROR" "删除 uv 工具数据失败: $uv_dir"
+    fi
+}
+
+# =======================================================
+
 # 12. macOS: 清理所有 / Linux: (同 10)
 cleanup_all_macos() {
     echo -e "\n${YELLOW}正在执行全部 macOS 清理...${NC}"
@@ -3260,6 +3444,11 @@ cleanup_all_macos() {
         cleanup_wallpaper_cache
         cleanup_orphan_appdata
         cleanup_audit_logs
+        cleanup_hermes_cache
+        cleanup_var_folders_tmp
+        cleanup_eclipse_p2
+        cleanup_codex_sessions
+        cleanup_uv_tool_data
         echo -e "${GREEN}✓ 全部 macOS 清理完成${NC}"
     else
         echo -e "${YELLOW}已取消全部清理${NC}"
@@ -3556,6 +3745,32 @@ scan_item() {
             ;;
         "cleanup_qoder_cache")
             SCAN_RESULT_SIZES[$idx]=$(get_dir_size "$HOME/.qoder")
+            ;;
+        "cleanup_hermes_cache")
+            local total_kb=0
+            for hd in "$HOME/.hermes/cache" "$HOME/.hermes/hermes-agent/.git"; do
+                [[ -e "$hd" ]] || continue
+                local hkb
+                hkb=$(du -sk "$hd" 2>/dev/null | cut -f1)
+                [[ "$hkb" =~ ^[0-9]+$ ]] && total_kb=$((total_kb + hkb))
+            done
+            if [[ $total_kb -gt 0 ]]; then
+                SCAN_RESULT_SIZES[$idx]=$(awk -v k="$total_kb" 'BEGIN { if (k>=1048576) printf "%.1fGB", k/1048576; else if (k>=1024) printf "%.1fMB", k/1024; else printf "%dKB", k }')
+            else
+                SCAN_RESULT_SIZES[$idx]="0KB"
+            fi
+            ;;
+        "cleanup_var_folders_tmp")
+            SCAN_RESULT_SIZES[$idx]=$(sudo du -sh /private/var/folders 2>/dev/null | awk '{print $1}')
+            ;;
+        "cleanup_eclipse_p2")
+            SCAN_RESULT_SIZES[$idx]=$(get_dir_size "$HOME/.p2")
+            ;;
+        "cleanup_codex_sessions")
+            SCAN_RESULT_SIZES[$idx]=$(get_dir_size "$HOME/.codex/sessions")
+            ;;
+        "cleanup_uv_tool_data")
+            SCAN_RESULT_SIZES[$idx]=$(get_dir_size "$HOME/.local/share/uv")
             ;;
         "cleanup_garageband_logic")
             local size1=$(get_dir_size "/Library/Application Support/GarageBand")

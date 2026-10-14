@@ -69,13 +69,22 @@ def has_completed_report(directory: Path) -> bool:
     """Only successful reports make an output directory non-retryable."""
     if not directory.is_dir():
         return False
+    structured = False
     for report in sorted(directory.glob("nuclei-*.md"), reverse=True):
         try:
             content = report.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        structured = structured or "Nuclei 命令退出码：" in content
+        if "扫描健康状态：`incomplete`" in content or "扫描健康状态：`unknown`" in content:
+            continue
+        coverage = re.search(r"覆盖率\s*`(\d+(?:\.\d+)?)%`", content)
+        if coverage and float(coverage[1]) < 95:
+            continue
         if re.search(r"Nuclei 命令退出码：`0`", content):
             return True
+    if structured:
+        return False
     # Backward compatibility for scans created before the unified report
     # format.  A non-empty raw result file is evidence of a completed legacy
     # scan; a directory containing only a failed Markdown/log pair is not.
@@ -91,7 +100,12 @@ def read_history(path: Path, output_root: Optional[Path] = None) -> set[str]:
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if line and not line.startswith("#"):
-                result.update(target_keys(line.split("\t", 1)[0]))
+                value = line.split("\t", 1)[0]
+                if output_root:
+                    directory = output_root / registrable_domain(value)
+                    if directory.is_dir() and any(directory.glob("nuclei-*.md")) and not has_completed_report(directory):
+                        continue
+                result.update(target_keys(value))
     if output_root and output_root.is_dir():
         for child in output_root.iterdir():
             if (child.is_dir() and not child.name.startswith(".") and "." in child.name
@@ -167,12 +181,12 @@ def append_history(path: Path, value: str) -> bool:
         return True
 
 
-def claim_target(path: Path, value: str, force: bool = False) -> bool:
+def claim_target(path: Path, value: str, force: bool = False, output_root: Optional[Path] = None) -> bool:
     domain = registrable_domain(value)
     if not domain:
         raise ValueError(f"无法从目标解析主域名：{value}")
     with history_lock(path):
-        if not force and target_keys(value) & read_history(path):
+        if not force and target_keys(value) & read_history(path, output_root):
             return False
         claims = claims_path(path)
         active = read_claims(claims)
@@ -325,8 +339,57 @@ def command_claim_batch(args: argparse.Namespace) -> int:
 
 
 def command_is_listed(args: argparse.Namespace) -> int:
-    keys = target_keys(args.target)
-    return 0 if any(keys & target_keys(target) for _, target, _ in read_targets(Path(args.targets))) else 1
+    # 主域名分组仅用于历史去重，不能用来自动授权所有关联子域。
+    host = host_of(args.target)
+    return 0 if any(host == host_of(target) for _, target, _ in read_targets(Path(args.targets))) else 1
+
+
+def command_host(args: argparse.Namespace) -> int:
+    parsed = urlsplit(normalized_target(args.target))
+    host = parsed.hostname or ""
+    if parsed.scheme not in {"http", "https"} or not host or parsed.username or parsed.password:
+        raise ValueError("目标必须是不含凭据的 HTTP/HTTPS URL")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        if any(not re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?", label) for label in host.rstrip('.').split('.')):
+            raise ValueError("目标主机名称无效")
+    parsed.port  # 验证端口是否合法。
+    print(host)
+    return 0
+
+
+def command_filter_scope(args: argparse.Namespace) -> int:
+    if args.limit <= 0:
+        raise ValueError("范围过滤数量上限必须为正整数")
+    allowed: dict[str, list[str]] = {}
+    for line in Path(args.allowlist).read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "*" in line:
+            continue
+        value = normalized_target(line)
+        parsed = urlsplit(value)
+        if parsed.scheme in {"http", "https"} and parsed.hostname and not parsed.username and not parsed.password:
+            allowed.setdefault(host_of(value), []).append(value)
+    seen: set[str] = set()
+    for line in Path(args.input).read_text(encoding="utf-8", errors="replace").splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        candidate = fields[0]
+        candidates = allowed.get(host_of(candidate), [])
+        for value in candidates:
+            if "://" in candidate:
+                actual, expected = urlsplit(candidate), urlsplit(value)
+                default_port = {"http": 80, "https": 443}
+                if (actual.scheme, actual.hostname, actual.port or default_port.get(actual.scheme)) != (expected.scheme, expected.hostname, expected.port or default_port.get(expected.scheme)):
+                    continue
+            if value not in seen:
+                print(value)
+                seen.add(value)
+                if len(seen) >= args.limit:
+                    return 0
+    return 0
 
 
 def command_is_scanned(args: argparse.Namespace) -> int:
@@ -335,7 +398,8 @@ def command_is_scanned(args: argparse.Namespace) -> int:
 
 
 def command_claim_target(args: argparse.Namespace) -> int:
-    return 0 if claim_target(Path(args.history), args.target, args.force) else 1
+    output_root = Path(args.output_root) if args.output_root else None
+    return 0 if claim_target(Path(args.history), args.target, args.force, output_root) else 1
 
 
 def command_release_claim(args: argparse.Namespace) -> int:
@@ -386,7 +450,30 @@ def parse_scan_log(path: Path) -> dict[str, str]:
     skipped = re.findall(r"Skipped\s+([^\n]+?)\s+from target list as found unresponsive(?: permanently| \d+ times)?", text)
     if skipped:
         result["skipped"] = str(len(skipped))
+    loaded = re.findall(r"Templates loaded for current scan:\s*(\d+)", text)
+    hosts = re.findall(r"Targets loaded for current scan:\s*(\d+)", text)
+    if loaded:
+        result.setdefault("templates", loaded[-1])
+    if hosts:
+        result.setdefault("hosts", hosts[-1])
+    result["completed"] = str(bool(durations)).lower()
     return result
+
+
+def scan_health(summary: dict[str, str]) -> str:
+    if summary.get("skipped", "0") != "0":
+        return "incomplete"
+    if summary.get("coverage"):
+        percent = float(summary["coverage"].rstrip("%"))
+        return "complete" if percent >= 95 and summary.get("completed") == "true" else "incomplete"
+    return "unknown"
+
+
+def command_health(args: argparse.Namespace) -> int:
+    summary = parse_scan_log(Path(args.log))
+    state = scan_health(summary)
+    print(f"扫描健康状态：{state}；覆盖率：{summary.get('coverage', '未知')}；错误：{summary.get('errors', '未知')}")
+    return 0 if state == "complete" else 3
 
 
 def command_analyze(args: argparse.Namespace) -> int:
@@ -401,12 +488,16 @@ def command_analyze(args: argparse.Namespace) -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     generated = dt.datetime.now().astimezone().isoformat(sep=" ", timespec="seconds")
     log_summary = parse_scan_log(Path(args.log)) if args.log else {}
+    health = scan_health(log_summary)
+    if str(args.scan_status) not in {"0", "manual"}:
+        health = "incomplete"
     lines = [
         "# SRC 自动扫描报告", "",
         f"- 厂商：{md(args.vendor or '未提供')}",
         f"- 目标：`{md(args.target or '未提供')}`",
         f"- 生成时间：`{generated}`",
         f"- Nuclei 命令退出码：`{args.scan_status}`",
+        f"- 扫描健康状态：`{health}`",
         f"- 初筛去重后匹配：**{len(findings)}**", "",
         "## 判定摘要", "",
     ]
@@ -431,7 +522,7 @@ def command_analyze(args: argparse.Namespace) -> int:
             lines.append("未产生可解析的 Nuclei 匹配项；若命令退出码非 0，应先检查扫描日志和目标可达性。")
     lines += [
         "", "> 自动扫描结果是候选证据，不等于已确认漏洞；只有完成低影响复核并确认影响边界后，才应考虑提交漏洞报告。",
-        "> 本报告未执行代码执行、DoS、爆破、默认口令、钓鱼或其他主动利用操作。", "",
+        "> 编排器默认排除高风险模板标签和执行协议；模板标签与指纹不能代替对实际请求的安全审查。", "",
     ]
     if json_path.exists():
         try:
@@ -482,13 +573,16 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     select = sub.add_parser("select-next"); select.add_argument("--targets", required=True); select.add_argument("--history", required=True); select.add_argument("--output-root", default=""); select.set_defaults(func=command_select)
     listed = sub.add_parser("is-listed"); listed.add_argument("--targets", required=True); listed.add_argument("--target", required=True); listed.set_defaults(func=command_is_listed)
+    host = sub.add_parser("host"); host.add_argument("--target", required=True); host.set_defaults(func=command_host)
+    scope = sub.add_parser("filter-scope"); scope.add_argument("--input", required=True); scope.add_argument("--allowlist", required=True); scope.add_argument("--limit", type=int, default=20); scope.set_defaults(func=command_filter_scope)
+    health = sub.add_parser("health"); health.add_argument("--log", required=True); health.set_defaults(func=command_health)
     scanned = sub.add_parser("is-scanned"); scanned.add_argument("--history", required=True); scanned.add_argument("--target", required=True); scanned.add_argument("--output-root", default=""); scanned.set_defaults(func=command_is_scanned)
     domain = sub.add_parser("domain"); domain.add_argument("--target", required=True); domain.set_defaults(func=command_domain)
     mark = sub.add_parser("mark-scanned"); mark.add_argument("--history", required=True); mark.add_argument("--target", required=True); mark.set_defaults(func=command_mark_scanned)
     checks = sub.add_parser("checks"); checks.add_argument("--json", required=True); checks.set_defaults(func=command_checks)
     claim_next = sub.add_parser("claim-next"); claim_next.add_argument("--targets", required=True); claim_next.add_argument("--history", required=True); claim_next.add_argument("--output-root", default=""); claim_next.set_defaults(func=command_claim_next)
     claim_batch = sub.add_parser("claim-batch"); claim_batch.add_argument("--targets", required=True); claim_batch.add_argument("--history", required=True); claim_batch.add_argument("--output-root", default=""); claim_batch.add_argument("--count", type=int, default=50); claim_batch.set_defaults(func=command_claim_batch)
-    claim = sub.add_parser("claim-target"); claim.add_argument("--history", required=True); claim.add_argument("--target", required=True); claim.add_argument("--force", action="store_true"); claim.set_defaults(func=command_claim_target)
+    claim = sub.add_parser("claim-target"); claim.add_argument("--history", required=True); claim.add_argument("--target", required=True); claim.add_argument("--force", action="store_true"); claim.add_argument("--output-root", default=""); claim.set_defaults(func=command_claim_target)
     release = sub.add_parser("release-claim"); release.add_argument("--history", required=True); release.add_argument("--target", required=True); release.set_defaults(func=command_release_claim)
     analyze = sub.add_parser("analyze"); analyze.add_argument("--json", required=True); analyze.add_argument("--output", required=True); analyze.add_argument("--vendor", default=""); analyze.add_argument("--target", default=""); analyze.add_argument("--scan-status", default="unknown"); analyze.add_argument("--log", default=""); analyze.set_defaults(func=command_analyze)
     return parser

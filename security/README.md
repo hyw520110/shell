@@ -263,6 +263,27 @@ bash web-security/nuclei/src-hunter.sh scan --url https://<TSV中的目标> --ve
 
 未列入目标表的资产必须同时提供 `--allow-unlisted --ack-authorized`；脚本不会自动执行代码执行、DoS、爆破、默认口令、钓鱼或其他主动利用，也不会自动提交漏洞报告。
 
+Kali 自动检测使用 `src-hunter-recon.sh`：优先识别 `httpx-toolkit`，不会把 Python 的
+`httpx` 客户端误当作 ProjectDiscovery 工具。默认使用 curl 可达性、dig DNS、
+HTTPX 指纹/CDN 和 WhatWeb 强度 1；每个工具有独立超时、退出码及 stderr 日志。
+`KALI_RECON=0` 可关闭，其他系统可用 `KALI_RECON=1` 显式启用。
+子域发现默认关闭；启用 `KALI_RECON_SUBDOMAINS=1` 后，主动探测仍必须提供
+`SRC_RECON_ALLOWLIST_FILE`（每行明确 URL/主机，不支持通配符，最多20项）。
+Nmap 和 wafw00f 分别由 `KALI_RECON_NMAP=1`、`KALI_RECON_WAF=1` 显式启用；
+不会自动运行 Nikto、SQLmap 或攻击型工具。批量模式只对输入 URL 列表做限速 HTTPX 探测。
+侦察输出保存到每次扫描带时间戳的 `*-recon/` 目录，摘要进入主报告。
+
+默认扫描速率为10请求/秒、并发5、单请求超时12秒和重试1次；仍可通过参数覆盖。
+覆盖率不足95%、没有完成记录或跳过无响应目标的扫描，不计入成功历史，报告保留候选结果。
+已有报告明确显示覆盖不足时，也不会仅因为旧历史记录就跳过重试；历史文件不会被删除。
+`nuclei.sh` 默认增加排除 RCE/SQLi/SSRF/XXE/上传等标签和 code/javascript/headless 协议，
+并禁止 HTTP 重定向，减少自动利用和越界风险；这仍不能代替对模板的审查和授权确认。
+
+```bash
+# 工具诊断，不进行目标扫描
+bash web-security/nuclei/src-hunter.sh doctor
+```
+
 ## 🔗 相关链接
 
 - [OWASP 官方网站](https://owasp.org/)

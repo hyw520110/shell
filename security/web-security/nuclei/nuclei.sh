@@ -163,17 +163,20 @@ show_help() {
 
 环境变量：
   NUCLEI_VERSION、INSTALL_DIR、DOWNLOAD_DIR、OUTPUT_DIR
+  NUCLEI_PROXY=http://ip:port  下载/模板更新走指定代理（不填则自动探测 127.0.0.1:7890 等常见端口）
+  ADL_PROXY=http://ip:port     adl 下载代理（优先级同 NUCLEI_PROXY）
   GITHUB_TOKEN         可选；仅用于 GitHub Releases API 鉴权，避免 API 限流
   NUCLEI_CONCURRENCY、NUCLEI_RATE_LIMIT、NUCLEI_BULK_SIZE、NUCLEI_TIMEOUT、NUCLEI_RETRIES
   NUCLEI_MAX_TIME=10m、NUCLEI_STOP_AT_FIRST_MATCH=0、NUCLEI_DEFAULT_OUTPUT_DIR
   NUCLEI_AUTO_VERIFY=1     扫描后自动复核 aspx-debug-mode、ds-store 等已支持结果
   NUCLEI_ALLOW_INTRUSIVE=0、NUCLEI_ACK_AUTHORIZED=0
-  NUCLEI_RISKY_TAGS=dos,fuzz,bruteforce,default-login,phishing,unsafe
+  NUCLEI_RISKY_TAGS          自定义排除标签（默认还排除 rce/sqli/ssrf/xxe/上传等）
   NUCLEI_STATS=1、NUCLEI_STATS_INTERVAL=15、NUCLEI_INTERACTSH=0
   NUCLEI_FORMAT=md        报告格式：txt、json、md、html、both、all；默认单份 Markdown
   NUCLEI_DEFAULT_SEVERITY=high  未指定 -l/--severity 时的默认级别
   默认输出：${DEFAULT_OUTPUT_DIR}/<主域名>；可使用 --output-dir 指定目录
-  全量安全扫描默认排除：dos、fuzz、bruteforce、default-login、phishing、unsafe
+  全量安全扫描默认排除 DoS、爆破、默认口令、RCE、SQLi、SSRF、XXE、反序列化、上传标签。
+  默认不执行 code/javascript/headless 协议，不跟随 HTTP 重定向。
   自有靶场启用高风险模板：$SCRIPT_NAME -l all -u <URL> --enable-risky --ack-authorized
   SKIP_TEMPLATES=1    安装后跳过模板下载
   ALLOW_BREW_FALLBACK=1  二进制下载失败时允许尝试 Homebrew
@@ -266,10 +269,11 @@ version_is_newer() {
 }
 
 nuclei_bin() {
-  if has nuclei; then
-    command -v nuclei
-  elif [ -x "$INSTALL_DIR/nuclei" ]; then
+  # 优先绝对路径（sudo 下 PATH 可能不含 /usr/local/bin，避免误用系统旧版）
+  if [ -x "$INSTALL_DIR/nuclei" ]; then
     printf '%s\n' "$INSTALL_DIR/nuclei"
+  elif has nuclei; then
+    command -v nuclei
   fi
 }
 
@@ -294,6 +298,22 @@ install_file() {
   fi
 }
 
+# 探测本机常见代理端口（或显式 ADL_PROXY/NUCLEI_PROXY），返回可用的 http 代理地址
+detect_local_proxy() {
+  [ -n "${ADL_PROXY:-}" ] && { printf '%s\n' "$ADL_PROXY"; return 0; }
+  [ -n "${NUCLEI_PROXY:-}" ] && { printf '%s\n' "$NUCLEI_PROXY"; return 0; }
+  local ports="${NUCLEI_PROXY_PORTS:-7890 7897 1080 1087 8118}"
+  local port
+  for port in $ports; do
+    if command -v curl >/dev/null 2>&1 && \
+       timeout 2 curl -x "http://127.0.0.1:${port}" -fsSI https://github.com >/dev/null 2>&1; then
+      printf 'http://127.0.0.1:%s\n' "$port"
+      return 0
+    fi
+  done
+  return 1
+}
+
 download_file() {
   local url="$1"
   local output="$2"
@@ -303,6 +323,13 @@ download_file() {
 
   if adl_path="$(find_adl || true)" && [ -n "$adl_path" ]; then
     log "使用 adl 下载：$(basename "$output")"
+    if [ -z "${ADL_PROXY:-}" ]; then
+      local proxy
+      if proxy="$(detect_local_proxy || true)" && [ -n "$proxy" ]; then
+        export ADL_PROXY="$proxy"
+        log "检测到本机代理: $proxy"
+      fi
+    fi
     if "$adl_path" "$url" "$(dirname "$output")" "$(basename "$output")" && [ -s "$output" ]; then
       return 0
     fi
@@ -370,8 +397,27 @@ update_templates() {
   local bin
   bin="$(nuclei_bin || true)"
   [ -n "$bin" ] || die "Nuclei 未安装。"
+  local proxy
+  proxy="$(detect_local_proxy || true)"
+  if [ -n "$proxy" ]; then
+    # nuclei 的 -update-templates 不支持 -proxy-url，需用环境变量代理
+    export HTTP_PROXY="$proxy"
+    export HTTPS_PROXY="$proxy"
+    export ALL_PROXY="$proxy"
+    log "模板下载使用代理: $proxy（HTTPS_PROXY 环境变量）"
+  fi
   log "更新 Nuclei 模板库..."
-  "$bin" -update-templates || "$bin" -ut
+  # sudo 运行时以真实用户身份执行（HOME 正确，模板落到 /home/<user>/.local/share/nuclei-templates）
+  local cmd_prefix=()
+  if [ -n "${SUDO_USER:-}" ]; then
+    cmd_prefix=( sudo -u "$SUDO_USER" env )
+    log "以 $SUDO_USER 身份更新模板"
+  fi
+  if "${cmd_prefix[@]}" "$bin" -update-templates; then
+    return 0
+  fi
+  warn "模板更新失败，重试（-ut）..."
+  "${cmd_prefix[@]}" "$bin" -ut
 }
 
 cmd_install() {
@@ -415,8 +461,18 @@ cmd_update() {
   if [ -n "$latest" ] && version_is_newer "$latest" "$current"; then
     install_binary "$latest" || die "二进制更新失败；请检查网络和代理。"
     ok "Nuclei 已更新：$current -> $latest"
+  elif [ -z "$latest" ]; then
+    # 版本查询失败（GitHub API 受限）：回退到 NUCLEI_VERSION 强制更新
+    local fallback="${NUCLEI_VERSION:-$DEFAULT_NUCLEI_VERSION}"
+    if [ "$current" != "$fallback" ]; then
+      warn "GitHub 版本查询失败，回退强制更新到 v${fallback}"
+      install_binary "$fallback" || die "二进制更新失败；请检查网络和代理（可 NUCLEI_PROXY=http://ip:port 指定）。"
+      ok "Nuclei 已更新：$current -> $fallback"
+    else
+      log "版本查询失败，但当前已是 v${current}（跳过二进制更新）。"
+    fi
   else
-    log "未发现二进制更新（当前：${current:-unknown}，最新：${latest:-unknown}）。"
+    log "未发现二进制更新（当前：${current}，最新：${latest}）。"
   fi
   update_templates
 }
@@ -600,7 +656,8 @@ do_scan() {
   [ "$STOP_AT_FIRST_MATCH" -eq 1 ] && opts+=(-spm)
   if [ "$ALLOW_INTRUSIVE" -eq 0 ]; then
     # 这些类别可能造成服务压力、凭据尝试、外部交互或主动利用，默认不运行。
-    opts+=(-etags "$RISKY_TAGS")
+    opts+=(-etags "$RISKY_TAGS,dos,fuzz,bruteforce,default-login,phishing,unsafe,rce,sqli,ssrf,xxe,deserialization,file-upload,upload")
+    opts+=(-ept code,javascript,headless -dr)
   fi
   case "$report_format" in
     txt)  opts+=(-o "$txt_report") ;;
@@ -699,7 +756,7 @@ main() {
   AUTO_VERIFY="${NUCLEI_AUTO_VERIFY:-1}"
   ALLOW_INTRUSIVE="${NUCLEI_ALLOW_INTRUSIVE:-0}"
   ACK_AUTHORIZED="${NUCLEI_ACK_AUTHORIZED:-0}"
-  RISKY_TAGS="${NUCLEI_RISKY_TAGS:-dos,fuzz,bruteforce,default-login,phishing,unsafe}"
+  RISKY_TAGS="${NUCLEI_RISKY_TAGS:-dos,fuzz,bruteforce,default-login,phishing,unsafe,rce,sqli,ssrf,xxe,deserialization,file-upload,upload}"
   REPORT_FORMAT="${NUCLEI_FORMAT:-md}"
   OUTPUT_PREFIX=""
   SCAN_SEVERITY="${NUCLEI_DEFAULT_SEVERITY:-high}"
