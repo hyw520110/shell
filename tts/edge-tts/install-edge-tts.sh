@@ -89,19 +89,40 @@ create_venv() {
     fi
 }
 
-# 安装 edge-tts
+# 安装/升级 edge-tts（--upgrade 保证已有环境也能拿到新版）
 install_edge_tts() {
-    echo -e "${YELLOW}安装 edge-tts...${NC}"
+    echo -e "${YELLOW}安装/升级 edge-tts...${NC}"
     
     source "$VENV_DIR/bin/activate"
     
     # 升级 pip
     pip install --upgrade pip -q
     
-    # 安装 edge-tts
-    pip install edge-tts
+    # 安装 edge-tts（已安装时升级到最新版）
+    pip install --upgrade edge-tts
     
-    echo -e "${GREEN}edge-tts 安装成功。${NC}"
+    echo -e "${GREEN}edge-tts 安装/升级成功。${NC}"
+}
+
+# 仅升级 edge-tts（不重建虚拟环境）
+upgrade_edge_tts() {
+    print_status
+    
+    if ! check_installed; then
+        echo -e "${YELLOW}Edge-TTS 未安装，将执行完整安装。${NC}"
+        install
+        return 0
+    fi
+    
+    echo -e "${YELLOW}升级 edge-tts 到最新版本...${NC}"
+    source "$VENV_DIR/bin/activate" 2>/dev/null
+    pip install --upgrade edge-tts
+    
+    # 保证全局命令链接仍然有效
+    create_global_command
+    
+    echo -e "${GREEN}edge-tts 已升级。${NC}"
+    echo -e "当前版本：$(edge-tts --version 2>/dev/null || echo "未知")"
 }
 
 # 创建必要目录
@@ -185,8 +206,8 @@ install() {
     print_status
     
     if check_installed; then
-        echo -e "${GREEN}Edge-TTS 已安装，跳过安装步骤。${NC}"
-        print_install_complete
+        echo -e "${YELLOW}Edge-TTS 已安装，正在升级到最新版本...${NC}"
+        upgrade_edge_tts
         return 0
     fi
     
@@ -237,7 +258,8 @@ show_help() {
     echo "  $0 [命令]"
     echo ""
     echo "命令："
-    echo "  install    - 安装 Edge-TTS（默认）"
+    echo "  install    - 安装 Edge-TTS（默认，已安装时升级）"
+    echo "  upgrade    - 升级 Edge-TTS 到最新版本"
     echo "  uninstall  - 卸载 Edge-TTS"
     echo "  help       - 显示此帮助信息"
     echo "  status     - 检查安装状态"
@@ -298,6 +320,9 @@ main() {
     case "${1:-install}" in
         install)
             install
+            ;;
+        upgrade|update)
+            upgrade_edge_tts
             ;;
         uninstall)
             uninstall

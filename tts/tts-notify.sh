@@ -557,8 +557,8 @@ resolve_message() {
 say_voice_for() {
     local voice="${TTS_VOICE:-zh-CN-XiaoxiaoNeural}"
     case "$voice" in
-        zh-CN-*) echo "Tingting" ;;
-        zh-TW-*) echo "Meijia" ;;
+        zh-CN-*) echo "Ting-Ting" ;;
+        zh-TW-*) echo "Mei-Jia" ;;
         zh-HK-*) echo "Sin-ji" ;;
         en-US-*|en-GB-*) echo "Samantha" ;;
         ja-*) echo "Kyoko" ;;
