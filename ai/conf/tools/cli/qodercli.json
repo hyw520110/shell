@@ -26,13 +26,13 @@
     "check": true
   },
   "config": {
-    "path": "$HOME/.qodercli/settings.json",
+    "path": "$HOME/.qoder/settings.json",
     "operations": {
-      "view": "cat $HOME/.qodercli/settings.json 2>/dev/null || echo \"配置文件不存在\"",
-      "edit": "${EDITOR:-vim} $HOME/.qodercli/settings.json",
+      "view": "jq . $HOME/.qoder/settings.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.qoder/settings.json",
       "reset": [
-        "cp $HOME/.qodercli/settings.json $HOME/.qodercli/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
-        "rm -f $HOME/.qodercli/settings.json"
+        "cp $HOME/.qoder/settings.json \"$HOME/.qoder/settings.json.backup.reset.$(date +%Y%m%d_%H%M%S)\" 2>/dev/null || true",
+        "jq '.mcpServers = {}' $HOME/.qoder/settings.json > \"$HOME/.qoder/settings.json.aihub-reset\" && mv -f \"$HOME/.qoder/settings.json.aihub-reset\" $HOME/.qoder/settings.json && echo '已清空 mcpServers（hooks / permissions 等其余配置保留）'"
       ]
     }
   },
@@ -47,7 +47,7 @@
     },
     {
       "name": "检查配置",
-      "command": "ls -la $HOME/.qodercli/settings.json 2>/dev/null || echo \"配置目录不存在\""
+      "command": "jq -r '\"配置存在，mcpServers 数量: \" + ((.mcpServers // {}) | length | tostring)' $HOME/.qoder/settings.json 2>/dev/null || echo \"配置不存在\""
     }
   ],
   "mcp_servers": {},
@@ -56,7 +56,7 @@
     "shared_mcp_servers": [],
     "shared_skills": []
   },
-  "notes": "",
+  "notes": "Qoder CLI 的 user 作用域配置就是 ~/.qoder/settings.json（顶层 mcpServers，与 hooks/permissions 同文件）；旧路径 ~/.qodercli/settings.json 当前版本已不再读取。想在 CLI 侧核对生效情况用 `qoder mcp list`，它会逐个连接 MCP server，耗时数分钟，故不放进 status_check。",
   "post_install": [],
   "post_uninstall": []
 }

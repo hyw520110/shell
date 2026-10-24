@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /Users/mac/workspace/shell/ai && ls -la && echo \"---\" && wc -l ai-hub.sh)",
+      "Bash(cd /Users/mac/workspace/shell/ai && echo \"=== shebang/header \\(1-40\\) ===\" && sed -n '1,40p' ai-hub.sh && echo && echo \"=== function defs count ===\" && grep -cE '^[a-zA-Z_][a-zA-Z0-9_]*\\\\s*\\\\\\(\\\\\\)' ai-hub.sh && echo \"=== top-level structure markers ===\" && grep -nE '^\\(#!/|# =|# -{3,}|# =|\\\\[\\\\[|set -|main\\\\\\(\\\\\\)|[a-zA-Z_][a-zA-Z0-9_]*\\\\\\(\\\\\\)\\)' ai-hub.sh | head -120)",
+      "Bash(cd /Users/mac/workspace/shell/ai && ls -la lib/ && echo \"=== loader.sh ===\" && cat lib/loader.sh 2>/dev/null | head -80 && echo \"=== tail of ai-hub.sh ===\" && sed -n '3700,4058p' ai-hub.sh)",
+      "Bash(cd /Users/mac/workspace/shell/ai && echo \"=== set -e/-u/pipefail usage ===\" && grep -n 'set -[eunxo]' ai-hub.sh lib/*.sh | head -30 && echo && echo \"=== operate_tool 176-345 ===\" && sed -n '176,300p' ai-hub.sh)",
+      "Bash(cd /Users/mac/workspace/shell/ai && sed -n '444,582p' ai-hub.sh)",
+      "Bash(cd /Users/mac/workspace/shell && echo \"=== tests / CI ===\" && ls -a .github 2>/dev/null; find . -maxdepth 3 \\\\\\( -name '*test*' -o -name '*.bats' -o -name 'shellcheck*' -o -name '.shellcheckrc' \\\\\\) -not -path './node_modules/*' 2>/dev/null | head -20 && echo \"=== shellcheck available? ===\" && command -v shellcheck bats jq || true && echo \"=== ai subtree sizes ===\" && find ai -name '*.sh' | wc -l && du -sh ai/README.md ai/ai-hub.sh ai/lib ai/conf 2>/dev/null)",
+      "Bash(cd /Users/mac/workspace/shell/ai && echo \"=== MAX_CONCURRENT_PROCS / xargs -P / & usage ===\" && grep -n 'MAX_CONCURRENT_PROCS\\\\|xargs -P\\\\|[^\\\\#] & *$\\\\|wait' ai-hub.sh lib/*.sh | head -20 && echo && echo \"=== 41-175 init_config ===\" && sed -n '41,120p' ai-hub.sh)",
+      "Bash(cd /Users/mac/workspace/shell/ai && echo \"=== TODO/FIXME/XXX/HACK ===\" && grep -rn 'TODO\\\\|FIXME\\\\|XXX\\\\|HACK\\\\|暂不\\\\|待实现\\\\|尚未支持' ai-hub.sh lib/*.sh conf/global.json 2>/dev/null | head -30 && echo && echo \"=== backup / rollback ===\" && sed -n '2493,2530p' ai-hub.sh && echo \"=== conf tree ===\" && ls conf conf/shared 2>/dev/null | head -40 && find conf -name '*.json' | wc -l)",
+      "Bash(cd /Users/mac/workspace/shell/ai && echo \"=== dry-run / version / json output ===\" && grep -n 'dry.run\\\\|dry_run\\\\|DRY_RUN\\\\|--version\\\\|VERSION=\\\\|--json\\\\|JSON_OUT' ai-hub.sh lib/*.sh | head -20 && echo \"=== backup prune? ===\" && grep -rn 'backup.aihub' ai-hub.sh lib/*.sh scripts/*.sh 2>/dev/null | head -10 && echo \"=== actual backup litter in HOME ===\" && ls $HOME/.codex* $HOME/*.backup.aihub* 2>/dev/null | head; find $HOME -maxdepth 2 -name '*.backup.aihub.*' 2>/dev/null | head -10)",
+      "Bash(cd /Users/mac/workspace/shell/ai && grep -n 'check_dependencies\\(\\)' -A 25 lib/utils.sh lib/system.sh 2>/dev/null | head -40)",
+      "Bash(cd /Users/mac/workspace/shell/ai && time \\(./ai-hub.sh --help >/dev/null 2>&1\\) ; echo \"---exit=$?\" ; echo \"=== 备份文件总量 ===\" ; find $HOME -maxdepth 3 -name '*.backup.aihub.*' 2>/dev/null | wc -l ; echo \"=== README 是否自动生成 ===\" ; grep -n '自动生成\\\\|generated\\\\|Auto-update' README.md | head -5)",
+      "Bash(bash /tmp/gatelist.sh 2>&1)",
+      "Bash(cd /Users/mac/workspace/shell/ai && grep -n \"resolve_batch_targets\\\\|batch_target\\\\|target_confs\\\\|resolve_.*config_file\\\\|config_file_for\\\\|get_tool_config_file\" ai-hub.sh | head -30)",
+      "Bash(/Users/mac/workspace/shell/ai/ai-hub.sh --help 2>&1 | head -60; echo \"---\"; ls /Users/mac/workspace/shell/ai)",
+      "Bash(ls /Users/mac/workspace/shell/ai/conf /Users/mac/workspace/shell/ai/conf/tools 2>/dev/null; echo \"---\"; cat /Users/mac/workspace/shell/ai/conf/tools/ide/qoder*.json 2>/dev/null | head -60; echo \"---\"; ls /Users/mac/workspace/shell/ai/conf/tools/ide /Users/mac/workspace/shell/ai/conf/tools/cli 2>/dev/null)",
+      "Bash(ls -la ~/.codex/ 2>/dev/null && echo \"---\" && ls ~/.codex/config.toml 2>/dev/null)",
+      "Read(//Users/mac/.codex/**)",
+      "Bash(bash /Users/mac/workspace/shell/ai/ai-hub.sh --help 2>&1 | head -80)"
+    ]
+  }
+}

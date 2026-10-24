@@ -184,6 +184,7 @@ operate_tool() {
 
     # 仅在需要网络的安装/更新操作前检测代理，避免每次启动阻塞 5 秒
     if [[ "$op" == "install" || "$op" == "update" ]]; then
+        check_runtime_versions
         check_proxy_connectivity
     fi
 
@@ -204,6 +205,30 @@ operate_tool() {
                 ' "$OP_file" 2>/dev/null)
                 ;;
         esac
+    fi
+
+    # 1.5 npm 版本检测：安装/更新前打印当前与 registry 最新版本；
+    #      update 时若配置钉住了旧版本，自动提升到检测到的最新版本。
+    local nvd_spec="" nvd_name="" nvd_latest=""
+    if [[ ( "$op" == "install" || "$op" == "update" ) && "$run_cmd" == *"npm install -g"* ]]; then
+        nvd_spec=$(npm_cmd_extract_spec "$run_cmd")
+        nvd_name=$(npm_spec_name "$nvd_spec")
+        if [[ -n "$nvd_name" ]]; then
+            nvd_latest=$(npm_latest_version "$nvd_name")
+            if [[ -n "$nvd_latest" ]]; then
+                local nvd_installed=""
+                nvd_installed=$(npm_installed_version "$nvd_name")
+                info_log "🔎 版本检测: $nvd_name 当前 ${nvd_installed:-未安装}，npm 最新 $nvd_latest"
+                if [[ "$op" == "update" && "$nvd_spec" != "$nvd_name" && "$nvd_spec" != "$nvd_name@latest" && "$nvd_spec" != "$nvd_name@$nvd_latest" ]]; then
+                    run_cmd="${run_cmd//"$nvd_spec"/"$nvd_name@$nvd_latest"}"
+                    info_log "➜ 配置钉住 ${nvd_spec#"$nvd_name"@}，已提升到 npm 最新版 $nvd_latest"
+                elif [[ "$op" == "install" && "$nvd_spec" != "$nvd_name" && "$nvd_spec" != "$nvd_name@latest" && "$nvd_spec" != "$nvd_name@$nvd_latest" ]]; then
+                    info_log "提示: 配置钉住 ${nvd_spec#"$nvd_name"@}，npm 最新为 $nvd_latest（更新操作会自动升级到最新版）"
+                fi
+            else
+                debug_log "版本检测跳过: 无法获取 $nvd_name 的最新版本（网络/registry 不可用）"
+            fi
+        fi
     fi
 
     # 2. 运行检查。显式配置为空的 process_check 表示在线/无本地进程工具，跳过 pkill。
@@ -238,7 +263,7 @@ operate_tool() {
             core_rc=$?
         else
             # 不支持自动操作，直接报错返回，移除已无法执行的死代码
-            warn_log "工具 $OP_name 不支持自动 $op（类型: ${OP_type:-未知}）"
+            warn_log "工具 $OP_name 不支持自动 ${op}（类型: ${OP_type:-未知}）"
             return 1
         fi
     else
@@ -250,6 +275,12 @@ operate_tool() {
     # 4. 结果处理
     if [[ ${core_rc:-0} -eq 0 ]]; then
         success_msg "$OP_name $op 成功"
+        # 记录安装后的版本，供菜单状态显示 vX.Y.Z（读取的是磁盘文件，天然反映安装结果）
+        if [[ ( "$op" == "install" || "$op" == "update" ) && "$OP_type" == "npm" ]]; then
+            local post_ver_pkg="${nvd_name:-$(npm_spec_name "$OP_pkg")}" post_ver=""
+            [[ -n "$post_ver_pkg" ]] && post_ver=$(npm_installed_version "$post_ver_pkg")
+            [[ -n "$post_ver" ]] && set_cache "ver:$OP_id" "$post_ver" 3600
+        fi
         # 5. 执行扩展命令
         if [[ "$op" == "uninstall" ]]; then
             info_log "正在清理配置..."
@@ -317,22 +348,9 @@ execute_extended_commands() {
         fi
         [[ -z "$c" ]] && continue
         echo -e "${YELLOW}[$((i+1))/$count] $d${NC}"
-        local ext_cmd ext_safe ext_pfx
-        ext_cmd=$(expand_vars "$c")
-        # 扩展命令（post_install/post_uninstall/uninstall_extended/status_check 等）多为复合 shell
-        # 语句（echo/cd/if/&& 等），不以白名单动词开头时用 bash -c 包装执行；
-        # 破坏性命令（rm -rf 等）仍由 run_configured_command 统一拦截确认
-        if [[ "${AI_HUB_ALLOW_CUSTOM_CMD:-0}" != "1" ]]; then
-            ext_safe=false
-            for ext_pfx in npm npx pip pip3 uv brew curl wget bash sh python python3 node rm mkdir cp mv ln chmod chown tar zip unzip git docker sudo; do
-                if [[ "$ext_cmd" == "$ext_pfx "* || "$ext_cmd" == "$ext_pfx" ]]; then
-                    ext_safe=true
-                    break
-                fi
-            done
-            [[ "$ext_safe" == true ]] || ext_cmd="bash -c $(printf '%q' "$ext_cmd")"
-        fi
-        run_configured_command "$ext_cmd" "$d" || warn_log "步骤失败: $d"
+        # 扩展命令本身就是任意 shell 语句，run_configured_command 内部已用 bash -c 执行，
+        # 不需要像旧实现那样先包一层、把白名单口径拆成两份；高风险语句仍由破坏性确认把关。
+        run_configured_command "$(expand_vars "$c")" "$d" nogate || warn_log "步骤失败: $d"
     done
 }
 
@@ -485,44 +503,301 @@ show_tool_usage_guide() {
     [[ -n "$docs" ]] && echo -e "  ${BLUE}文档:${NC} $docs"
 }
 
+# 破坏性特征统一在此声明。用正则而不是字面子串，避免 `rm  -rf`（多空格）、
+# `rm -r -f`（拆flag）、`|sh`（管道后无空格）这类改写绕过检测。
+_DESTRUCTIVE_PATTERNS=(
+    '`'
+    '\$\('
+    '(^|[;&|[:space:]])(sudo|mkfs[a-zA-Z0-9.]*)([[:space:]]|$)'
+    '(^|[;&|[:space:]])rm([[:space:]]+-[[:alnum:]]+)+([[:space:]]|$)'
+    '(^|[;&|[:space:]])rm[[:space:]]+--(recursive|force)'
+    '(^|[;&|[:space:]])dd[[:space:]]+if='
+    '(^|[;&|[:space:]])git[[:space:]]+reset([[:space:]]+-[[:alnum:]-]+)*[[:space:]]+--hard([[:space:]]|$)'
+    '(^|[;&|[:space:]])git[[:space:]]+clean([[:space:]]+-[[:alnum:]]*f[[:alnum:]]*)+([[:space:]]|$)'
+    '(^|[;&|[:space:]])git[[:space:]]+clean([[:space:]]+-[[:alnum:]-]+)*[[:space:]]+--force([[:space:]]|$)'
+    '[|][[:space:]]*(bash|sh|zsh|python3?|node)([[:space:]]|$)'
+)
+
 is_destructive_command() {
-    local cmd="$1"
-    # 检测命令替换和远程脚本执行，避免仅匹配 rm -rf 被绕过。
-    [[ "$cmd" == *'`'* || "$cmd" == *'$('* ]] && return 0
-    [[ "$cmd" == *"rm -rf"* || "$cmd" == *"rm -fr"* || "$cmd" == *"rm -r "* ]] && return 0
-    [[ "$cmd" == *"sudo "* || "$cmd" == *"mkfs"* || "$cmd" == *"dd if="* ]] && return 0
-    [[ "$cmd" == *"git reset --hard"* || "$cmd" == *"git clean -fd"* ]] && return 0
-    [[ "$cmd" == *"curl"* && "$cmd" == *"|"* && "$cmd" == *"bash"* ]] && return 0
-    [[ "$cmd" == *"wget"* && "$cmd" == *"|"* && "$cmd" == *"sh"* ]] && return 0
+    local cmd="$1" pattern
+    for pattern in "${_DESTRUCTIVE_PATTERNS[@]}"; do
+        [[ "$cmd" =~ $pattern ]] && return 0
+    done
     return 1
+}
+
+# ==================== 命令执行策略（单一来源） ====================
+# 这道校验的职责是「别把说明文字 / 注释 / 半截脚本当命令执行」，不是安全边界：
+# conf/ 里任何条目天然有能力执行命令，评审 conf 的 diff 才是真防线，
+# 所以这里不再维护一份永远漏掉新 CLI 的动词白名单，改判命令词的形态。
+# 真正的风险控制由 is_destructive_command 的确认流程承担（sudo、rm -rf、$( )、管道进 shell 等）。
+#
+# 相比旧实现的三处收紧：
+#   1) 解释器前缀不再无条件放行，禁止 bash -c "$(curl …)" 这类「现场取回的代码」；
+#      写在 conf 里的字面量内联代码（`python -c 'import mcp'` 探测）仍然放行，diff 可审；
+#   2) 解释器后的字面脚本路径必须落在仓库内；
+#   3) 破坏性检测改正则匹配，堵住 `rm  -rf`（多空格）、`rm -r -f`（拆 flag）、`curl x|sh`（无空格）绕过。
+# eval/exec/trap 这类能改写执行环境的词仍单独拒绝。
+_CMD_DENIED_WORDS="eval exec trap"
+
+# 自身无权限、仅做结构控制的词，判定时跳过、看它后面的真命令。
+_CMD_CONTROL_WORDS="if then else elif fi for while until do done case esac function export local { } begin end"
+
+# 按引号感知地把复合命令切成 `&&`/`||`/`;`/`|`/换行 分隔的段，结果放在 _CMD_SEGS。
+_split_command_segments() {
+    local cmd="$1"
+    # 必须分开声明：同一句 local 里 ${#cmd} 会在 cmd 赋值前展开，恒为 0。
+    local i=0 len=${#cmd} ch quote="" cur="" prev="" depth=0 test_depth=0
+    _CMD_SEGS=()
+    while (( i < len )); do
+        ch="${cmd:i:1}"
+        if [[ -n "$quote" ]]; then
+            cur+="$ch"
+            if [[ "$ch" == '\' ]]; then
+                ((i++)); cur+="${cmd:i:1}"
+            elif [[ "$ch" == "$quote" ]]; then
+                quote=""
+            fi
+        else
+            prev=""
+            [[ ${#cur} -gt 0 ]] && prev="${cur:$((${#cur}-1)):1}"
+            case "$ch" in
+                "'"|'"') quote="$ch"; cur+="$ch" ;;
+                '(')
+                    # 独立成词的 `(` 是子 shell 分组（`A || (B && C)`），内容照样要按分隔符
+                    # 拆开逐段判定；只有紧贴前文的 `(`（`$(…)` 命令替换）才计深度，
+                    # 否则会把 `$(mktemp "…")` 这类整体参数拆碎。
+                    case "$prev" in
+                        ''|' '|$'\t'|';'|'&'|'|'|'('|'!') _CMD_SEGS+=("$cur"); cur="" ;;
+                        *) depth=$((depth + 1)); cur+="$ch" ;;
+                    esac
+                    ;;
+                '{')
+                    # `{` 只在命令位才是块开始，`{ curl …; }` 这种分组才计深度
+                    case "$prev" in ''|' '|';'|'&'|'|') depth=$((depth + 1)) ;; *) ;; esac
+                    cur+="$ch"
+                    ;;
+                ')'|'}')
+                    (( depth > 0 )) && depth=$((depth - 1))
+                    cur+="$ch"
+                    ;;
+                '[')
+                    # `[ … ]` / `[[ … ]]` 里的 && / || 是逻辑运算符，不是命令分隔符。
+                    # 方括号不配对只会少拆几段（判定更宽松），不会造成误拒。
+                    case "$prev" in ''|' '|$'\t'|';'|'&'|'|'|'('|'!') test_depth=$((test_depth + 1)) ;; esac
+                    cur+="$ch"
+                    ;;
+                ']')
+                    (( test_depth > 0 )) && test_depth=$((test_depth - 1))
+                    cur+="$ch"
+                    ;;
+                '&')
+                    # `2>&1` / `>&2` / `&>/dev/null` 里的 & 属于重定向，不是命令分隔符
+                    if (( depth > 0 || test_depth > 0 )); then
+                        cur+="$ch"
+                    elif [[ "$prev" == '>' || "$prev" == '<' || "${cmd:i+1:1}" == '>' || "${cmd:i+1:1}" == '<' ]]; then
+                        cur+="$ch"
+                    else
+                        _CMD_SEGS+=("$cur"); cur=""
+                    fi
+                    ;;
+                ';'|'|'|$'\n')
+                    if (( depth > 0 || test_depth > 0 )); then
+                        cur+="$ch"
+                    else
+                        _CMD_SEGS+=("$cur"); cur=""
+                    fi
+                    ;;
+                *) cur+="$ch" ;;
+            esac
+        fi
+        ((i = i + 1))
+    done
+    _CMD_SEGS+=("$cur")
+}
+
+# 脚本参数只允许落在仓库内，避免 conf 指向外部绝对路径。
+_path_inside_repo() {
+    local p="$1" root abs dir
+    root=$(cd "${SCRIPT_DIR:-.}" 2>/dev/null && pwd -P) || return 1
+    [[ -n "$p" ]] || return 1
+    if [[ "$p" == /* ]]; then
+        dir=$(cd "$(dirname "$p")" 2>/dev/null && pwd -P) || return 1
+        abs="$dir/$(basename "$p")"
+        [[ -f "$abs" && "$abs" == "$root/"* ]] && return 0
+        return 1
+    fi
+    [[ -f "$root/$p" ]] && return 0
+    # 相对路径往往是前面 cd 进子目录后再执行的（cd gateway/x && bash startup.sh），
+    # 因此只要求在仓库内存在同名文件即可；仓库外的绝对路径走不到这个分支。
+    [[ -n "$(find "$root" -type f -name "$(basename "$p")" -print -quit 2>/dev/null)" ]]
+}
+
+# 跳过形如 NAME=value 的前导赋值。value 里的引号与成对括号要整段吃掉，
+# 否则 tmp=$(mktemp "…XXXX") 会被拆成半个 token 而误判。
+_skip_leading_assignments() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}"
+    while [[ "$s" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do
+        s="${s#*=}"
+        # 分开声明：同一句 local 里 ${#s} 会在 s 赋值前展开，恒为 0。
+        local i=0
+        local len=${#s}
+        local ch depth=0 quote=""
+        while (( i < len )); do
+            ch="${s:i:1}"
+            if [[ -n "$quote" ]]; then
+                [[ "$ch" == '\' ]] && ((i++))
+                [[ "$ch" == "$quote" ]] && quote=""
+            else
+                case "$ch" in
+                    "'"|'"') quote="$ch" ;;
+                    '('|'{'|'[') depth=$((depth + 1)) ;;
+                    ')'|'}'|']') depth=$((depth - 1)) ;;
+                    *) [[ "$ch" =~ [[:space:]] ]] && (( depth == 0 )) && break ;;
+                esac
+            fi
+            ((i = i + 1))
+        done
+        s="${s:i}"
+        s="${s#"${s%%[![:space:]]*}"}"
+    done
+    printf '%s' "$s"
+}
+
+# 解释器：放行仓库内脚本、变量路径与纯 flag 调用，拒绝把现场取回的代码喂给 -c/-e。
+# 动态参数（$tmp / `...`）不在此拦截，交给 is_destructive_command 的确认流程。
+_interpreter_call_allowed() {
+    local tok="$1" rest="$2" arg code code_flag=""
+    # 传入的是整段命令，先摘掉解释器自身（可能是 "$HOME/.venv/bin/python" 这种带引号形式）
+    rest="${rest#*"$tok"}"
+    rest="${rest#"${rest%%[![:space:]]*}"}"
+    arg="${rest%%[[:space:]]*}"
+    [[ -n "$arg" ]] || return 0
+    case "$arg" in
+        -c|--command) code_flag=1 ;;
+        -e|-p|--eval|--print)
+            case "$tok" in node|deno) code_flag=1 ;; esac ;;
+    esac
+    if [[ -n "$code_flag" ]]; then
+        # 内联代码本身不算风险，它就写在 conf 里，评审 diff 时看得见（`python -c 'import mcp'`
+        # 这类只读探测很常见）。只有代码是当场从网络/命令替换取回来的才无法预审，那种拒。
+        code="${rest#*"$arg"}"
+        code="${code#"${code%%[![:space:]]*}"}"
+        [[ "$code" == *'$('* || "$code" == *'`'* ]] && return 1
+        return 0
+    fi
+    arg="${arg%\"}"; arg="${arg#\"}"; arg="${arg#\'}"; arg="${arg%\'}"
+    case "$arg" in
+        '$'*|*'`'*) return 0 ;;
+        -*) return 0 ;;
+    esac
+    _path_inside_repo "$arg"
+}
+
+# 命令词形态判定。可信形态三类：
+#   1) 普通命令名（npm / hermes / docker-compose …）；
+#   2) 变量根路径（"$HOME/.venv/bin/pip"），静态无法解析，按可信 conf 放行；
+#   3) 字面路径，必须落在仓库内。
+# 其余（说明文字、`>/dev/null` 这类半截重定向、`raise SystemExit(...)` 之外的奇怪 token）拒绝。
+_command_token_allowed() {
+    local clean="$1" seg="$2" base key
+    case "$clean" in
+        '$'*|*'$('*|*'`'*) return 0 ;;
+        '['|'[['|'!'|'{'|'}'|'('|')'|']') return 0 ;;
+        # `.` 与 source 同类（激活 venv 的 `. .venv/bin/activate`），参数是运行时生成的
+        # 路径，仓库里查不到，无法套用脚本路径校验；和 source 一样按命令词放行。
+        '.') return 0 ;;
+    esac
+    if [[ "$clean" == */* ]]; then
+        base="${clean##*/}"
+        key="${base%\"}"; key="${key#\'}"
+        [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_.+-]*$ ]] || return 1
+        case "$key" in
+            bash|sh|zsh|python|python3|python2|node|deno|ruby|perl)
+                _interpreter_call_allowed "$key" "$seg" || return 1
+                return 0 ;;
+        esac
+        [[ "$clean" == /* ]] && return 1      # 字面绝对路径可执行文件不在可信形态内
+        _path_inside_repo "$base"             # 相对路径：仓库内存在同名文件即可
+        return $?
+    fi
+    key="${clean%\"}"; key="${key#\'}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_.+-]*$ ]] || return 1
+    case " $_CMD_DENIED_WORDS " in
+        *" $key "*) return 1 ;;
+    esac
+    case "$key" in
+        bash|sh|zsh|python|python3|python2|node|deno|ruby|perl)
+            _interpreter_call_allowed "$key" "$seg" || return 1 ;;
+    esac
+    return 0
+}
+
+# heredoc 起始行：以 `<<[-]['\"]?WORD['\"]?` 收尾。必须放进变量再 =~ ——
+# 直接写在 [[ ]] 里的话 `<` 会被 shell 当成重定向解析。
+_RE_HEREDOC_HEAD='<<-?["'\'']?([A-Za-z_][A-Za-z0-9_]*)["'\'']?[[:space:]]*$'
+
+command_prefix_allowed() {
+    local cmd="$1" seg clean delim i=0 n
+    _split_command_segments "$cmd"
+    n=${#_CMD_SEGS[@]}
+    while (( i < n )); do
+        seg="${_CMD_SEGS[i]}"; ((i++))
+        # heredoc 正文不是 shell 命令：`python3 - <<'PY'` 之后整段跳到分隔行为止，
+        # 否则 `import sys` / `(3, 10)` 这类 Python 行会被当成命令词误判。
+        if [[ "$seg" =~ $_RE_HEREDOC_HEAD ]]; then
+            delim="${BASH_REMATCH[1]}"
+            while (( i < n )); do
+                seg="${_CMD_SEGS[i]}"; ((i++))
+                [[ "${seg//[[:space:]]/}" == "$delim" ]] && break
+            done
+            continue
+        fi
+        [[ "$seg" =~ ^[[:space:]]*# ]] && continue          # 注释段不承载命令
+        [[ "$seg" =~ ^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*\(\) ]] && continue   # 函数定义段
+        while :; do
+            # 赋值要在每一步都剥：`export FOO=1 && …` 里 FOO=1 是 export 的参数，
+            # 只在段首剥一次会把它当成命令词。子 shell 的 `(` 同理，剥掉后看里面。
+            seg=$(_skip_leading_assignments "$seg")
+            seg="${seg#"${seg%%[![:space:]]*}"}"
+            [[ -n "$seg" ]] || break
+            [[ "$seg" != '('* ]] || { seg="${seg#(}"; continue; }
+            clean="${seg%%[[:space:]]*}"
+            case " $_CMD_CONTROL_WORDS " in
+                *" $clean "*) seg="${seg#*"$clean"}"; continue ;;
+            esac
+            break
+        done
+        [[ -n "$seg" ]] || continue
+        clean="${seg%%[[:space:]]*}"
+        clean="${clean//\"/}"; clean="${clean//\'/}"
+        _command_token_allowed "$clean" "$seg" || return 1
+    done
+    return 0
 }
 
 run_configured_command() {
     local cmd="$1"
     local desc="${2:-命令}"
+    local gate="${3:-gate}"
     [[ -z "$cmd" ]] && return 0
 
-    # 白名单校验：命令必须以已知安全动词开头，防止任意字符串 RCE
-    # 如需执行自定义命令，设置 AI_HUB_ALLOW_CUSTOM_CMD=1
-    if [[ "${AI_HUB_ALLOW_CUSTOM_CMD:-0}" != "1" ]]; then
-        local _safe_prefix=false
-        local _pfx
-        for _pfx in npm npx pip pip3 uv brew curl wget bash sh python python3 node rm mkdir cp mv ln chmod chown tar zip unzip git docker sudo; do
-            if [[ "$cmd" == "$_pfx "* || "$cmd" == "$_pfx" ]]; then
-                _safe_prefix=true
-                break
-            fi
-        done
-        if [[ "$_safe_prefix" != "true" ]]; then
-            warn_log "命令前缀不在白名单，已拒绝执行: $desc（设置 AI_HUB_ALLOW_CUSTOM_CMD=1 可允许）"
-            warn_log "  命令: $cmd"
-            return 1
-        fi
+    # gate=gate 时做命令词校验（install/update/uninstall 这类会改动系统的命令）；
+    # 扩展命令（status_check/post_* 等）本身就是任意 shell 语句，沿用破坏性确认把关，
+    # 不再套用命令词校验。
+    if [[ "$gate" == "gate" && "${AI_HUB_ALLOW_CUSTOM_CMD:-0}" != "1" ]] && ! command_prefix_allowed "$cmd"; then
+        warn_log "命令词形态不可信，已拒绝执行: ${desc}（设置 AI_HUB_ALLOW_CUSTOM_CMD=1 可允许）"
+        warn_log "  命令: $cmd"
+        return 1
     fi
+
+    # dry-run 下连命令也不执行：形态校验已经跑过，被拒的命令在演练里同样会显示为被拒。
+    dry_run_skip "$desc → $cmd" && return 0
 
     if is_destructive_command "$cmd" && [[ "${AI_HUB_ALLOW_DANGEROUS:-}" != "1" ]]; then
         if [[ "${AI_HUB_NON_INTERACTIVE:-0}" == "1" ]]; then
-            warn_log "已跳过高风险非交互命令: $desc。设置 AI_HUB_ALLOW_DANGEROUS=1 可允许执行。"
+            warn_log "已跳过高风险非交互命令: ${desc}。设置 AI_HUB_ALLOW_DANGEROUS=1 可允许执行。"
             return 1
         elif [[ -t 0 ]]; then
             echo -e "${YELLOW}⚠️  即将执行高风险步骤: $desc${NC}"
@@ -530,12 +805,15 @@ run_configured_command() {
             read -p "确认执行？(y/N): " confirm_danger
             [[ "$confirm_danger" == "y" || "$confirm_danger" == "Y" ]] || return 1
         else
-            warn_log "已跳过高风险非交互命令: $desc。设置 AI_HUB_ALLOW_DANGEROUS=1 可允许执行。"
+            warn_log "已跳过高风险非交互命令: ${desc}。设置 AI_HUB_ALLOW_DANGEROUS=1 可允许执行。"
             return 1
         fi
     fi
 
-    if [[ "${AI_HUB_USE_ADL:-1}" != "0" && "$cmd" == *curl* ]] && command_exists adl; then
+    # ADL 是下载器：只替换安装类命令里的 curl。status_check / commands.* 这类
+    # 扩展命令常把 curl 当探活或 API 调用（-fsS --max-time），交给 ADL 会被当成
+    # 下载并触发多轮重试（端口未开时甚至长时间挂住），因此 nogate 路径跳过。
+    if [[ "${AI_HUB_USE_ADL:-1}" != "0" && "$gate" == "gate" && "$cmd" == *curl* ]] && command_exists adl; then
         local adl_bin
         adl_bin=$(command -v adl)
         (cd "$SCRIPT_DIR" && AI_HUB_ADL_BIN="$adl_bin" bash -c '
@@ -613,6 +891,58 @@ _get_npm_global_list() {
     echo "$_NPM_GLOBAL_LIST_CACHE"
 }
 
+# ==================== npm 版本检测（安装/更新前提示当前与最新版本） ====================
+
+# 从 npm install 命令里提取包 spec（兼容 @scope/name[@ver]、name[@ver]、单双引号与附加参数）
+# 注意用 npm[3]? 而非 npm(3)?：分组会占用 \1 组号，导致回引到空串
+npm_cmd_extract_spec() {
+    printf '%s\n' "$1" | sed -nE "s/.*npm[3]? install -g[[:space:]]+'?\"?([^'\"[:space:]]+).*/\1/p" | head -n 1
+}
+
+# 去掉包 spec 的版本后缀，得到纯包名（@scope/name@1.0.0 → @scope/name，name@1.0.0 → name）
+npm_spec_name() {
+    local spec="${1// /}"
+    [[ -n "$spec" ]] || return 0
+    if [[ "$spec" == @* ]]; then
+        # scoped 包的版本后缀位于第二个 @（即 / 之后）；只有前导 @ 时说明无版本
+        local tail="${spec##*@}"
+        local head="${spec%@"$tail"}"
+        if [[ -n "$tail" && "$head" == */* ]]; then
+            printf '%s\n' "$head"
+        else
+            printf '%s\n' "$spec"
+        fi
+    else
+        printf '%s\n' "${spec%%@*}"
+    fi
+}
+
+# 查询 registry 中的最新版本（best-effort：失败或超时输出空，不阻断安装流程）
+npm_latest_version() {
+    local name="$1"
+    command_exists npm || return 0
+    local args=(view "$name" version)
+    [[ -n "${npm_registry:-}" ]] && args+=(--registry "$npm_registry")
+    run_with_timeout "${AI_HUB_VERSION_CHECK_TIMEOUT:-12}" npm "${args[@]}" 2>/dev/null | tr -d '[:space:]'
+}
+
+# 读取 npm 全局已安装版本：直接读 npm root 下的 package.json，不启动 npm 进程
+npm_installed_version() {
+    local name="$1"
+    [[ -n "$name" ]] || return 0
+    local npm_root
+    npm_root=$(_get_npm_root)
+    [[ -n "$npm_root" ]] || return 0
+    local pj
+    for pj in "$npm_root/$name/package.json" "$npm_root/node_modules/$name/package.json"; do
+        if [[ -f "$pj" ]]; then
+            jq -r '.version // empty' "$pj" 2>/dev/null
+            return 0
+        fi
+    done
+    return 0
+}
+
 is_mcp_server_installed() {
     local server_id="$1"
     local file="${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/mcp-servers/${server_id}.json"
@@ -646,22 +976,6 @@ CURRENT_TAB=0
 # 标签页配置
 TABS=("⌨️ CLI 助手" "💻 IDE 集成" "🤖 自主智能体" "📊 分析工作台" "🛠️ 应用开发平台" "🌐 API 网关" "⚙️ 推理引擎" "🛡️ 质量与安全" "🔧 工具组件")
 
-tool_category_matches_tab() {
-    local tab="$1"
-    local cat="$2"
-    case "$tab" in
-        0) [[ "$cat" == "ai-coding" ]] ;;
-        1) [[ "$cat" == "ai-ide" ]] ;;
-        2) [[ "$cat" == "ai-agent" ]] ;;
-        3) [[ "$cat" == "ai-workbench" ]] ;;
-        4) [[ "$cat" == "ai-builder" ]] ;;
-        5) [[ "$cat" == "ai-gateway" ]] ;;
-        6) [[ "$cat" == "ai-runtime" ]] ;;
-        7) [[ "$cat" == "ai-optimizer" || "$cat" == "quality" || "$cat" == "security" ]] ;;
-        8) [[ "$cat" == "ai-utility" ]] ;;
-        *) return 1 ;;
-    esac
-}
 
 tool_categories_for_tab() {
     local tab="$1"
@@ -708,7 +1022,19 @@ select_tool_interactive() {
                         [[ "${TOOL_STATUS[$gi]}" != true ]] || group_installed=$((group_installed + 1))
                     done
                     local group_name="${C_name% (*}"
-                    opts+=("${group_name} [${group_installed}/${group_count} 个版本已安装]")
+                    # 组行也需要 ✅/⚠️：只给计数时，多选框 [x] 容易被读成「已安装」。
+                    local group_icon="${YELLOW}⚠️ ${NC}"
+                    [[ $group_installed -gt 0 ]] && group_icon="${GREEN}✅ ${NC}"
+                    # 一个都没装时别说「已安装」字样，避免读错。
+                    local group_count_label
+                    if [[ $group_installed -eq 0 ]]; then
+                        group_count_label="[$group_count 个版本均未安装]"
+                    elif [[ $group_installed -lt $group_count ]]; then
+                        group_count_label="[$group_installed/$group_count 个版本已安装]"
+                    else
+                        group_count_label="[$group_count/$group_count 个版本全部已安装]"
+                    fi
+                    opts+=("${group_icon}${group_name} ${group_count_label}")
                     idxs+=("$i")
                     continue
                 fi
@@ -898,6 +1224,45 @@ _show_group_variant_menu() {
     return 0
 }
 
+# 组内一个都没装、但配置文件还在：CLI 卸载后遗留的孤儿配置。
+# 正常卸载流程要求「已安装」才走得到删配置那一步，所以这里补一个清理入口。
+_offer_orphan_config_cleanup() {
+    local group="$1"
+    local gi conf="" disp_name=""
+    for ((gi=0; gi<${#TOOLS[@]}; gi++)); do
+        parse_tool_data "${TOOLS[$gi]}" "_ORPH"
+        [[ "$_ORPH_group" == "$group" ]] || continue
+        [[ -n "$_ORPH_conf" && -e "$_ORPH_conf" ]] || continue
+        conf="$_ORPH_conf"
+        disp_name="${_ORPH_name% (*}"
+        [[ -n "$disp_name" ]] || disp_name="$_ORPH_name"
+        break
+    done
+    [[ -n "$conf" ]] || return 0
+
+    echo -e "${YELLOW}检测到残留配置：${conf}${NC}"
+    echo -e "${GRAY}  ${disp_name} 的命令行工具已卸载，此文件不再被读取；清理不影响其他客户端配置。${NC}"
+    if [[ ! -t 0 ]]; then
+        warn_log "非交互环境，保留残留配置: $conf"
+        return 0
+    fi
+    read -p "是否清理该残留配置? (y/N): " orphan_ans
+    [[ "$orphan_ans" == "y" ]] || { echo "已保留 $conf"; return 0; }
+    dry_run_skip "清理残留配置 $conf" && return 0
+
+    local conf_root
+    if [[ -d "$conf" ]]; then
+        conf_root="$conf"
+    else
+        conf_root=$(dirname "$conf")
+    fi
+    # 先备份再删：备份沿用写入备份的命名，需要时用 --rollback <该路径> 还原。
+    backup_config_file "$conf" || return 1
+    if safe_remove_config_path "$conf" "$disp_name" "$conf_root"; then
+        success_log "已清理残留配置: ${conf}（备份保留在 ${conf}.backup.aihub.*）"
+    fi
+}
+
 # 显示变体工具卸载二次选择菜单（仅显示已安装变体）
 # 用法: _show_group_variant_uninstall <group_name>
 _show_group_variant_uninstall() {
@@ -916,7 +1281,13 @@ _show_group_variant_uninstall() {
         v_idxs+=($_vi)
     done
     
-    [[ ${#v_opts[@]} -eq 0 ]] && { warn_log "该组没有已安装的变体"; return; }
+    if [[ ${#v_opts[@]} -eq 0 ]]; then
+        warn_log "该组没有已安装的变体，无需卸载"
+        _offer_orphan_config_cleanup "$group"
+        # 紧接着的菜单重绘会进备用屏幕把这行抹掉，先停住让人看见。
+        [[ -t 0 ]] && { echo ""; read -r -p "按回车返回..."; }
+        return 0
+    fi
     
     # 构建组显示名
     local _first_name=""
@@ -1055,7 +1426,7 @@ tool_command_display_label() {
 
 tool_operations_menu() {
     local idx=$1; parse_tool_data "${TOOLS[$idx]}" "M"
-    local opts=("@v 👁️ 查看配置" "@e ✏️ 编辑配置" "@s 🔄 重置配置" "@t 🔍 状态" "@r 🗑️ 卸载")
+    local opts=("@v 👁️ 查看配置" "@e ✏️ 编辑配置" "@s 🔄 重置配置" "@t 🔍 状态" "@u ⬆️ 检查更新" "@r 🗑️ 卸载")
     local base_count=${#opts[@]}
     local command_keys=()
     local command_cmds=()
@@ -1088,13 +1459,74 @@ tool_operations_menu() {
         1) edit_tool_config "$idx" ;;
         2) reset_tool_config "$idx" ;;
         3) execute_extended_commands "$M_id" "status_check" "$M_name" ;;
-        4) uninstall_menu ;;
+        4) check_tool_updates "$idx" ;;
+        5) uninstall_menu ;;
         *)
             local cmd_idx=$((res - base_count))
             [[ $cmd_idx -ge 0 && $cmd_idx -lt ${#command_cmds[@]} ]] || return 1
-            run_configured_command "$(expand_vars "${command_cmds[$cmd_idx]}")" "$M_name: ${command_keys[$cmd_idx]}"
+            # commands.* 是「启动/日志/版本/扫描」这类使用型命令，和目标工具的 venv、
+            # 安装目录绑定（cd ~/ds4 && ./ds4），脚本路径必然在仓库外，套形态校验只会误拒；
+            # 和 status_check 等扩展命令同类，交给破坏性确认把关。
+            run_configured_command "$(expand_vars "${command_cmds[$cmd_idx]}")" "$M_name: ${command_keys[$cmd_idx]}" nogate
             ;;
     esac
+}
+
+# 检测工具在 registry 中的最新版本（npm 工具），提示是否安装/更新
+check_tool_updates() {
+    local idx=$1
+    parse_tool_data "${TOOLS[$idx]}" "CHK"
+    if [[ "$CHK_type" != "npm" ]]; then
+        warn_log "$CHK_name 当前类型为 ${CHK_type:-未知}，暂仅支持 npm 工具的在线版本检测"
+        read -p "按回车返回..."
+        return 0
+    fi
+
+    local spec="${CHK_pkg:-}"
+    if [[ -z "$spec" && -n "$CHK_file" && -f "$CHK_file" ]]; then
+        spec=$(npm_cmd_extract_spec "$(jq -r '.install.methods[0].command // ""' "$CHK_file" 2>/dev/null)")
+    fi
+    local name
+    name=$(npm_spec_name "$spec")
+    if [[ -z "$name" ]]; then
+        warn_log "无法从配置解析 $CHK_name 的包名"
+        read -p "按回车返回..."
+        return 0
+    fi
+
+    info_log "🔎 正在查询 $name 的最新版本..."
+    local installed latest
+    installed=$(npm_installed_version "$name")
+    latest=$(npm_latest_version "$name")
+    if [[ -z "$latest" ]]; then
+        warn_log "无法获取 $name 的最新版本（网络或 registry 不可用）"
+        read -p "按回车返回..."
+        return 0
+    fi
+
+    echo -e "${CYAN}📦 $CHK_name ($name)${NC}"
+    if [[ -n "$installed" ]]; then
+        echo -e "   当前版本: v$installed"
+    else
+        echo -e "   当前版本: ${YELLOW}未安装${NC}"
+    fi
+    echo -e "   最新版本: ${GREEN}v$latest${NC}"
+
+    if [[ -z "$installed" ]]; then
+        local ans=""
+        read -p "是否现在安装？(y/N): " ans
+        [[ "$ans" =~ ^[Yy]$ ]] && operate_tool "$idx" install
+    elif [[ "$installed" != "$latest" ]]; then
+        local ans=""
+        read -p "发现新版本，是否更新？(y/N): " ans
+        [[ "$ans" =~ ^[Yy]$ ]] && operate_tool "$idx" update
+    else
+        success_log "$CHK_name v$installed 已是最新版本"
+        read -p "按回车返回..."
+        return 0
+    fi
+    read -p "按回车返回..."
+    return 0
 }
 
 is_supported_mcp_config_path() {
@@ -1980,7 +2412,7 @@ collect_ssh_mcp_configs() {
         # 清空输入缓冲区（纯 Bash 兼容实现，支持 macOS Bash 3.2）
         while read -t 0 2>/dev/null; do read -r -t 1 discard 2>/dev/null || true; done
 
-        read -r -t "${AI_HUB_CONFIG_PROMPT_TIMEOUT:-30}" -p "实例名 [默认 $default_alias，直接回车继续]: " alias || {
+        read -r -t "${AI_HUB_CONFIG_PROMPT_TIMEOUT:-30}" -p "实例名 [默认 ${default_alias}，直接回车继续]: " alias || {
             warn_log "SSH 实例名输入超时，结束 SSH 配置。"
             break
         }
@@ -2209,7 +2641,7 @@ validate_shared_configs() {
                     if [[ "$req_tool" == */* ]]; then
                         [[ -x "$req_tool" ]] || _config_issue "WARN" "$f" "MCP 依赖命令未找到或不可执行: $req_tool"
                     else
-                        command_exists "$req_tool" || _config_issue "WARN" "$f" "MCP 依赖命令未找到: $req_tool（请先安装后再重启 MCP）"
+                        command_exists "$req_tool" || _config_issue "WARN" "$f" "MCP 依赖命令未找到: ${req_tool}（请先安装后再重启 MCP）"
                     fi
                 done < <(jq -r '.required_tools[]? | if type == "object" then (.command // .name // empty) else tostring end' "$f" 2>/dev/null)
                 if [[ "$check_env" == "true" ]]; then
@@ -2515,14 +2947,134 @@ release_config_lock() {
     [[ "${CONFIG_LOCK_DIR:-}" == "$lock_dir" ]] && CONFIG_LOCK_DIR=""
 }
 
+# 备份保留：名字 = 时间戳 + PID + 进程内递增号，同一进程一秒内写两次也不会互相覆盖；
+# 清理按文件名排序（时间戳前缀即时间序，`cp -p` 会把 mtime 保持成源文件的，不能用来排序），
+# 只保留最近 AI_HUB_BACKUP_KEEP 份（默认 3）。递增号补零，保证个位数和两位数顺序一致。
+_BACKUP_SEQ=0
+_prune_config_backups() {
+    local config_file="$1"
+    local keep="${AI_HUB_BACKUP_KEEP:-3}"
+    local files=() idx count
+    [[ "$keep" =~ ^[0-9]+$ ]] || keep=3
+    # 0 = 不限份数，全部保留
+    (( keep == 0 )) && return 0
+    files=("${config_file}".backup.aihub.*)
+    [[ -e "${files[0]}" ]] || return 0
+    count=${#files[@]}
+    (( count <= keep )) && return 0
+    for (( idx = 0; idx < count - keep; idx++ )); do
+        rm -f "${files[idx]}" 2>/dev/null || true
+    done
+}
+
 backup_config_file() {
     local config_file="$1"
     [[ -f "$config_file" ]] || return 0
-    local backup_file="${config_file}.backup.aihub.$(date +%Y%m%d_%H%M%S).$$"
+    [[ "${AI_HUB_DRY_RUN:-0}" == "1" ]] && return 0
+    _BACKUP_SEQ=$(( _BACKUP_SEQ + 1 ))
+    local backup_file="${config_file}.backup.aihub.$(date +%Y%m%d_%H%M%S).$$.$(printf '%03d' "$_BACKUP_SEQ")"
     cp -p "$config_file" "$backup_file" 2>/dev/null || {
         warn_log "无法创建配置备份: $backup_file"
         return 1
     }
+    _prune_config_backups "$config_file"
+}
+
+# dry-run 摘要：无变化只记 debug，有变化给一段截断的 unified diff。
+report_config_diff() {
+    local config_file="$1" candidate="$2" lines
+    if [[ ! -f "$config_file" ]]; then
+        info_log "[dry-run] 将新建配置: $config_file"
+        return 0
+    fi
+    if cmp -s "$config_file" "$candidate"; then
+        debug_log "[dry-run] 无变化: $config_file"
+        return 0
+    fi
+    info_log "[dry-run] 将修改: $config_file"
+    command_exists diff || return 0
+    lines=$(diff -u "$config_file" "$candidate" 2>/dev/null) || true
+    [[ -n "$lines" ]] && printf '%s\n' "$lines" | head -n 40 | sed 's/^/    /'
+    [[ $(printf '%s\n' "$lines" | wc -l) -gt 40 ]] && info_log "    …（差异超过 40 行已截断）"
+    return 0
+}
+
+# dry-run 下的副作用闸门：返回 0 表示动作已登记跳过，调用方直接 return 0。
+dry_run_skip() {
+    [[ "${AI_HUB_DRY_RUN:-0}" == "1" ]] || return 1
+    info_log "[dry-run] 跳过: $1"
+    return 0
+}
+
+# 候选内容落盘的唯一出口：dry-run 只报告并丢弃候选，否则先备份再原子替换。
+# mv 会把 mktemp 的 0600 带过去，所以已有文件要沿用原权限。
+commit_config_file() {
+    local config_file="$1" candidate="$2"
+    [[ -f "$candidate" ]] || { warn_log "候选配置缺失，跳过写入: $config_file"; return 1; }
+    if [[ "${AI_HUB_DRY_RUN:-0}" == "1" ]]; then
+        report_config_diff "$config_file" "$candidate"
+        rm -f "$candidate"
+        return 0
+    fi
+    if [[ -f "$config_file" ]]; then
+        local mode=""
+        mode=$(stat -f '%Lp' "$config_file" 2>/dev/null || stat -c '%a' "$config_file" 2>/dev/null) || true
+        [[ -n "$mode" ]] && chmod "$mode" "$candidate" 2>/dev/null || true
+    fi
+    backup_config_file "$config_file" || { rm -f "$candidate"; return 1; }
+    mv -f "$candidate" "$config_file" || {
+        rm -f "$candidate"
+        warn_log "配置写入失败: $config_file"
+        return 1
+    }
+    return 0
+}
+
+# 回滚目标 → 配置文件列表：既接受工具 id/cmd，也接受字面文件路径，all/* 表示全部有备份的目标。
+_resolve_rollback_files() {
+    local target="$1" i
+    if [[ "$target" == "all" || "$target" == "*" ]]; then
+        for i in "${!TOOLS[@]}"; do
+            parse_tool_data "${TOOLS[$i]}" "RBK"
+            [[ -n "${RBK_conf:-}" ]] && printf '%s\n' "$RBK_conf"
+        done
+        return 0
+    fi
+    if [[ -f "$target" ]]; then
+        printf '%s\n' "$target"
+        return 0
+    fi
+    for i in "${!TOOLS[@]}"; do
+        parse_tool_data "${TOOLS[$i]}" "RBK"
+        [[ "$target" == "${RBK_id:-}" || "$target" == "${RBK_cmd:-}" ]] || continue
+        [[ -n "${RBK_conf:-}" ]] && printf '%s\n' "$RBK_conf"
+    done
+}
+
+# 把工具配置恢复到最近一份 AI Hub 备份；当前内容也会先备份，所以回滚可以再回滚。
+rollback_config_target() {
+    local target="$1"
+    local files=() f pick
+    while IFS= read -r f; do
+        [[ -n "$f" ]] && files+=("$f")
+    done < <(_resolve_rollback_files "$target")
+    [[ ${#files[@]} -gt 0 ]] || { warn_log "无法解析回滚目标: $target"; return 1; }
+
+    local rc=0
+    for f in "${files[@]}"; do
+        local candidates=()
+        candidates=("$f".backup.aihub.*)
+        [[ -e "${candidates[0]}" ]] || { warn_log "没有可用备份，跳过: $f"; continue; }
+        pick="${candidates[${#candidates[@]} - 1]}"
+        echo -e "  ↩️  $(basename "$f") ← $(basename "$pick")"
+        if dry_run_skip "回滚 $f"; then
+            continue
+        fi
+        # 先备份再覆盖：备份取的是进入本函数时的最新一份，不会被自己刚写的那份顶掉。
+        backup_config_file "$f" || { warn_log "回滚前备份失败，放弃: $f"; rc=1; continue; }
+        cp -p "$pick" "$f" 2>/dev/null || { warn_log "回滚失败: $f"; rc=1; continue; }
+    done
+    return $rc
 }
 
 _find_python_with_yaml() {
@@ -2546,85 +3098,87 @@ _find_python_with_yaml() {
     return 1
 }
 
-add_mcp_configs_to_yaml_file() {
-    local config_file="$1"
-    local servers_json="$2"
+# YAML / TOML 的 MCP 配置读写共用一条流程：选解释器 → 加锁 → 生成候选内容 → commit_config_file。
+# 以前四个函数各写一份 lock/备份/落盘，备份命名还和 bash 侧不一致（Python 那份不带 PID，
+# 同秒两次写入会静默覆盖备份）。格式差异留在 Python 里，控制流只留一处。
+# 用法: mcp_config_edit <yaml|toml> <add|remove> <config_file> <payload_file>
+mcp_config_edit() {
+    local format="$1" mode="$2" config_file="$3" payload_file="$4"
+    local action="写入"
+    [[ "$mode" == "remove" ]] && action="清理"
+    local py=""
+    case "$format" in
+        yaml)
+            py=$(_find_python_with_yaml) || {
+                warn_log "${action} YAML MCP 配置需要 PyYAML；Hermes venv 或 python3 中未找到 yaml 模块"
+                return 1
+            } ;;
+        toml)
+            py="$(command -v python3 2>/dev/null || true)"
+            [[ -n "$py" ]] || { warn_log "${action} Codex TOML MCP 配置需要 python3"; return 1; } ;;
+        *)
+            warn_log "暂不支持自动${action}该配置格式中的 MCP: $config_file"
+            return 1 ;;
+    esac
+    [[ -f "$payload_file" ]] || return 1
+
+    # 清理不存在的配置是空操作，不该先造出候选文件再落盘
+    [[ "$mode" == "remove" && ! -f "$config_file" ]] && return 0
+    mkdir -p "$(dirname "$config_file")" || return 1
+
     local config_lock="${config_file}.aihub.lock"
     acquire_config_lock "$config_file" || return 1
-    local py
-    py=$(_find_python_with_yaml) || { warn_log "写入 YAML MCP 配置需要 PyYAML；Hermes venv 或 python3 中未找到 yaml 模块"; release_config_lock "$config_lock"; return 1; }
-
-    "$py" - "$config_file" "$servers_json" <<'PY'
+    local candidate rc=0 crc=0
+    candidate=$(mktemp "$(dirname "$config_file")/.aihub-$format.XXXXXX") || {
+        release_config_lock "$config_lock"
+        return 1
+    }
+    "$py" - "$format" "$mode" "$config_file" "$payload_file" "$candidate" <<'PY' || rc=$?
 import json
-import shutil
 import sys
-from datetime import datetime
-from pathlib import Path
-import yaml
-
-config_path = Path(sys.argv[1]).expanduser()
-servers_path = Path(sys.argv[2])
-servers = json.loads(servers_path.read_text())
-config_path.parent.mkdir(parents=True, exist_ok=True)
-if config_path.exists():
-    backup = config_path.with_name(config_path.name + ".backup.aihub." + datetime.now().strftime("%Y%m%d_%H%M%S"))
-    shutil.copy2(config_path, backup)
-    data = yaml.safe_load(config_path.read_text()) or {}
-else:
-    data = {}
-if not isinstance(data, dict):
-    data = {}
-mcp_servers = data.get("mcp_servers")
-if not isinstance(mcp_servers, dict):
-    mcp_servers = {}
-for name, conf in servers.items():
-    if isinstance(conf, dict):
-        conf.pop("transportType", None)
-        conf["enabled"] = True
-        mcp_servers[name] = conf
-data["mcp_servers"] = mcp_servers
-config_path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
-PY
-    local rc=$?
-    release_config_lock "$config_lock"
-    return $rc
-}
-
-write_codex_mcp_configs_to_toml() {
-    local config_file="$1"
-    local servers_json="$2"
-    local config_lock="${config_file}.aihub.lock"
-    acquire_config_lock "$config_file" || return 1
-    local py
-    py="$(command -v python3 2>/dev/null || true)"
-    [[ -n "$py" ]] || { warn_log "写入 Codex TOML MCP 配置需要 python3"; release_config_lock "$config_lock"; return 1; }
-
-    "$py" - "$config_file" "$servers_json" <<'PY'
-import json
-import shutil
-import sys
-from datetime import datetime
 from pathlib import Path
 
-config_path = Path(sys.argv[1]).expanduser()
-servers_path = Path(sys.argv[2])
-servers = json.loads(servers_path.read_text())
-config_path.parent.mkdir(parents=True, exist_ok=True)
+fmt, mode, cfg, payload_path, out_path = sys.argv[1:6]
+config_path = Path(cfg).expanduser()
+payload = json.loads(Path(payload_path).read_text())
+out = Path(out_path)
 
-if config_path.exists():
-    backup = config_path.with_name(config_path.name + ".backup.aihub." + datetime.now().strftime("%Y%m%d_%H%M%S"))
-    shutil.copy2(config_path, backup)
-    lines = config_path.read_text().splitlines()
-else:
-    lines = []
+if fmt == "yaml":
+    import yaml
 
-managed = set(servers.keys())
-out = []
+    data = yaml.safe_load(config_path.read_text()) if config_path.exists() else {}
+    if not isinstance(data, dict):
+        data = {}
+    if mode == "add":
+        block = data.get("mcp_servers")
+        if not isinstance(block, dict):
+            block = {}
+        for name, conf in payload.items():
+            if isinstance(conf, dict):
+                conf.pop("transportType", None)
+                conf["enabled"] = True
+                block[name] = conf
+        data["mcp_servers"] = block
+    else:
+        ids = set(payload)
+        for key in ("mcp_servers", "mcpServers"):
+            block = data.get(key)
+            if isinstance(block, dict):
+                for item in ids:
+                    block.pop(item, None)
+                data[key] = block
+    out.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+    raise SystemExit(0)
+
+# TOML 只做段落级替换：重写 [mcp_servers."x"]，其余内容原样保留。
+lines = config_path.read_text().splitlines() if config_path.exists() else []
+managed = set(payload if mode == "remove" else payload.keys())
+kept = []
 i = 0
 while i < len(lines):
     line = lines[i]
     stripped = line.strip()
-    remove = False
+    drop = False
     if stripped.startswith("[mcp_servers.") and stripped.endswith("]"):
         name = stripped[len("[mcp_servers."):-1]
         if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
@@ -2632,156 +3186,59 @@ while i < len(lines):
                 name = json.loads(name)
             except Exception:
                 pass
-        remove = name in managed
-    if remove:
+        drop = name in managed
+    if drop:
         i += 1
-        while i < len(lines):
-            next_stripped = lines[i].strip()
-            if next_stripped.startswith("[") and next_stripped.endswith("]"):
-                break
+        while i < len(lines) and not (lines[i].strip().startswith("[") and lines[i].strip().endswith("]")):
             i += 1
         continue
-    out.append(line)
+    kept.append(line)
     i += 1
 
-def toml_string(value):
-    return json.dumps(str(value), ensure_ascii=False)
+if mode == "add":
+    def toml_string(value):
+        return json.dumps(str(value), ensure_ascii=False)
 
-def toml_array(values):
-    return "[" + ", ".join(toml_string(v) for v in values) + "]"
+    def toml_array(values):
+        return "[" + ", ".join(toml_string(v) for v in values) + "]"
 
-if out and out[-1].strip():
-    out.append("")
-
-for name, conf in servers.items():
-    if not isinstance(conf, dict):
-        continue
-    command = conf.get("command")
-    if not command:
-        continue
-    args = conf.get("args") if isinstance(conf.get("args"), list) else []
-    env = conf.get("env") if isinstance(conf.get("env"), dict) else {}
-    cwd = conf.get("cwd")
-    startup_timeout_sec = conf.get("startup_timeout_sec")
-
-    out.append(f"[mcp_servers.{toml_string(name)}]")
-    out.append(f"command = {toml_string(command)}")
-    if args:
-        out.append(f"args = {toml_array(args)}")
-    if cwd:
-        out.append(f"cwd = {toml_string(cwd)}")
-    if startup_timeout_sec is not None:
-        out.append(f"startup_timeout_sec = {int(startup_timeout_sec)}")
-    for key, value in env.items():
-        if value is None or value == "":
+    if kept and kept[-1].strip():
+        kept.append("")
+    for name, conf in payload.items():
+        if not isinstance(conf, dict):
             continue
-        out.append(f"env.{key} = {toml_string(value)}")
-    out.append("")
+        command = conf.get("command")
+        if not command:
+            continue
+        args = conf.get("args") if isinstance(conf.get("args"), list) else []
+        env = conf.get("env") if isinstance(conf.get("env"), dict) else {}
+        cwd = conf.get("cwd")
+        startup_timeout_sec = conf.get("startup_timeout_sec")
+        kept.append(f"[mcp_servers.{toml_string(name)}]")
+        kept.append(f"command = {toml_string(command)}")
+        if args:
+            kept.append(f"args = {toml_array(args)}")
+        if cwd:
+            kept.append(f"cwd = {toml_string(cwd)}")
+        if startup_timeout_sec is not None:
+            kept.append(f"startup_timeout_sec = {int(startup_timeout_sec)}")
+        for key, value in env.items():
+            if value is None or value == "":
+                continue
+            kept.append(f"env.{key} = {toml_string(value)}")
+        kept.append("")
 
-config_path.write_text("\n".join(out).rstrip() + "\n")
+out.write_text("\n".join(kept).rstrip() + "\n")
 PY
-    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+        rm -f "$candidate"
+        release_config_lock "$config_lock"
+        return $rc
+    fi
+    commit_config_file "$config_file" "$candidate"
+    crc=$?
     release_config_lock "$config_lock"
-    return $rc
-}
-
-remove_codex_mcp_configs_from_toml() {
-    local config_file="$1"
-    local ids_json_file="$2"
-    local config_lock="${config_file}.aihub.lock"
-    acquire_config_lock "$config_file" || return 1
-    local py
-    py="$(command -v python3 2>/dev/null || true)"
-    [[ -n "$py" ]] || { warn_log "清理 Codex TOML MCP 配置需要 python3"; release_config_lock "$config_lock"; return 1; }
-
-    "$py" - "$config_file" "$ids_json_file" <<'PY'
-import json
-import shutil
-import sys
-from datetime import datetime
-from pathlib import Path
-
-config_path = Path(sys.argv[1]).expanduser()
-ids_path = Path(sys.argv[2])
-ids = set(json.loads(ids_path.read_text()))
-if not config_path.exists():
-    raise SystemExit(0)
-
-backup = config_path.with_name(config_path.name + ".backup.aihub." + datetime.now().strftime("%Y%m%d_%H%M%S"))
-shutil.copy2(config_path, backup)
-lines = config_path.read_text().splitlines()
-out = []
-i = 0
-while i < len(lines):
-    line = lines[i]
-    stripped = line.strip()
-    remove = False
-    if stripped.startswith("[mcp_servers.") and stripped.endswith("]"):
-        name = stripped[len("[mcp_servers."):-1]
-        if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
-            try:
-                name = json.loads(name)
-            except Exception:
-                pass
-        remove = name in ids
-    if remove:
-        i += 1
-        while i < len(lines):
-            next_stripped = lines[i].strip()
-            if next_stripped.startswith("[") and next_stripped.endswith("]"):
-                break
-            i += 1
-        continue
-    out.append(line)
-    i += 1
-
-config_path.write_text("\n".join(out).rstrip() + "\n")
-PY
-    local rc=$?
-    release_config_lock "$config_lock"
-    return $rc
-}
-
-remove_mcp_configs_from_yaml_file() {
-    local config_file="$1"
-    local ids_json_file="$2"
-    local config_lock="${config_file}.aihub.lock"
-    acquire_config_lock "$config_file" || return 1
-    local py
-    py=$(_find_python_with_yaml) || { warn_log "清理 YAML MCP 配置需要 PyYAML；Hermes venv 或 python3 中未找到 yaml 模块"; release_config_lock "$config_lock"; return 1; }
-
-    "$py" - "$config_file" "$ids_json_file" <<'PY'
-import json
-import shutil
-import sys
-from datetime import datetime
-from pathlib import Path
-import yaml
-
-config_path = Path(sys.argv[1]).expanduser()
-ids_path = Path(sys.argv[2])
-ids = json.loads(ids_path.read_text())
-if not config_path.exists():
-    raise SystemExit(0)
-
-backup = config_path.with_name(config_path.name + ".backup.aihub." + datetime.now().strftime("%Y%m%d_%H%M%S"))
-shutil.copy2(config_path, backup)
-data = yaml.safe_load(config_path.read_text()) or {}
-if not isinstance(data, dict):
-    data = {}
-
-for key in ("mcp_servers", "mcpServers"):
-    block = data.get(key)
-    if isinstance(block, dict):
-        for item in ids:
-            block.pop(item, None)
-        data[key] = block
-
-config_path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
-PY
-    local rc=$?
-    release_config_lock "$config_lock"
-    return $rc
+    return $crc
 }
 
 remove_mcp_configs_from_file() {
@@ -2797,7 +3254,6 @@ remove_mcp_configs_from_file() {
             local ids_json tmp_file
             local config_lock="${config_file}.aihub.lock"
             acquire_config_lock "$config_file" || return 1
-            backup_config_file "$config_file" || { release_config_lock "$config_lock"; return 1; }
             ids_json=$(printf '%s\n' "${ids[@]}" | jq -R . | jq -s .)
             tmp_file=$(mktemp "$(dirname "$config_file")/.aihub-json.XXXXXX") || { release_config_lock "$config_lock"; return 1; }
             if jq --argjson ids "$ids_json" '
@@ -2806,8 +3262,10 @@ remove_mcp_configs_from_file() {
                     | if has("mcp_servers") then .mcp_servers |= del(.[$id]) else . end
                 )
             ' "$config_file" > "$tmp_file" && jq empty "$tmp_file" >/dev/null 2>&1; then
-                mv "$tmp_file" "$config_file"
+                commit_config_file "$config_file" "$tmp_file"
+                local commit_rc=$?
                 release_config_lock "$config_lock"
+                return $commit_rc
             else
                 rm -f "$tmp_file"
                 release_config_lock "$config_lock"
@@ -2820,7 +3278,7 @@ remove_mcp_configs_from_file() {
             # trap 保证异常退出时也能清理临时文件
             trap "rm -f '$ids_file'" RETURN
             printf '%s\n' "${ids[@]}" | jq -R . | jq -s . > "$ids_file"
-            remove_mcp_configs_from_yaml_file "$config_file" "$ids_file"
+            mcp_config_edit yaml remove "$config_file" "$ids_file"
             return $?
             ;;
         *.toml)
@@ -2828,7 +3286,7 @@ remove_mcp_configs_from_file() {
             ids_file=$(mktemp "${TMPDIR:-/tmp}/aihub-mcp-remove.XXXXXX") || return 1
             trap "rm -f '$ids_file'" RETURN
             printf '%s\n' "${ids[@]}" | jq -R . | jq -s . > "$ids_file"
-            remove_codex_mcp_configs_from_toml "$config_file" "$ids_file"
+            mcp_config_edit toml remove "$config_file" "$ids_file"
             return $?
             ;;
         *)
@@ -2983,28 +3441,35 @@ add_all_mcp_configs_to_file() {
 
     case "$config_file" in
         *.json)
-            [[ -s "$config_file" ]] || echo '{"mcpServers":{}}' > "$config_file"
+            if [[ ! -s "$config_file" ]]; then
+                # dry-run 不该为了「演示要新建」真的把文件建出来
+                if [[ "${AI_HUB_DRY_RUN:-0}" == "1" ]]; then
+                    info_log "[dry-run] 将新建配置并写入 MCP: $config_file ($(jq -r 'keys | join(", ")' "$servers_json" 2>/dev/null))"
+                    return 0
+                fi
+                echo '{"mcpServers":{}}' > "$config_file"
+            fi
             local config_lock="${config_file}.aihub.lock"
             acquire_config_lock "$config_file" || return 1
-            backup_config_file "$config_file" || { release_config_lock "$config_lock"; return 1; }
             tmp_file=$(mktemp "$(dirname "$config_file")/.aihub-json.XXXXXX") || { release_config_lock "$config_lock"; return 1; }
             if jq --slurpfile servers "$servers_json" \
                 '.mcpServers = (.mcpServers // {}) | .mcpServers += $servers[0]' \
                 "$config_file" > "$tmp_file" && jq empty "$tmp_file" >/dev/null 2>&1; then
-                mv "$tmp_file" "$config_file"
+                commit_config_file "$config_file" "$tmp_file"
+                local commit_rc=$?
                 release_config_lock "$config_lock"
-                return $?
+                return $commit_rc
             fi
             rm -f "$tmp_file"
             release_config_lock "$config_lock"
             return 1
             ;;
         *.yaml|*.yml)
-            add_mcp_configs_to_yaml_file "$config_file" "$servers_json"
+            mcp_config_edit yaml add "$config_file" "$servers_json"
             return $?
             ;;
         *.toml)
-            write_codex_mcp_configs_to_toml "$config_file" "$servers_json"
+            mcp_config_edit toml add "$config_file" "$servers_json"
             return $?
             ;;
     esac
@@ -3014,6 +3479,7 @@ install_mcp_server_package() {
     local server_id="$1"
     local file="${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/mcp-servers/${server_id}.json"
     [[ -f "$file" ]] || return 1
+    dry_run_skip "安装 MCP 包: $server_id" && return 0
 
     # 1. 检查是否已安装 (优化: 避免重复安装)
     local check_cmd
@@ -3030,6 +3496,7 @@ install_mcp_server_package() {
     local install_type cmd
     install_type=$(jq -r '.install.type // "npm"' "$file" 2>/dev/null)
     cmd=$(jq -r '.install.command // ""' "$file" 2>/dev/null)
+    check_runtime_versions
 
     # 执行安装前预处理命令
     local pre_installs
@@ -3226,6 +3693,7 @@ install_skill() {
     local prompt_extensions="${2:-false}"
     local file="${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/skills/${skill_id}.json"
     [[ -f "$file" ]] || return 1
+    dry_run_skip "安装 Skill: $skill_id" && return 0
     local dest="${AI_HUB_SKILLS_DIR:-$HOME/.ai-hub/skills}"
     mkdir -p "$dest" || return 1
     cp "$file" "$dest/${skill_id}.json" || return 1
@@ -3248,6 +3716,7 @@ skill_target_kind() {
         codex|codex-cli) echo "codex" ;;
         opencode|opencode-ai) echo "opencode" ;;
         qwen|qwen-code|qwen-cli) echo "qwen" ;;
+        qoder|qodercli) echo "qoder" ;;
         *)
             case "$tool_name" in
                 *Gemini*|*Antigravity*) echo "antigravity" ;;
@@ -3256,6 +3725,7 @@ skill_target_kind() {
                 *Codex*) echo "codex" ;;
                 *OpenCode*) echo "opencode" ;;
                 *Qwen*) echo "qwen" ;;
+                *Qoder\ CLI*) echo "qoder" ;;
                 *) echo "fallback" ;;
             esac
             ;;
@@ -3271,6 +3741,7 @@ skill_target_dir() {
         codex) echo "$HOME/.codex/skills/ai-hub" ;;
         opencode) echo "$HOME/.config/opencode/skills" ;;
         qwen) echo "$HOME/.qwen/skills" ;;
+        qoder) echo "$HOME/.qoder/skills" ;;
         *) echo "$HOME/.ai-hub/generated-skills" ;;
     esac
 }
@@ -3385,21 +3856,6 @@ install_skill_for_target() {
     cp "$file" "$dest_dir/ai-hub-config.json"
 }
 
-install_skills_for_target() {
-    local tool_id="$1"
-    local tool_name="$2"
-    shift 2
-
-    local kind
-    kind=$(skill_target_kind "$tool_id" "$tool_name")
-    [[ "$kind" == "fallback" ]] && return 0
-
-    local sid
-    for sid in "$@"; do
-        [[ -n "$sid" ]] || continue
-        install_skill_for_target "$sid" "$kind" || return 1
-    done
-}
 
 install_skills_for_profile_target() {
     local tool_id="$1"
@@ -3410,6 +3866,7 @@ install_skills_for_profile_target() {
 
     [[ -n "$kind" && "$kind" != "fallback" ]] || kind=$(skill_target_kind "$tool_id" "$tool_name")
     [[ "$kind" == "fallback" ]] && return 0
+    dry_run_skip "为 $tool_name 写入 Skills 到 $dest_root" && return 0
 
     local sid
     for sid in "$@"; do
@@ -3723,8 +4180,17 @@ show_help() {
     echo "    --tags     可选。指定要应用的标签，多个标签用逗号分隔（如: 'QA,测试'）。不指定则全量下发。"
     echo "    --update-configs 覆盖更新已写入的 MCP/Skills 配置。默认跳过已配置项。"
     echo "    --update-packages 重新执行 MCP 安装命令以更新 npm/PyPI 等包。默认已安装则跳过。"
+    echo "    --dry-run     演练：打印将要写入的配置差异和将要执行的命令，不做任何改动。"
+    echo "                  注意：AI Hub 自己的写入和安装命令一律不执行；但「哪些客户端已安装」仍需"
+    echo "                  探测，个别第三方工具被探测版本时会自建默认配置（如 httpx 首次运行写"
+    echo "                  ~/Library/Application Support/httpx/config.yaml），这类副作用无法由演练拦截。"
+    echo "    --rollback <目标>  把该目标的配置恢复到最近一份 AI Hub 备份；"
+    echo "                  目标可以是工具 ID/命令名、配置文件路径，或 all（全部工具）。"
+    echo "    --keep-backups <n> 每个配置文件保留的备份份数，默认 3（0 表示不删旧备份）。"
     echo "    AI_HUB_CONFIG_PROMPT_TIMEOUT 控制交互式变量输入超时秒数，默认 30。"
     echo "    例如: $0 --batch-apply cursor --tags 'design,coding'"
+    echo "    例如: $0 --batch-apply cursor --dry-run      # 先看会改什么"
+    echo "    例如: $0 --rollback cursor                   # 改坏了就退回上一份"
     echo ""
     echo "  非交互式安装工具:"
     echo "    $0 -i <targets>"
@@ -3953,7 +4419,7 @@ main() {
 
     local log="quiet"; local dm=""; local op=""; local tgt=""; local want_help=false; local do_validate=false
     local do_batch=false; local do_install=false; local batch_tags=""; local targets_raw=""
-    local remove_mcp_ids=""
+    local remove_mcp_ids=""; local rollback_target=""
     local positional_args=()
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -3972,6 +4438,19 @@ main() {
             -h|--help) want_help=true ;;
             --validate) do_validate=true ;;
             --batch-apply) do_batch=true ;;
+            --dry-run) export AI_HUB_DRY_RUN=1 ;;
+            --rollback)
+                [[ -n "${2:-}" ]] || { error_log "--rollback 缺少参数（工具 id/命令名/配置文件路径/all）"; return 2; }
+                rollback_target="$2"; shift
+                ;;
+            --rollback=*) rollback_target="${1#*=}" ;;
+            --keep-backups)
+                [[ "${2:-}" =~ ^[0-9]+$ ]] || { error_log "--keep-backups 需要非负整数"; return 2; }
+                export AI_HUB_BACKUP_KEEP="$2"; shift
+                ;;
+            --keep-backups=*)
+                [[ "${1#*=}" =~ ^[0-9]+$ ]] || { error_log "--keep-backups 需要非负整数"; return 2; }
+                export AI_HUB_BACKUP_KEEP="${1#*=}" ;;
             --update-configs) export AI_HUB_UPDATE_CONFIGS=1 ;;
             --update-packages) export AI_HUB_UPDATE_PACKAGES=1 ;;
             --tags)
@@ -3996,8 +4475,8 @@ main() {
     [[ "$want_help" == true ]] && { show_help; return 0; }
     init_config
 
-    if [[ -n "$targets_raw" && "$do_batch" == false && "$do_install" == false && -z "$op" && -z "$dm" ]]; then
-        error_log "提供了目标参数但在非交互模式下必须搭配动作参数 (如 -i, -u, --batch-apply 等)"
+    if [[ -n "$targets_raw" && "$do_batch" == false && "$do_install" == false && -z "$rollback_target" && -z "$op" && -z "$dm" ]]; then
+        error_log "提供了目标参数但在非交互模式下必须搭配动作参数 (如 -i, -u, --batch-apply, --rollback 等)"
         exit 2
     fi
     if [[ -n "$batch_tags" && "$do_batch" == false ]]; then
@@ -4005,6 +4484,12 @@ main() {
         exit 2
     fi
     
+    if [[ -n "$rollback_target" ]]; then
+        [[ "$do_batch" == false && "$do_install" == false && -z "$op" && -z "$dm" ]] || { error_log "--rollback 不能与 -i/-u/--batch-apply/-m 等同用"; exit 2; }
+        rollback_config_target "$rollback_target"
+        exit $?
+    fi
+
     if [[ -n "$remove_mcp_ids" ]]; then
         [[ "$do_batch" == false && "$do_install" == false && -z "$op" && -z "$dm" ]] || { error_log "--remove-mcp 不能与 -i/-u/--batch-apply/-m 等同用"; exit 2; }
         remove_mcp_servers_cli "$remove_mcp_ids"

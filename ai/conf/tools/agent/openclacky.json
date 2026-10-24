@@ -16,7 +16,7 @@
       {
         "name": "官方安装脚本",
         "type": "bash",
-        "command": "/bin/bash -c \"$(curl -sSL https://raw.githubusercontent.com/clacky-ai/openclacky/main/scripts/install.sh)\"",
+        "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-openclacky.XXXXXX\") && curl -fsSL -o \"$tmp\" https://raw.githubusercontent.com/clacky-ai/openclacky/main/scripts/install.sh && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
         "check": "command -v openclacky",
         "uninstall": [
           "gem uninstall openclacky -aIx 2>/dev/null || true"
@@ -35,7 +35,7 @@
     "default_method": 0
   },
   "update": {
-    "command": "gem update openclacky || /bin/bash -c \"$(curl -sSL https://raw.githubusercontent.com/clacky-ai/openclacky/main/scripts/install.sh)\"",
+    "command": "gem update openclacky || (tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-openclacky.XXXXXX\") && curl -fsSL -o \"$tmp\" https://raw.githubusercontent.com/clacky-ai/openclacky/main/scripts/install.sh && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc)",
     "check": "command -v openclacky"
   },
   "commands": {

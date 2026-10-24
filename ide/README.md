@@ -105,6 +105,41 @@ cd ide
 - PHP 开发
 - 大型企业项目
 
+**打不开 / 双击没反应？**
+
+先诊断，再修复：
+
+```bash
+./install-eclipse.sh --check     # 诊断：指出具体是哪个路径/组件失效
+./install-eclipse.sh --repair    # 修复：删除损坏安装并重装（自动沿用原发行包，如 JEE）
+```
+
+最常见的病因：用 Eclipse Installer 装出来的 Eclipse 属于 "bundle pool" 安装，
+插件和 JVM 都在 `~/.p2`；`~/.p2` 一旦被清理，`eclipse.ini` 的 `--launcher.library`、
+`-vm` 以及 `bundles.info` 全部失效，进程会静默退出（所以看起来"双击没反应"）。
+这种安装改配置修不好，必须换成自包含的 EPP 包，脚本会自动处理（含清 quarantine、
+修复代码签名、刷新 LaunchServices，并在装完后做一次真实启动冒烟测试）。
+
+> 修复会删除旧的 `Eclipse.app`。如果你在原安装里追加过 `lombok.jar` 之类的 `-javaagent`，
+> 需要重新添加一次；工作区（workspace）和项目文件不受影响。
+
+**升级版本**
+
+```bash
+./install-eclipse.sh --latest          # 查最新正式版（当前 2026-09）
+./install-eclipse.sh --update          # 升级到最新正式版
+./install-eclipse.sh --update 2026-09  # 升级/切换到指定版本
+./install-eclipse.sh --check           # 顺便告诉你能不能升级
+```
+
+升级行为：
+
+- 按季度版本比较（`2025-06` / `2026-09`…），已经是最新就直接退出；
+- 旧安装先**改名备份**（同分区 `mv`，秒级），新版本通过「健康检查 + 真实启动冒烟测试」后才删除；
+- 失败（下载损坏、系统版本不满足、启动异常）**自动回滚**到原版本；
+- 自动沿用原发行包（JEE 不会变成 Java SE），并迁移 `dropins/` 插件与 `-javaagent`（lombok 等）；
+- 旧安装是 `.p2` 包池安装时，升级会直接换成自包含包，顺带修好“打不开”。
+
 ### 4. Cursor
 
 **功能**：基于 VS Code 的 AI 驱动代码编辑器

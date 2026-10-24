@@ -198,31 +198,3 @@ detect_chrome_path() {
     fi
 }
 
-# 验证并修复Chrome路径配置
-validate_and_fix_chrome_config() {
-    local config_file="$1"
-    
-    if [[ ! -f "$config_file" ]]; then
-        debug_log "配置文件不存在: $config_file"
-        return 1
-    fi
-    
-    # 检测 Chrome 路径
-    local chrome_path
-    chrome_path=$(detect_chrome_path)
-    
-    if [[ -z "$chrome_path" ]]; then
-        warn_log "未检测到 Chrome，某些功能可能不可用"
-        return 1
-    fi
-    
-    # 验证路径
-    if validate_chrome_path "$chrome_path"; then
-        info_log "Chrome 路径验证成功: $chrome_path"
-        echo "$chrome_path"
-        return 0
-    else
-        error_log "Chrome 路径验证失败: $chrome_path"
-        return 1
-    fi
-}

@@ -253,21 +253,7 @@ _async_refresh_status() {
     ASYNC_STATUS_CHECKING=false
 }
 
-# 获取异步检测状态提示
-get_async_status_hint() {
-    if [[ "$ASYNC_STATUS_CHECKING" == true ]]; then
-        echo -e "${YELLOW}🔄 状态检测中...${NC}"
-    elif [[ "$ASYNC_STATUS_UPDATED" == true ]]; then
-        echo -e "${GREEN}✓ 状态已更新，按 R 刷新显示${NC}"
-    fi
-}
 
-# 重置工具相关数组
-reset_tool_arrays() {
-    TOOL_STATUS=()
-    INSTALLED_MCP_TOOLS=()
-    INSTALLED_MCP_CONFIGS=()
-}
 
 # 计算配置目录的修改时间戳
 _get_config_mtime() {
@@ -349,25 +335,8 @@ _load_tools_status_cache() {
     return 0
 }
 
-# 强制刷新工具状态缓存
-refresh_tools_status() {
-    debug_log "强制刷新工具状态缓存..."
-    rm -f "$TOOLS_STATUS_CACHE_FILE" 2>/dev/null || true
-    # 同时清除 npm_root 缓存，确保重新检测
-    clear_cache "npm_global_root" 2>/dev/null || true
-    detect_tool_status "fast"
-}
 
-# 兼容旧入口名
-check_tools() {
-    local mode="${1:-fast}"
-    [[ "$mode" == "true" ]] && mode="fast"
-    detect_tool_status "$mode"
-}
 
-check_tools_fast() {
-    detect_tool_status "fast"
-}
 
 # 构建工具菜单选项 (用于子菜单)
 # 参数1: filter - "all", "installable", "installed"
@@ -453,114 +422,8 @@ build_tool_menu_options() {
     eval "$idxs_var=(\"\${_built_idxs[@]}\")"
 }
 
-# 批量校验所有已安装工具的配置
-validate_all_configs() {
-    echo -e "${CYAN}🔍 校验所有AI工具配置...${NC}\n"
-    
-    # 刷新工具列表
-    check_tools
-    
-    local has_errors=false
-    
-    for idx in "${!INSTALLED_MCP_TOOLS[@]}"; do
-        local ai_tool="${INSTALLED_MCP_TOOLS[$idx]}"
-        local config_file="${INSTALLED_MCP_CONFIGS[$idx]}"
-        
-        echo -e "${BLUE}检查: $ai_tool${NC}"
-        if ! validate_config "$config_file" "$ai_tool" "false"; then
-            has_errors=true
-            read -p "是否要修复 $ai_tool 的配置? (y/N): " fix_config
-            if [[ "$fix_config" == "y" || "$fix_config" == "Y" ]]; then
-                interactive_config_fix "$config_file" "$ai_tool"
-            fi
-        fi
-        echo ""
-    done
-    
-    if [[ "$has_errors" == false ]]; then
-        echo -e "${GREEN}✅ 所有配置校验通过${NC}"
-    fi
-}
 
-# 获取工具版本号
-get_tool_version() {
-    local tool_index=$1
-    local timeout_sec="${2:-2}"
-    local version=""
-    
-    local tool="${TOOLS[$tool_index]}"
-    parse_tool_data "$tool" "V"
-    
-    # 优先从缓存获取
-    version=$(get_cache "ver:${V_id}")
-    [[ -n "$version" ]] && { echo "$version"; return 0; }
 
-    # 解析版本检查逻辑 (优化：避免重复 jq 调用)
-    if [[ "$V_vcheck" != "null" && "$V_vcheck" != "{}" ]]; then
-        local method=""
-        if echo "$V_vcheck" | jq -e 'type == "object"' >/dev/null 2>&1; then
-            method=$(echo "$V_vcheck" | jq -r '.method // ""' 2>/dev/null)
-        else
-            # 兼容配置中的字符串版本命令，例如 `tool --version` 或脚本查询命令。
-            version=$(run_with_timeout "$timeout_sec" bash -c "$V_vcheck" 2>/dev/null | head -n 1)
-            method="string"
-        fi
-        case "$method" in
-            "npm")
-                local pkg_clean="${V_pkg%@*}"; [[ "$V_pkg" == @* ]] && pkg_clean="@${V_pkg#@}" && pkg_clean="@${pkg_clean%%@*}"
-                version=$(npm list -g "$pkg_clean" --depth=0 2>/dev/null | grep "@" | head -1 | sed 's/.*@//' | awk '{print $1}')
-                ;;
-            "pip")
-                version=$(pip3 show "$V_pkg" 2>/dev/null | grep "^Version:" | cut -d' ' -f2)
-                ;;
-            "cmd")
-                local args=$(echo "$V_vcheck" | jq -r '.args // ["--version"] | join(" ")' 2>/dev/null)
-                version=$(run_with_timeout $timeout_sec "${V_cmd:-$V_id}" $args 2>/dev/null | head -n 1)
-                ;;
-        esac
-    else
-        # 默认尝试 --version
-        version=$(run_with_timeout $timeout_sec "${V_cmd:-$V_id}" --version 2>/dev/null | head -n 1)
-    fi
-
-    # 清理非版本号字符
-    version=$(echo "$version" | tr -cd '0-9.a-zA-Z\-' | head -c 20)
-    [[ -n "$version" ]] && set_cache "ver:${V_id}" "$version" 3600
-    echo "$version"
-}
-
-# 自动校验所有已安装工具的配置（静默模式）
-auto_validate_all_configs() {
-    local silent_mode="${1:-false}"
-    [[ "$silent_mode" != "true" ]] && debug_log "开始自动校验配置..."
-    
-    # 不再重复调用 check_tools，因为在 init_config 中已经调用过了
-    # 只在 INSTALLED_MCP_TOOLS 为空时才调用
-    if [[ ${#INSTALLED_MCP_TOOLS[@]} -eq 0 ]]; then
-        check_tools "true"
-    fi
-    
-    local has_errors=false
-    
-    for idx in "${!INSTALLED_MCP_TOOLS[@]}"; do
-        local ai_tool="${INSTALLED_MCP_TOOLS[$idx]}"
-        local config_file="${INSTALLED_MCP_CONFIGS[$idx]}"
-        
-        # 只在配置文件存在时才校验
-        if [[ -n "$config_file" && -f "$config_file" ]]; then
-            debug_log "检查配置: $ai_tool"
-            if ! validate_config "$config_file" "$ai_tool" "true"; then
-                has_errors=true
-                # 静默模式下只记录日志，不提示用户
-                warn_log "$ai_tool 配置校验发现问题，请使用菜单选项 'm' 进行修复"
-            fi
-        fi
-    done
-    
-    if [[ "$has_errors" == false ]]; then
-        debug_log "所有配置校验通过"
-    fi
-}
 
 # 通用包管理操作函数
 exec_pkg_op() {
@@ -640,7 +503,7 @@ exec_pkg_op() {
                 return 1
                 ;;
             *)
-                error_log "不支持的包管理器: $mgr。支持的类型: npm, brew, pip, pip_official, uv, bash"
+                error_log "不支持的包管理器: ${mgr}。支持的类型: npm, brew, pip, pip_official, uv, bash"
                 return 1
                 ;;
         esac

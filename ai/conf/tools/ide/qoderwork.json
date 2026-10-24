@@ -22,7 +22,7 @@
         "name": "官方 dmg 自动安装 (macOS)",
         "type": "bash",
         "command": "bash ../ide/install-qoderwork.sh",
-        "check": "command -v qoder >/dev/null 2>&1 || command -v qodercli >/dev/null 2>&1 || [ -x \"$HOME/.local/bin/qodercli\" ] || command -v qoderwake >/dev/null 2>&1 || [ -x \"$HOME/.qoderwake/bin/qoderwake\" ]",
+        "check": "[ -d \"/Applications/QoderWork.app\" ] || [ -d \"/Applications/Qoder.app\" ] || command -v qoderwake >/dev/null 2>&1 || [ -x \"$HOME/.qoderwake/bin/qoderwake\" ]",
         "uninstall": [
           "echo '正在卸载 QoderWork...'",
           "rm -rf /Applications/QoderWork*.app /Applications/Qoder*.app 2>/dev/null || sudo rm -rf /Applications/QoderWork*.app /Applications/Qoder*.app",
@@ -36,7 +36,7 @@
 
   "update": {
     "command": "bash ../ide/install-qoderwork.sh",
-    "check": "command -v qoder >/dev/null 2>&1 || command -v qodercli >/dev/null 2>&1 || [ -x \"$HOME/.local/bin/qodercli\" ] || command -v qoderwake >/dev/null 2>&1 || [ -x \"$HOME/.qoderwake/bin/qoderwake\" ]"
+    "check": "[ -d \"/Applications/QoderWork.app\" ] || [ -d \"/Applications/Qoder.app\" ] || command -v qoderwake >/dev/null 2>&1 || [ -x \"$HOME/.qoderwake/bin/qoderwake\" ]"
   },
 
   "config": {
@@ -60,7 +60,7 @@
   "status_check": [
     {
       "name": "应用状态",
-      "command": "PATH=\"$HOME/.local/bin:$HOME/.qoderwake/bin:$PATH\"; qoder --version 2>/dev/null || qodercli --version 2>/dev/null || qoderwake --version 2>/dev/null || [ -x \"$HOME/.local/bin/qodercli\" ] && echo 'Qoder CLI 已安装' || [ -x \"$HOME/.qoderwake/bin/qoderwake\" ] && echo 'Qoder Wake 已安装' || echo '未安装'"
+      "command": "PATH=\"$HOME/.local/bin:$HOME/.qoderwake/bin:$PATH\"; if [ -d /Applications/QoderWork.app ] || [ -d /Applications/Qoder.app ]; then defaults read /Applications/QoderWork.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo '桌面 App 已安装（版本未知）'; elif command -v qoderwake >/dev/null 2>&1 || [ -x \"$HOME/.qoderwake/bin/qoderwake\" ]; then echo 'Qoder Wake 已安装（桌面 App 未安装）'; else echo '未安装（桌面 App 未发现；Qoder CLI 请看「Qoder CLI」条目）'; fi"
     },
     {
       "name": "MCP 配置",

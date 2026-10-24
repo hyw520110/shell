@@ -90,39 +90,6 @@ detect_playwright_chrome_config() {
     return 1
 }
 
-# 带超时的用户确认（默认否）
-confirm_with_timeout() {
-    local prompt="$1"
-    local timeout="${2:-8}"
-    local default="${3:-n}"
-
-    # 非交互模式直接返回默认值
-    if [[ ! -t 0 ]]; then
-        return 1  # false
-    fi
-
-    local response
-    echo -ne "${YELLOW}${prompt} (Y/n, 默认 ${default}, ${timeout}秒超时): ${NC}"
-
-    # 使用 read -t 实现超时
-    if IFS= read -r -t "$timeout" response; then
-        response=$(echo "$response" | tr '[:upper:]' '[:lower:]' | xargs)
-        if [[ "$response" == "y" || "$response" == "yes" ]]; then
-            return 0  # true
-        else
-            return 1  # false
-        fi
-    else
-        # 超时
-        echo ""
-        info "超时，使用默认值: ${default}"
-        if [[ "$default" == "y" ]]; then
-            return 0
-        else
-            return 1
-        fi
-    fi
-}
 
 # 主逻辑
 main() {

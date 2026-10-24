@@ -31,7 +31,6 @@ modules=(
     "system.sh"
     "chrome.sh"
     "menu.sh"
-    "config-validator.sh"
 )
 
 for module in "${modules[@]}"; do

@@ -1,0 +1,65 @@
+{
+  "id": "rea",
+  "name": "REA (Reverse Engineer Anything)",
+  "description": "面向 AI Agent 的逆向工程 MCP：分析原生二进制、JavaScript/Electron 应用、.NET 程序集、APK、Flutter、固件、网站与运行时抓包，返回带证据（Evidence）的结论。",
+  "category": "security",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g rea-agents",
+    "prerequisites": [
+      {
+        "name": "Node.js 版本 (需要 22.x>=22.19 / 24.x>=24.11 / 26+)",
+        "check": "node -e 'const v=process.versions.node.split(\".\").map(Number);process.exit((v[0]===22&&v[1]>=19)||(v[0]===24&&v[1]>=11)||v[0]>=26?0:1)'",
+        "install_hint": "升级 Node.js 到 22.19+/24.11+/26+ 后重新安装 REA"
+      }
+    ],
+    "setup": [
+      "REA MCP 由 ai-hub 直接注册（等价于官方 \"rea mcp\" 启动）。",
+      "如需同时刷新 REA 自带 Skill 与各客户端注册，可手动运行: rea setup"
+    ]
+  },
+  "config": {
+    "command": "rea",
+    "args": [
+      "mcp"
+    ],
+    "transportType": "stdio"
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查安装",
+      "command": "npm list -g rea-agents --depth=0 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查 CLI",
+      "command": "rea --version 2>/dev/null || echo 'rea 未安装'"
+    }
+  ],
+  "tags": [
+    "逆向工程",
+    "二进制分析",
+    "反编译",
+    "MCP",
+    "Evidence"
+  ],
+  "scenarios": [
+    "security",
+    "research"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://rea.tools/",
+  "repository": "https://github.com/morluto/rea",
+  "notes": "REA 需要 Node.js 22.19+/24.11+/26+。本条目通过全局安装的 rea 启动 MCP（config.command=rea, args=[mcp]）；若 rea 不在 PATH，可把 config.command 改为 npx、args 改为 [\"-y\",\"rea-agents@latest\",\"mcp\"]。原生二进制分析需另行配置 Hopper/Ghidra/IDA；静态 JavaScript/Electron、.NET、APK、Flutter、包/资源、SQLite、Go/Rust 元数据分析无需原生引擎。分析在本地执行，不上传目标。仅用于对你有权分析的软件；不包含任何商业工具（IDA/Hopper/JEB）许可。",
+  "recommended_scenarios": "逆向应用行为、二进制/固件/APK 分析、Electron 与网页抓包取证，并把结论连同证据一并交付。",
+  "unsuitable_scenarios": "未授权的软件分析、生产环境主动利用、绕过商业逆向工具的许可限制。"
+}

@@ -17,36 +17,7 @@ else
     _cache_debug_msg="未找到 assoc 兼容层，缓存功能已禁用"
 fi
 
-# 安全加载缓存：不要 source 用户可写文件，避免持久化代码执行。
-load_cache_file() {
-    [[ "$CACHE_SUPPORTED" != "true" ]] && return 0
-    [[ -f "$CACHE_FILE" ]] || return 0
-    [[ -L "$CACHE_FILE" ]] && { warn_log "拒绝加载符号链接缓存: $CACHE_FILE"; return 1; }
 
-    local owner
-    owner=$(stat -f %Su "$CACHE_FILE" 2>/dev/null || stat -c %U "$CACHE_FILE" 2>/dev/null || echo "")
-    if [[ -n "$owner" && "$owner" != "$USER" ]]; then
-        warn_log "拒绝加载非当前用户拥有的缓存: $CACHE_FILE"
-        return 1
-    fi
-
-    local key value
-    while IFS=$'\t' read -r key value; do
-        [[ -z "$key" || "$key" == \#* ]] && continue
-        [[ "$key" =~ ^[A-Za-z0-9_.:/+-]+$ ]] || continue
-        assoc_set_wrapper "PATH_CACHE" "$key" "$value"
-    done < "$CACHE_FILE"
-}
-
-# 初始化缓存
-init_cache() {
-    [[ "$CACHE_SUPPORTED" != "true" ]] && return 0
-    debug_log "初始化缓存"
-    if [[ -f "$CACHE_FILE" ]]; then
-        debug_log "从文件加载缓存: $CACHE_FILE"
-        load_cache_file || true
-    fi
-}
 
 # 保存缓存到文件
 save_cache() {
@@ -95,30 +66,3 @@ get_cache() {
     return 1
 }
 
-# 清除缓存
-clear_cache() {
-    local pattern=$1
-
-    if [[ "$CACHE_SUPPORTED" == true ]]; then
-        if [[ -z "$pattern" ]]; then
-            # 清除所有缓存
-            unset PATH_CACHE
-            declare -A PATH_CACHE 2>/dev/null || true
-            info_log "已清除所有缓存"
-        else
-            # 清除匹配特定模式的缓存
-            for key in "${!PATH_CACHE[@]}"; do
-                if [[ "$key" == *"$pattern"* ]]; then
-                    unset PATH_CACHE["$key"]
-                fi
-            done
-            info_log "已清除模式为 '$pattern' 的缓存"
-        fi
-    else
-        # 不支持关联数组时，直接删除缓存文件
-        if [[ -f "$CACHE_FILE" ]]; then
-            rm -f "$CACHE_FILE" 2>/dev/null
-            debug_log "已删除缓存文件: $CACHE_FILE"
-        fi
-    fi
-}

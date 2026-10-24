@@ -120,7 +120,7 @@ set_uv_python_as_default() {
     for link_name in python python3; do
         link_path="$bin_dir/$link_name"
         if [[ -e "$link_path" && ! -L "$link_path" ]]; then
-            warn_log "无法自动设置 $link_path：目标已存在且不是符号链接。"
+            warn_log "无法自动设置 ${link_path}：目标已存在且不是符号链接。"
             return 1
         fi
         ln -sf "$py_path" "$link_path" || return 1
@@ -153,11 +153,31 @@ ensure_python_with_uv() {
     return 0
 }
 
+# node/npm 可用性探测：命中后进程内不再重复。
+# 这里只需要「能不能用」的布尔值，因此不 spawn npm --version（fnm 下单次实测约 3 秒），
+# 改为跑一次 node --version 兜住损坏的安装、npm 仅校验可解析。
+# 失败结论不入内存：Node 缺失时会走 fnm/nvm 恢复并改写 PATH，缓存否判会误报。
+_node_runtime_usable() {
+    [[ "${_NODE_RUNTIME_USABLE:-}" == "1" ]] && return 0
+    command_exists npm || return 1
+    node --version >/dev/null 2>&1 || return 1
+    _NODE_RUNTIME_USABLE=1
+    return 0
+}
+
+# fnm/nvm 改写 PATH 后必须重探，否则会用上一个 Node 版本的结论。
+_reset_node_runtime_probe() { _NODE_RUNTIME_USABLE=""; hash -r 2>/dev/null || true; }
+
+# 真正要用 npm 装东西前的深度校验：此时多花一次 spawn 换明确的失败信息。
+verify_npm_functional() {
+    _node_runtime_usable || return 1
+    npm --version >/dev/null 2>&1 || { warn_log "npm 存在但无法执行，请修复 Node 安装。"; return 1; }
+    return 0
+}
+
 # 加载用户级 Node 管理器，避免非交互 SSH 未加载 shell 配置时误判未安装。
 load_node_runtime() {
-    if command_exists node && command_exists npm && node --version >/dev/null 2>&1 && npm --version >/dev/null 2>&1; then
-        return 0
-    fi
+    _node_runtime_usable && return 0
     local fnm_bin="" candidate fnm_env
     fnm_bin=$(command -v fnm 2>/dev/null || true)
     if [[ -z "$fnm_bin" ]]; then
@@ -173,19 +193,20 @@ load_node_runtime() {
             "$fnm_bin" use default >/dev/null 2>&1 || true
         fi
     fi
-    if command_exists node && command_exists npm && node --version >/dev/null 2>&1 && npm --version >/dev/null 2>&1; then
-        return 0
-    fi
+    _reset_node_runtime_probe
+    _node_runtime_usable && return 0
     local nvm_script="${NVM_DIR:-$HOME/.nvm}/nvm.sh"
     if [[ -f "$nvm_script" ]]; then
         . "$nvm_script" --no-use
         nvm use default >/dev/null 2>&1 || true
+        _reset_node_runtime_probe
     fi
-    command_exists node && command_exists npm && node --version >/dev/null 2>&1 && npm --version >/dev/null 2>&1
+    _node_runtime_usable
 }
 
 ensure_node_runtime() {
-    load_node_runtime && return 0
+    # 安装动作真的会调 npm，所以这里做深度校验而不是仅解析 PATH。
+    if load_node_runtime && verify_npm_functional; then return 0; fi
     local hub_dir="${AI_HUB_SCRIPT_DIR:-${SCRIPT_DIR:-}}"
     local node_script="$hub_dir/../node/node.sh"
     if [[ -z "$hub_dir" || ! -f "$node_script" ]]; then
@@ -201,10 +222,11 @@ ensure_node_runtime() {
     (cd "$runtime_tmp" && bash "$node_script" "${installer_args[@]}") || install_rc=$?
     rmdir "$runtime_tmp" 2>/dev/null || warn_log "Node 安装暂存文件保留于: $runtime_tmp"
     if [[ "$install_rc" -ne 0 ]]; then
-        error_log "Node.js/npm 自动安装失败（退出码 $install_rc），停止工具安装"
+        error_log "Node.js/npm 自动安装失败（退出码 ${install_rc}），停止工具安装"
         return "$install_rc"
     fi
-    if ! load_node_runtime; then
+    _reset_node_runtime_probe
+    if ! load_node_runtime || ! verify_npm_functional; then
         error_log "Node 安装脚本已结束，但当前进程仍无法运行 node/npm"
         return 1
     fi
@@ -272,7 +294,16 @@ check_dependencies() {
         fi
     fi
 
-    # 运行时版本水位线检查
+    # 运行时版本水位线只影响安装/更新，挪到那两个入口按需触发。
+    debug_log "依赖检查完成"
+}
+
+# 运行时版本水位线检查。安装/更新前执行一次即可：
+# node/python 版本过低只会影响这些操作，且 ensure_python_with_uv 可能真的装 Python，
+# 不该让 --help / --status 这类只读命令付出探测成本或触发副作用。
+check_runtime_versions() {
+    [[ "${_RUNTIME_VERSIONS_CHECKED:-}" == "1" ]] && return 0
+    _RUNTIME_VERSIONS_CHECKED=1
     debug_log "检查运行时版本..."
     load_node_runtime || true
     if [[ -x "$HOME/.local/bin/python3" ]]; then
@@ -308,6 +339,7 @@ check_dependencies() {
         warn_log "未检测到 Python3。某些 MCP/脚本可能无法运行。"
         echo -e "${CYAN}[建议]${NC} 可在 AI Hub 中安装 ${BOLD}uv${NC}，然后运行 ${BOLD}uv python install 3.12${NC} 快速解决。"
     fi
+    return 0
 }
 
 # 检查进程是否运行并提示关闭

@@ -54,42 +54,12 @@ readonly BOLD='\033[1m'
 readonly REVERSE='\033[7m'
 readonly GRAY='\033[0;90m'
 
-# ==================== 颜色输出封装函数 ====================
 
-print_success() {
-    echo -e "${GREEN}✅ $*${NC}"
-}
 
-print_error() {
-    echo -e "${RED}❌ $*${NC}"
-}
 
-print_warning() {
-    echo -e "${YELLOW}⚠️ $*${NC}"
-}
 
-print_info() {
-    echo -e "${CYAN}ℹ️  $*${NC}"
-}
 
-print_title() {
-    echo -e "\n${CYAN}=== $* ===${NC}"
-}
 
-print_subtitle() {
-    echo -e "\n${CYAN}--- $* ---${NC}"
-}
-
-print_menu_item() {
-    local key="$1"
-    local desc="$2"
-    local status="${3:-}"
-    if [[ -n "$status" ]]; then
-        echo -e "$key. $desc $status"
-    else
-        echo -e "$key. $desc"
-    fi
-}
 
 # ==================== 日志函数 ====================
 
@@ -178,89 +148,8 @@ set_log_level() {
     esac
 }
 
-# ==================== 错误处理 ====================
 
-# 通用错误处理函数
-handle_error() {
-    local code=$1; local msg=$2; local ctx=$3
-    error_log "错误 [$code]: $msg ${ctx:+(上下文: $ctx)}"
-    echo "[$(get_timestamp)] ERROR $code: $msg ($ctx)" >> "${TEMP_ERROR_LOG}" 2>/dev/null
-    # 日志轮转：检查文件大小
-    if [[ -f "$TEMP_ERROR_LOG" ]]; then
-        local size=$(stat -f%z "$TEMP_ERROR_LOG" 2>/dev/null || stat -c%s "$TEMP_ERROR_LOG" 2>/dev/null || echo 0)
-        if [[ $size -gt $MAX_TEMP_LOG_SIZE ]]; then
-            tail -n 100 "$TEMP_ERROR_LOG" > "${TEMP_ERROR_LOG}.tmp" && mv "${TEMP_ERROR_LOG}.tmp" "$TEMP_ERROR_LOG" 2>/dev/null
-        fi
-    fi
-    return $code
-}
 
-# 输入验证函数（防止命令注入）
-validate_command_input() {
-    local input="$1"
-    local name="${2:-输入}"
-
-    # 检查空输入
-    if [[ -z "$input" ]]; then
-        error_log "安全验证失败: $name 不能为空"
-        return 1
-    fi
-
-    # 检查危险字符和模式
-    if [[ "$input" =~ [\;\|\&\$\`\(\)\{\}] ]]; then
-        error_log "安全验证失败: $name 包含危险字符"
-        return 1
-    fi
-
-    # 检查路径遍历
-    if [[ "$input" =~ \.\./ ]]; then
-        error_log "安全验证失败: $name 包含路径遍历"
-        return 1
-    fi
-
-    # 检查危险命令模式
-    local dangerous_patterns=(
-        "rm -rf /"
-        "rm -rf \$"
-        "chmod 777 /"
-        "chmod 666 /"
-        "dd if="
-        "mkfs"
-        "fdisk"
-        "parted"
-    )
-
-    for pattern in "${dangerous_patterns[@]}"; do
-        if [[ "$input" == *"$pattern"* ]]; then
-            error_log "安全验证失败: $name 包含危险命令模式"
-            return 1
-        fi
-    done
-
-    return 0
-}
-
-# 增强版命令执行函数（带安全验证）
-run_command_safe() {
-    local command="$1"
-    local timeout_sec="${2:-$COMMAND_TIMEOUT_DEFAULT}"
-    local description="${3:-命令}"
-
-    # 安全验证
-    if ! validate_command_input "$command" "$description"; then
-        return 1
-    fi
-
-    # 执行命令
-    if command -v timeout >/dev/null 2>&1; then
-        timeout "$timeout_sec" bash -c "$command"
-    elif command -v gtimeout >/dev/null 2>&1; then
-        gtimeout "$timeout_sec" bash -c "$command"
-    else
-        bash -c "$command"
-    fi
-    return $?
-}
 
 # ==================== 超时函数 ====================
 
@@ -297,113 +186,12 @@ run_with_timeout() {
     fi
 }
 
-# 带重试的命令执行函数（增强安全性）
-run_with_retry() {
-    local command="$1"
-    local max_attempts=${2:-$MAX_RETRY_ATTEMPTS}
-    local timeout=${3:-$COMMAND_TIMEOUT_DEFAULT}
-    local attempt=1
-    local exit_code=0
-
-    # 验证输入
-    if [[ -z "$command" ]]; then
-        error_log "命令不能为空"
-        return 1
-    fi
-
-    # 安全检查：禁止危险命令
-    if [[ "$command" =~ rm\ -rf\ +/[[:space:]] ]] || \
-       [[ "$command" =~ rm\ -rf\ +\$\{?HOME\}? ]] || \
-       [[ "$command" =~ \>\ /etc/(passwd|shadow|sudoers) ]] || \
-       [[ "$command" =~ chmod\ +(777|666)\ +/ ]] || \
-       [[ "$command" =~ dd\ if= ]] || \
-       [[ "$command" =~ \:\(\)\{[[:space:]]*:[[:space:]]*\|\;[[:space:]]*\& ]]; then
-        error_log "安全拒绝: 命令包含危险操作"
-        return 1
-    fi
-
-    # 确定使用的timeout命令
-    local timeout_cmd="timeout"
-    if ! command -v timeout >/dev/null 2>&1; then
-        if command -v gtimeout >/dev/null 2>&1; then
-            timeout_cmd="gtimeout"
-        else
-            timeout_cmd=""
-        fi
-    fi
-
-    while [ $attempt -le $max_attempts ]; do
-        echo -e "${YELLOW}尝试第 $attempt/$max_attempts...${NC}"
-
-        # 使用 stdbuf 强制刷新输出缓冲区
-        local stdbuf_cmd=""
-        command -v stdbuf >/dev/null 2>&1 && stdbuf_cmd="stdbuf -oL -eL"
-
-        if [[ -n "$timeout_cmd" ]]; then
-            $timeout_cmd $timeout bash -c "$command" 2>&1 | $stdbuf_cmd tee -a "$TEMP_CMD_LOG"
-        else
-            bash -c "$command" 2>&1 | $stdbuf_cmd tee -a "$TEMP_CMD_LOG"
-        fi
-        exit_code=${PIPESTATUS[0]}
-
-        if [ $exit_code -eq 0 ]; then
-            echo -e "${GREEN}✅ 命令执行成功${NC}"
-            return 0
-        else
-            echo -e "${RED}❌ 命令执行失败，退出码: $exit_code${NC}"
-
-            if [ $attempt -lt $max_attempts ]; then
-                echo -e "${CYAN}等待 2 秒后重试...${NC}"
-                sleep 2
-            fi
-        fi
-
-        attempt=$((attempt + 1))
-    done
-
-    echo -e "${RED}❌ 命令执行失败，已达到最大重试次数 $max_attempts${NC}"
-    echo -e "${CYAN}--- 失败日志 ---${NC}"
-    cat "$TEMP_CMD_LOG"
-    echo -e "${CYAN}----------------${NC}"
-    return $exit_code
-}
 
 # ==================== UI 辅助函数 ====================
 
 spinner_pid=""
 
-start_spinner() {
-    local msg="$1"
-    if [[ ! -t 1 ]]; then
-        echo -e "${CYAN}${msg}...${NC}"
-        return
-    fi
 
-    printf "\033[?25l" >&2
-
-    set +m
-    {
-        local -a marks=("|" "/" "-" "\\")
-        while :; do
-            for mark in "${marks[@]}"; do
-                printf "\r${CYAN}%s %s${NC}" "$mark" "$msg" >&2
-                sleep 0.1
-            done
-        done
-    } &
-    _SPINNER_PID=$!
-    set -m
-}
-
-stop_spinner() {
-    if [[ -n "${_SPINNER_PID:-}" ]]; then
-        kill "$_SPINNER_PID" 2>/dev/null
-        wait "$_SPINNER_PID" 2>/dev/null || true
-        unset _SPINNER_PID
-    fi
-    printf "\r\033[K" >&2
-    printf "\033[?25h" >&2
-}
 
 # ==================== 文件操作封装 ====================
 
@@ -417,52 +205,10 @@ file_exists() {
     [[ -f "$1" ]]
 }
 
-# 检查目录是否存在
-dir_exists() {
-    [[ -d "$1" ]]
-}
 
-# 检查并创建目录
-ensure_dir_exists() {
-    local dir=$1
-    if [[ ! -d "$dir" ]]; then
-        mkdir -p "$dir"
-        return $?
-    fi
-    return 0
-}
 
-# 安全删除文件
-safe_remove_file() {
-    local file=$1
-    if file_exists "$file"; then
-        rm -f "$file"
-        return $?
-    fi
-    return 0
-}
 
-# 安全移动文件
-safe_move_file() {
-    local src=$1
-    local dest=$2
-    if file_exists "$src" || dir_exists "$src"; then
-        mv "$src" "$dest"
-        return $?
-    fi
-    return 1
-}
 
-# 跨平台 sed -i 封装
-safe_sed() {
-    if [[ "$OS" == "macOS" ]]; then
-        sed -i.bak "$@"
-        local last_arg="${!#}"
-        rm -f "${last_arg}.bak"
-    else
-        sed -i "$@"
-    fi
-}
 
 # ==================== 清理函数 ====================
 

@@ -39,13 +39,13 @@ The most substantial subsystem. `ai/ai-hub.sh` is an interactive lifecycle manag
 Architecture (control plane vs implementation plane):
 
 - `ai/ai-hub.sh` — main entry point. Sources `ai/lib/loader.sh`.
-- `ai/lib/` — core framework. `loader.sh` sources modules in a fixed order (`utils.sh` must load first since it provides logging; then `assoc.sh`, `json.sh`, `proxy.sh`, `cache.sh`, `config.sh`, `config-defaults.sh`, `tools.sh`, `system.sh`, `chrome.sh`, `menu.sh`, `config-validator.sh`). When adding a module, register it in `loader.sh`.
+- `ai/lib/` — core framework. `loader.sh` sources modules in a fixed order (`utils.sh` must load first since it provides logging; then `assoc.sh`, `json.sh`, `proxy.sh`, `cache.sh`, `config.sh`, `config-defaults.sh`, `tools.sh`, `system.sh`, `chrome.sh`, `menu.sh`). When adding a module, register it in `loader.sh`.
 - `ai/conf/` — control plane (data only). Tool metadata under `conf/tools/{cli,ide,agent,gateway,runtime,...}/<tool>.json`; shared config under `conf/shared/mcp-servers/` and `conf/shared/skills/`; `conf/global.json` is the root config.
 - `ai/agent/`, `ai/gateway/`, `ai/ide/`, `ai/runtime/` — implementation plane. Each tool's own scripts, templates, and runtime resources live in its category directory, not in `scripts/`.
 
 Tools are declarative: a tool is defined by a JSON file (see `conf/tools/cli/antigravity.json` for the shape — `id`, `install.methods[]` with `command`/`check`/`uninstall`, `update`, `config.operations`). To add a tool, add its metadata JSON to the right `conf/tools/<category>/` dir and put implementation scripts under the matching `agent/`/`gateway/`/`ide/`/`runtime/` dir. Bash 3.2 lacks associative arrays, so the code guards them behind `_USE_ASSOC_ARRAY` (see `ai/lib/assoc.sh`).
 
-`ai/lib/utils.sh` is the shared utility layer: logging (`info_log`/`warn_log`/`error_log`/`debug_log`, `print_success`/`print_error`/etc.), safe execution (`run_command_safe`, `run_with_timeout`, `run_with_retry`, `validate_command_input`), and filesystem helpers (`ensure_dir_exists`, `safe_remove_file`, `safe_sed`). Reuse these rather than reimplementing.
+`ai/lib/utils.sh` is the shared utility layer: logging (`info_log`/`warn_log`/`error_log`/`debug_log`/`success_log`/`success_msg`), safe execution (`run_with_timeout`), predicates (`command_exists`, `file_exists`), path/time helpers (`expand_path`, `get_timestamp`), and exit cleanup (`cleanup`, `handle_interrupt`, `_init_temp_files`). Reuse these rather than reimplementing.
 
 ## Script Conventions
 

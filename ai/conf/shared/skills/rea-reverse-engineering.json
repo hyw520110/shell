@@ -1,0 +1,48 @@
+{
+  "id": "rea-reverse-engineering",
+  "name": "REA 逆向工程 (Reverse Engineer Anything)",
+  "description": "基于 REA MCP 的逆向工程技能：从应用行为一路分析到原生二进制，覆盖 JavaScript/Electron、.NET、APK、Flutter、固件、网站与运行时抓包，并要求每个结论附带证据（Evidence）与局限说明。",
+  "category": "security",
+  "scenarios": [
+    "security",
+    "research"
+  ],
+  "tags": [
+    "逆向工程",
+    "二进制分析",
+    "反编译",
+    "MCP",
+    "Evidence"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "homepage": "https://rea.tools/",
+  "repository": "https://github.com/morluto/rea",
+  "prompts": {
+    "understand-feature": "使用 REA MCP 分析目标 {target}，说明 {feature} 是如何实现的，给出调用链、关键代码/反编译片段和证据来源，并列出仍未确认的未知项。",
+    "native-binary": "使用 REA 分析原生二进制 {binary}，定位 {symbol} 的行为，返回伪代码、汇编与交叉引用，并明确所用的分析引擎（Hopper/Ghidra/IDA）与置信度。",
+    "javascript-electron": "使用 REA 逆向 {app} 的 Electron/JavaScript 结构，梳理模块、路由与 IPC 边界，给出可复核的证据。",
+    "dotnet-assembly": "使用 REA 静态检查 .NET 程序集 {assembly}，列出关键类型与 CIL 行为，注明未覆盖的部署形态（如单文件宿主/IL2CPP）。",
+    "evidence-report": "把本次 REA 分析的结论整理成可审计报告：目标与身份、证据记录、推断与不确定性、局限性，以及可复现的命令。"
+  },
+  "dependencies": {
+    "mcp_servers": [
+      "rea"
+    ],
+    "system_commands": [
+      "rea"
+    ]
+  },
+  "install_check": "command -v rea >/dev/null 2>&1 || npx -y rea-agents@latest --version >/dev/null 2>&1",
+  "instructions": {
+    "workflow": "1) 明确目标与分析目标（要理解的能力/缺陷），确认对目标有合法分析授权。2) 优先做静态分析：JavaScript/Electron、.NET、APK 等无需原生引擎；原生二进制再选择 Hopper/Ghidra/IDA 之一。3) 结论必须附带证据（文件偏移/符号/源码位置）与局限性，区分观察、推断和未知。4) 需要长期复用时保存 Evidence 或分析快照。",
+    "tools": "MCP 服务器 rea 提供二进制会话、JavaScript/Electron 分析、.NET、APK、固件、网站与抓包等能力；对应 CLI 命令如 rea analyze-javascript-application、rea inspect-managed-members、rea analyze、rea doctor --json。",
+    "safety": "仅分析你拥有或已获授权的软件；分析在本地执行，不上传目标；不绕过任何商业工具（IDA/Hopper/JEB）的许可限制。",
+    "readiness": "首次使用可运行 rea doctor --json 查看客户端注册与分析引擎就绪状态；默认 MCP 工具列表以实际连接会话为准。"
+  },
+  "tips": "与 rea MCP 配合使用：批量场景配置会自动合并该 MCP。REA 官方自带 Skill（npx skills add morluto/rea --skill reverse-engineer-anything 或 rea setup）安装到独立目录，与本条目不冲突；本条目由 ai-hub 生成，用于在任意 Agent 中统一触发 REA 工作流。",
+  "notes": "需要 Node.js 22.19+/24.11+/26+。原生二进制分析需另行安装 Hopper/Ghidra/IDA；静态 JavaScript/Electron、.NET、APK、Flutter、包/资源、SQLite 及 Go/Rust 元数据分析无需原生引擎。该技能依赖 rea MCP，批量配置时会自动带上。",
+  "recommended_scenarios": "逆向应用行为、二进制/固件/APK 取证、Electron 与网页抓包分析，把结论连同证据一并交付。",
+  "unsuitable_scenarios": "未授权的软件分析、生产环境主动利用、绕过商业逆向工具的许可限制。"
+}

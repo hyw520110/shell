@@ -69,6 +69,7 @@ bash ai/ide/trae/install-trae.sh --versions "2 4"
 ```
 ai/
 ├── ai-hub.sh               # 主入口
+├── Makefile                # 静态检查入口：make check / make lint
 ├── setup-ai-provider.sh    # AI 提供商多端配置 (Codex/Claude/Aider/Qwen)
 ├── conf/                   # 工具元数据与共享配置
 │   ├── global.json         # 全局配置 (场景注册表/代理/推荐工具)
@@ -113,6 +114,7 @@ ai/
 - `conf/` 保留为控制面，只存工具配置与共享配置。
 - `agent/`、`gateway/`、`ide/` 和 `runtime/` 是实现面，放各工具自己的脚本、模板和运行资源。
 - 新增工具时，优先把工具专属实现放到对应分类目录，不再堆到 `scripts/` 或 `resources/`。
+- 改完 `ai-hub.sh`、`lib/` 或 `conf/` 后，在 `ai/` 目录执行 `make check`（`bash -n` + `jq`，无外部依赖）；装了 shellcheck 再补一个 `make lint`。
 
 ---
 

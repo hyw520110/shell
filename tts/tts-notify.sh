@@ -87,6 +87,7 @@ tool_display_name() {
         agy)               echo "AGY" ;;
         aider)             echo "Aider" ;;
         goose)             echo "Goose" ;;
+        qoder|qodercli)    echo "Qoder" ;;
         generic|"")        echo "" ;;
         *)                 echo "$1" ;;
     esac

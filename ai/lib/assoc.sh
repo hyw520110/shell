@@ -6,14 +6,6 @@ _USE_ASSOC_ARRAY=true
 if ! (declare -A _test 2>/dev/null); then
     _USE_ASSOC_ARRAY=false
 
-    # 将任意键名转换为合法的 bash 变量名
-    # 将所有非字母数字下划线的字符替换为下划线
-    _assoc_sanitize_key() {
-        local key="$1"
-        # 使用内置替换，避免调用 tr (Bash 3.2+)
-        local sanitized="${key//[^a-zA-Z0-9_]/_}"
-        echo "$sanitized"
-    }
 
     # 设置键值
     assoc_set() {
@@ -40,19 +32,7 @@ if ! (declare -A _test 2>/dev/null); then
         echo "${!var_name:-$default}"
     }
 
-    # 检查键是否存在
-    assoc_has() {
-        local array_name="$1" key="$2"
-        local safe_key
-        safe_key="${key//[^a-zA-Z0-9_]/_}"
-        local var_name="ASSOC_${array_name}_${safe_key}"
-        [[ -n "${!var_name+x}" ]]
-    }
 
-    # 清理（无需操作，因为使用内存变量）
-    assoc_cleanup() {
-        true
-    }
 
     # 无需 trap 清理
 fi

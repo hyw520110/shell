@@ -217,38 +217,6 @@ parse_tool_config() {
     done
 }
 
-# 使用jq更新JSON配置文件
-update_json_config_with_jq() {
-    local config_file="$1"
-    local jq_filter="$2"
-    shift 2
-    local extra_args=("$@")
-    local temp_file
-    local config_lock="${config_file}.aihub.lock"
-
-    [[ ! -f "$config_file" ]] && return 1
-    if type acquire_config_lock >/dev/null 2>&1; then
-        acquire_config_lock "$config_file" || return 1
-        if type backup_config_file >/dev/null 2>&1; then
-            backup_config_file "$config_file" || { release_config_lock "$config_lock"; return 1; }
-        fi
-    fi
-
-    # 使用 jq 处理，并检查输出是否为有效的 JSON 且不为空
-    temp_file=$(mktemp "$(dirname "$config_file")/.aihub-json.XXXXXX") || {
-        type release_config_lock >/dev/null 2>&1 && release_config_lock "$config_lock"
-        return 1
-    }
-    if jq "${extra_args[@]}" "$jq_filter" "$config_file" > "$temp_file" 2>/dev/null && [[ -s "$temp_file" ]] && jq empty "$temp_file" >/dev/null 2>&1; then
-        chmod 600 "$temp_file" 2>/dev/null || true
-        mv "$temp_file" "$config_file"
-        type release_config_lock >/dev/null 2>&1 && release_config_lock "$config_lock"
-        return 0
-    fi
-    rm -f "$temp_file"
-    type release_config_lock >/dev/null 2>&1 && release_config_lock "$config_lock"
-    return 1
-}
 cache_dir_jq() {
     local dir="$1"
     local cache_name="$2"
