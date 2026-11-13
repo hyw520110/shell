@@ -8,8 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/install-app-common.sh"
 
 APP_NAME="Chat2DB"
-APP_GLOB="Chat2DB.app"
-TARGET="/Applications/Chat2DB.app"
+APP_GLOB="Chat2DB*.app"
+TARGET="/Applications/Chat2DB Community.app"
 
 # x64 本机 -> x64 dmg；arm64 -> arm64
 ARCH="x64"
