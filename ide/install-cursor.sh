@@ -74,19 +74,86 @@ done
 # 主安装逻辑
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$HOME/Downloads}"
 mkdir -p "$DOWNLOAD_DIR"
-TMP_SCRIPT="$DOWNLOAD_DIR/cursor-free-vip-install.sh"
-URL="https://raw.githubusercontent.com/yeongpin/cursor-free-vip/main/scripts/install.sh"
 
-echo "开始安装 Cursor AI 编辑器..."
+# 优先走 Cursor 官方下载入口（cursor.com/api/download -> 302 到 dmgs 托管的
+# Cursor.dmg）。原来的第三方 fork 仓库 yongpin/cursor-free-vip 既非官方也常不可达
+# （raw.githubusercontent.com 连接被重置），且安装"免费 VIP"逻辑不该出现在官方安装器里。
+CURL_ARCH="$(uname -m)"
+[ "$CURL_ARCH" = "arm64" ] || CURL_ARCH="x64"
+CURL_DMG="$DOWNLOAD_DIR/Cursor.dmg"
 
-if [ ! -f "$TMP_SCRIPT" ]; then
+# Cursor 官方 API 需要 platform + releaseTrack 参数，返回 JSON
+# {"downloadUrl":"https://downloads.cursor.com/production/<sha>/darwin/<arch>/Cursor-darwin-<arch>.dmg",...}
+# 裸 curl cursor.com/api/download 会 400（Platform is required）。
+CURL_API="https://cursor.com/api/download?platform=darwin&releaseTrack=stable"
+DL_URL=""
+
+fetch_cursor_url() {
+    local tmp
+    tmp=$(mktemp /tmp/cursor-api.XXXXXX 2>/dev/null || echo /tmp/cursor-api.json)
+    if command -v adl >/dev/null 2>&1 && adl --help >/dev/null 2>&1; then
+        adl "$CURL_API" /tmp "$(basename "$tmp")" >/dev/null 2>&1 || true
+    else
+        curl -fsSL --max-time 60 "$CURL_API" -o "$tmp" 2>/dev/null || true
+    fi
+    if [ -s "$tmp" ]; then
+        DL_URL=$(python3 -c "import json,sys; d=json.load(open('$tmp')); print(d.get('downloadUrl',''))" 2>/dev/null)
+    fi
+    rm -f "$tmp"
+    if [ -z "$DL_URL" ]; then
+        DL_URL="https://downloader.cursor.sh/darwin/${CURL_ARCH}/stable"
+    fi
+}
+
+if command -v adl >/dev/null 2>&1 && adl --help >/dev/null 2>&1; then
+    echo "使用 adl 下载 Cursor 官方安装包（先解析 downloadUrl）..."
+    fetch_cursor_url
+    echo "下载地址: $DL_URL"
+    adl "$DL_URL" "$DOWNLOAD_DIR" "$(basename "$CURL_DMG")"
+else
+    echo "使用 curl 下载 Cursor 官方安装包（先解析 downloadUrl）..."
+    fetch_cursor_url
+    echo "下载地址: $DL_URL"
+    curl -fSL --retry 3 --connect-timeout 20 --max-time 600 -o "$CURL_DMG" "$DL_URL"
+fi
+
+if [ ! -s "$CURL_DMG" ]; then
+    echo "[WARN] 官方源下载失败，回退到第三方镜像..."
+    TMP_SCRIPT="$DOWNLOAD_DIR/cursor-free-vip-install.sh"
+    URL="https://raw.githubusercontent.com/yeongpin/cursor-free-vip/main/scripts/install.sh"
     if command -v adl >/dev/null 2>&1 && adl --help >/dev/null 2>&1; then
         adl "$URL" "$DOWNLOAD_DIR" "$(basename "$TMP_SCRIPT")"
     else
         curl -fsSLk "$URL" -o "$TMP_SCRIPT"
     fi
+    [ -f "$TMP_SCRIPT" ] && chmod +x "$TMP_SCRIPT" && "$TMP_SCRIPT"
+    echo "Cursor 安装完成（第三方源）！"
+    exit $?
 fi
-chmod +x "$TMP_SCRIPT"
-"$TMP_SCRIPT"
 
-echo "Cursor 安装完成！"
+echo "下载完成: $CURL_DMG ($(du -h "$CURL_DMG" | awk '{print $1}'))"
+VOL=$(hdiutil attach "$CURL_DMG" -nobrowse -quiet 2>/dev/null | grep -oE '/Volumes/.*$' | head -1)
+if [ -z "$VOL" ] || [ ! -d "$VOL" ]; then
+    echo "[ERROR] DMG 挂载失败" >&2
+    exit 1
+fi
+APP_SRC=$(find "$VOL" -maxdepth 1 -iname '*.app' | head -1)
+if [ -z "$APP_SRC" ]; then
+    hdiutil detach "$VOL" -force -quiet 2>/dev/null || true
+    echo "[ERROR] DMG 内未找到 .app" >&2
+    exit 1
+fi
+cp -R "$APP_SRC" /Applications/ 2>/dev/null || sudo cp -R "$APP_SRC" /Applications/
+hdiutil detach "$VOL" -force -quiet 2>/dev/null || hdiutil detach "$VOL" -force -quiet 2>/dev/null || true
+
+if [ -d "/Applications/Cursor.app" ]; then
+    echo "Cursor 安装完成：/Applications/Cursor.app"
+    # 默认安装成功即删除安装包；KEEP_PACKAGE=1 时保留
+    if [ "${KEEP_PACKAGE:-0}" != "1" ]; then
+        rm -f -- "$CURL_DMG" "$CURL_DMG.url" 2>/dev/null || true
+        echo "已删除安装包: $CURL_DMG"
+    fi
+else
+    echo "[ERROR] 安装失败，/Applications/Cursor.app 不存在" >&2
+    exit 1
+fi

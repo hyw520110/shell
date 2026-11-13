@@ -64,7 +64,17 @@ install_app_from_dmg() {
     fi
 
     log_info "复制 $(basename "$app_path") 到 $INSTALL_DIR"
-    rm -rf "$INSTALL_DIR/$(basename "$app_path")" 2>/dev/null || true
+    # 安全删除旧版：仅当目标名非空且匹配 Codex/OpenAI Codex 前缀，且 INSTALL_DIR 是 /Applications
+    local app_name
+    app_name=$(basename "$app_path")
+    if [ -n "$app_name" ] && [ "$INSTALL_DIR" = "/Applications" ]; then
+        case "$app_name" in
+            Codex.app|OpenAI\ Codex.app|*Codex*.app)
+                rm -rf "$INSTALL_DIR/$app_name" 2>/dev/null || true
+                ;;
+            *) log_error "跳过删除（app 名不匹配 Codex）: $app_name"; return 1 ;;
+        esac
+    fi
     cp -R "$app_path" "$INSTALL_DIR/" 2>/dev/null || sudo cp -R "$app_path" "$INSTALL_DIR/"
     hdiutil detach "$volume_path" >/dev/null
 }
@@ -98,7 +108,8 @@ main() {
 
     validate_dmg "$target_file"
     install_app_from_dmg "$target_file"
-    ls -d "$INSTALL_DIR/Codex.app" "$INSTALL_DIR/OpenAI Codex.app" >/dev/null 2>&1
+    # OpenAI Codex 桌面版实际打包为 ChatGPT.app（Codex.dmg 内只有一个 .app）
+    ls -d "$INSTALL_DIR/Codex.app" "$INSTALL_DIR/OpenAI Codex.app" "$INSTALL_DIR/ChatGPT.app" >/dev/null 2>&1
     if rm -f -- "$target_file"; then
         log_info "已删除安装包: $target_file"
     else
