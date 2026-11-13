@@ -90,8 +90,8 @@ download_file() {
 # === 安装 Codex Desktop App (macOS) ===
 install_codex_macos() {
     # 检查是否已安装
-    if [[ -d "/Applications/Codex.app" ]]; then
-        log_success "Codex Desktop App 已安装"
+    if [[ -d "/Applications/Codex.app" ]] || [[ -d "/Applications/ChatGPT.app" ]]; then
+        log_success "OpenAI Codex (ChatGPT) Desktop App 已安装"
         return 0
     fi
 
@@ -134,10 +134,16 @@ install_codex_macos() {
 
     # 安装到 Applications
     log_info "正在安装到 /Applications..."
+    local app_name=""
     if [[ -d "$volume/Codex.app" ]]; then
-        cp -R "$volume/Codex.app" /Applications
+        app_name="Codex.app"
+    elif [[ -d "$volume/ChatGPT.app" ]]; then
+        app_name="ChatGPT.app"
+    fi
+    if [[ -n "$app_name" ]]; then
+        cp -R "$volume/$app_name" /Applications
     else
-        log_error "未找到 Codex.app"
+        log_error "未在镜像中找到 Codex.app 或 ChatGPT.app"
         hdiutil detach "$volume" > /dev/null 2>&1
         return 1
     fi
@@ -192,12 +198,21 @@ uninstall_codex() {
 
     case "$os" in
         macos)
+            local removed=0
             if [[ -d "/Applications/Codex.app" ]]; then
-                log_info "正在卸载..."
+                log_info "正在卸载 Codex.app..."
                 rm -rf "/Applications/Codex.app"
-                log_success "Codex Desktop App 已卸载"
+                removed=1
+            fi
+            if [[ -d "/Applications/ChatGPT.app" ]]; then
+                log_info "正在卸载 ChatGPT.app (OpenAI Codex)..."
+                rm -rf "/Applications/ChatGPT.app"
+                removed=1
+            fi
+            if [[ "$removed" -eq 1 ]]; then
+                log_success "OpenAI Codex Desktop App 已卸载"
             else
-                log_warn "未找到 Codex.app"
+                log_warn "未找到 Codex.app 或 ChatGPT.app"
             fi
             ;;
         windows)
@@ -222,6 +237,9 @@ show_status() {
             if [[ -d "/Applications/Codex.app" ]]; then
                 echo "安装状态: 已安装"
                 echo "应用路径: /Applications/Codex.app"
+            elif [[ -d "/Applications/ChatGPT.app" ]]; then
+                echo "安装状态: 已安装 (ChatGPT.app = OpenAI Codex 桌面版)"
+                echo "应用路径: /Applications/ChatGPT.app"
             else
                 echo "安装状态: 未安装"
                 echo ""
