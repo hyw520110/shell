@@ -351,8 +351,17 @@ download_file() {
 
   info "开始下载 ${desc}: $(basename "$dest")"
 
+  # 优先级: adl（aria2c 超集：多线程 + 断点续传 + 代理测速 + 大小校验）> aria2c > curl
+  if command -v adl >/dev/null 2>&1; then
+    info "使用 adl 多线程下载"
+    adl "$actual_url" "$(dirname "$dest")" "$(basename "$dest")" || {
+      warn "adl 下载失败，尝试 curl ..."
+      local curl_proxy=""
+      [ -n "$PROXY_URL" ] && curl_proxy="--proxy $PROXY_URL"
+      curl -L --fail --connect-timeout 30 --max-time 600 --retry 3 $curl_proxy -o "$dest" "$actual_url"
+    }
   # 优先使用 aria2c（多线程加速，带超时避免卡死）
-  if command -v aria2c >/dev/null 2>&1; then
+  elif command -v aria2c >/dev/null 2>&1; then
     info "使用 aria2c 多线程下载"
     aria2c \
       --max-connection-per-server=5 \
@@ -913,7 +922,7 @@ import_clashx_config() {
 
   # 远程 scp 源拉取
   if [[ "$src" == *":"* ]] && [[ "$src" != /* ]]; then
-    tmp="$(mktemp /tmp/clashx-config.XXXXXX.yaml)" || tmp="/tmp/clashx-config.yaml"
+    tmp="$(mktemp /tmp/clashx-config.yaml.XXXXXX)" || tmp="/tmp/clashx-config.yaml"
     info "从远程拉取: $src"
     if ! scp -q "$src" "$tmp" 2>/dev/null; then
       error "scp 拉取失败: $src"

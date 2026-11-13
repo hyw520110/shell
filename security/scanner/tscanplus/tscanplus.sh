@@ -120,7 +120,7 @@ install_client() {
   require_cmds curl unzip find mkdir cp chmod ln
   local suffix archive tmp extract source
   suffix="$(detect_asset_suffix)"
-  archive="$(mktemp "${TMPDIR:-/tmp}/tscanclient.XXXXXX.zip")"
+  archive="$(mktemp "${TMPDIR:-/tmp}/tscanclient.zip.XXXXXX")"
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/tscanclient-extract.XXXXXX")"
   trap 'rm -f "${archive:-}"; rm -rf "${tmp:-}"' RETURN
 
@@ -148,7 +148,7 @@ install_mcp() {
 
   if [[ "$suffix" == Mac_* ]]; then
     require_cmds hdiutil ditto
-    archive="$(mktemp "${TMPDIR:-/tmp}/tscanplus.XXXXXX.dmg")"
+    archive="$(mktemp "${TMPDIR:-/tmp}/tscanplus.dmg.XXXXXX")"
     mount="$(mktemp -d "${TMPDIR:-/tmp}/tscanplus-mount.XXXXXX")"
     trap 'rm -f "${archive:-}"; hdiutil detach "${mount:-}" >/dev/null 2>&1 || true; rmdir "${mount:-}" >/dev/null 2>&1 || true' RETURN
     download_file "$TSCAN_GITHUB_RAW/TscanPlus-v${TSCAN_VERSION}/TscanPlus_${suffix}.dmg" "$archive"
@@ -162,7 +162,7 @@ install_mcp() {
     ditto "$app" "$TSCAN_GUI_ROOT"
   else
     require_cmds unzip
-    archive="$(mktemp "${TMPDIR:-/tmp}/tscanplus.XXXXXX.zip")"
+    archive="$(mktemp "${TMPDIR:-/tmp}/tscanplus.zip.XXXXXX")"
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/tscanplus-extract.XXXXXX")"
     trap 'rm -f "${archive:-}"; rm -rf "${tmp:-}"' RETURN
     download_file "$TSCAN_GITHUB_RAW/TscanPlus-v${TSCAN_VERSION}/TscanPlus_${suffix}.zip" "$archive"

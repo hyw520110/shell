@@ -1047,7 +1047,7 @@ run_speedtest() {
     fi
 
     local json_tmp
-    json_tmp=$(mktemp "${TMPDIR:-/tmp}/speedtest.XXXXXX.json")
+    json_tmp=$(mktemp "${TMPDIR:-/tmp}/speedtest.json.XXXXXX")
     if ! speedtest "${st_args[@]}" >"$json_tmp" 2>/dev/null; then
         rm -f "$json_tmp"
         error "测速失败（speedtest 返回非零退出码）"

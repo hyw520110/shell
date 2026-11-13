@@ -189,20 +189,31 @@ download_file() {
   mkdir -p "$(dirname "$dest")"
 
   # 检测 aria2c 可用性
+  # 优先级: adl（aria2c 超集：多线程 + 断点续传 + 代理测速 + 大小校验）> aria2c > curl
+  local use_adl=0
+  if command -v adl >/dev/null 2>&1; then use_adl=1; fi
+
   local use_aria2=0
   if [ "$FORCE_ARIA2" -eq 1 ]; then
-    if command -v aria2c >/dev/null 2>&1; then use_aria2=1
-    else error "--use-aria2 指定但未找到 aria2c，请先安装: brew install aria2（mac）或 apt install aria2（Linux）"; return 1; fi
+    if [ "$use_adl" -eq 1 ]; then use_aria2=0
+    elif command -v aria2c >/dev/null 2>&1; then use_aria2=1
+    else error "--use-aria2 指定但未找到 aria2c 或 adl，请先安装: brew install aria2（mac）或 apt install aria2（Linux）"; return 1; fi
   elif [ "$NO_ARIA2" -eq 1 ]; then
-    use_aria2=0
+    use_aria2=0; use_adl=0
   else
     # 自动检测：有 aria2c 就用它（多线程 + 断点续传更快）
-    if command -v aria2c >/dev/null 2>&1; then use_aria2=1; fi
+    if [ "$use_adl" -eq 0 ] && command -v aria2c >/dev/null 2>&1; then use_aria2=1; fi
   fi
 
   info "开始下载: $(basename "$dest")"
 
-  if [ "$use_aria2" -eq 1 ]; then
+  if [ "$use_adl" -eq 1 ]; then
+    info "使用 adl 下载（多线程 + 断点续传 + 代理测速）"
+    adl "$url" "$(dirname "$dest")" "$(basename "$dest")" || {
+      warn "adl 下载失败，回退到 curl ..."
+      curl -L --progress-bar --continue-at - -o "$dest" "$url"
+    }
+  elif [ "$use_aria2" -eq 1 ]; then
     info "使用 aria2c 多线程下载（5 连接）"
     aria2c \
       --max-connection-per-server=5 \

@@ -697,7 +697,7 @@ get_latest_version() {
     local latest_version github_version
     latest_version=$(curl -fsSL "https://pypi.org/pypi/${pkg}/json" 2>/dev/null | python3 -c "import sys, json; print(json.load(sys.stdin)['info']['version'])" 2>/dev/null || echo "")
     local tmp_json
-    tmp_json=$(mktemp "${TMPDIR:-/tmp}/vllm-metal-release.XXXXXX.json")
+    tmp_json=$(mktemp "${TMPDIR:-/tmp}/vllm-metal-release.json.XXXXXX")
     if fetch_release_json "https://api.github.com/repos/vllm-project/vllm-metal/releases/latest" "$tmp_json" 2>/dev/null; then
       github_version=$(python3 - "$tmp_json" <<'PY' 2>/dev/null || echo ""
 import json
@@ -1969,7 +1969,7 @@ run_package_install_once() {
 install_python_package() {
   local label="$1"; shift
   local log_file status required_python
-  log_file=$(mktemp "${TMPDIR:-/tmp}/vllm-install.XXXXXX.log")
+  log_file=$(mktemp "${TMPDIR:-/tmp}/vllm-install.log.XXXXXX")
 
   if run_package_install_once "$log_file" "$@"; then
     rm -f "$log_file"
@@ -2107,7 +2107,7 @@ install_vllm_metal_engine() {
   fi
 
   local tmp_json tmp_wheel_dir tmp_wheel wheel_url wheel_name
-  tmp_json=$(mktemp "${TMPDIR:-/tmp}/vllm-metal-release.XXXXXX.json")
+  tmp_json=$(mktemp "${TMPDIR:-/tmp}/vllm-metal-release.json.XXXXXX")
   tmp_wheel_dir=$(mktemp -d "${TMPDIR:-/tmp}/vllm-metal-wheel.XXXXXX")
   # 注意: RETURN trap 在 bash 中不会随函数返回自动清除，必须在触发后自行 trap - RETURN，
   # 否则后续任意函数返回时会再次触发并因 set -u 访问已失效的局部变量而中断。

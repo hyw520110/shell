@@ -1667,8 +1667,13 @@ do_download() {
                         log_warn "文件可能不完整，将继续重试..."
                         continue
                     fi
-                    log_error "本地文件大于远端大小，可能是旧文件残留或错误续传；请清理目标文件后重试"
-                    return 1
+                    # 本地大于远端：以实际落盘大小为准，不再判失败。
+                    # HEAD/Range 探测到的是服务端压缩传输流的预告值，而 curl/aria2c
+                    # 落盘时自动解压（例如服务端预告 3664，解压后落盘 4185），两者稳定
+                    # 相差压缩字节数。下载完成即代表正常，探测值不可信时以落盘为准；
+                    # 真正的损坏由后面的 SHA256 校验兜底（ADL_SHA256 / 下载器校验）。
+                    log_info "以落盘大小 $(format_bytes "$local_size") 为准（预探测 $(format_bytes "$remote_size") 为压缩流预告值，不准），继续 SHA256 校验"
+                    remote_size="$local_size"
                 else
                     if [[ "$explicit_expected_size" -eq 0 && "$remote_size_reliable" != true ]]; then
                         log_warn "远端大小未知，跳过文件大小强校验: $(format_bytes "$local_size")"

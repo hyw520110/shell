@@ -133,7 +133,7 @@ version_gt() {
 latest_release_info() {
     local json tmp_json
 
-    tmp_json=$(mktemp "${TMPDIR:-/tmp}/clashx-meta-latest.XXXXXX.json")
+    tmp_json=$(mktemp "${TMPDIR:-/tmp}/clashx-meta-latest.json.XXXXXX")
     if ! download_file "$REPO_API" "$tmp_json" >/dev/null; then
         rm -f "$tmp_json"
         return 1

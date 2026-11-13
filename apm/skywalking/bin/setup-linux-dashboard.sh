@@ -269,8 +269,8 @@ update_existing_dashboard_template() {
     fi
     [ -f "$template_file" ] || die "未找到 Linux 面板模板: $template_file"
     py="$(python_bin)"
-    payload="$(mktemp "${TMPDIR:-/tmp}/skywalking-linux-template.XXXXXX.json")"
-    response="$(mktemp "${TMPDIR:-/tmp}/skywalking-linux-template-rsp.XXXXXX.json")"
+    payload="$(mktemp "${TMPDIR:-/tmp}/skywalking-linux-template.json.XXXXXX")"
+    response="$(mktemp "${TMPDIR:-/tmp}/skywalking-linux-template-rsp.json.XXXXXX")"
 
     "$py" - "$template_file" "$payload" <<'PY'
 import json
