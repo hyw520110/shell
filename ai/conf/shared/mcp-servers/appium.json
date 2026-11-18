@@ -11,7 +11,11 @@
     "command": "appium-mcp",
     "args": [],
     "transportType": "stdio",
-    "startup_timeout_sec": 120
+    "startup_timeout_sec": 120,
+    "env": {
+      "ANDROID_HOME": "${ANDROID_HOME}",
+      "ANDROID_SDK_ROOT": "${ANDROID_SDK_ROOT}"
+    }
   },
   "required_tools": [
     "node",

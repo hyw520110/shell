@@ -235,8 +235,9 @@ detect_changes_git() {
                 local sub="${src_dir#$workspace/}"
                 local module="${sub%/src}"
 
-                # 排除公共模块
+                # 公共模块变更要展开为依赖它的服务，不能直接丢弃
                 if should_exclude_module "$sub"; then
+                    expand_common_changes "$workspace" "${sub%/src}"
                     continue 2
                 fi
 
@@ -284,9 +285,9 @@ detect_changes_md5() {
 
         local sub="${src_dir#$workspace/}"
 
-        # 排除公共模块
+        # 公共模块变更要展开为依赖它的服务，不能直接丢弃
         if should_exclude_module "$sub"; then
-            log_debug "排除模块: $sub"
+            expand_common_changes "$workspace" "${sub%/src}"
             continue
         fi
 
@@ -349,6 +350,68 @@ should_exclude_module() {
             ;;
     esac
     return 1
+}
+
+# 公共模块的 artifactId：跳过 <parent> 块，避免取到父工程坐标。
+get_module_artifact_id() {
+    local pom_file="$1"
+    awk '
+        /<parent>/ { in_parent=1 }
+        /<\/parent>/ { in_parent=0; next }
+        in_parent { next }
+        /<artifactId>/ { gsub(/.*<artifactId>|<\/artifactId>.*/, ""); print; exit }
+    ' "$pom_file"
+}
+
+# 只重建公共库不够：服务在各自的 reactor 之外从 ~/.m2 解析旧 jar，
+# 表现为“改了公共模块没生效”。这里按 pom 依赖关系展开公共模块的消费者。
+expand_common_module_consumers() {
+    local workspace="$1"
+    local common_module="$2"
+    local common_pom="$workspace/$common_module/pom.xml"
+    if [ ! -f "$common_pom" ]; then
+        return 0
+    fi
+    local artifact_id
+    artifact_id=$(get_module_artifact_id "$common_pom")
+    if [ -z "$artifact_id" ]; then
+        return 0
+    fi
+    local pom_file module_path
+    while IFS= read -r pom_file; do
+        if [ -z "$pom_file" ] || [ "$pom_file" = "$common_pom" ]; then
+            continue
+        fi
+        if grep -q "<modules>" "$pom_file"; then
+            continue
+        fi
+        if grep -q "<artifactId>$artifact_id</artifactId>" "$pom_file"; then
+            module_path="${pom_file%/*}"
+            module_path="${module_path#$workspace/}"
+            echo "$module_path"
+        fi
+    done < <(find "$workspace" -name pom.xml -not -path "*/target/*" -not -path "*/.git/*" 2>/dev/null || echo "")
+}
+
+# 把公共模块自身和它的依赖者并入变更集合；changed_modules 是外层检测函数的
+# local 数组，依赖 bash 动态作用域在此可见。
+expand_common_changes() {
+    local workspace="$1"
+    local common_module="$2"
+    local consumer
+    while IFS= read -r consumer; do
+        if [ -n "$consumer" ]; then
+            consumer=$(map_module_name "$consumer")
+            if [[ ! " ${changed_modules[*]:-} " =~ " $consumer " ]]; then
+                changed_modules+=("$consumer")
+                log_info "公共模块 $common_module 变更，纳入依赖服务: $consumer"
+            fi
+        fi
+    done < <(expand_common_module_consumers "$workspace" "$common_module")
+    if [[ ! " ${changed_modules[*]:-} " =~ " $common_module " ]]; then
+        changed_modules+=("$common_module")
+        log_info "公共模块 $common_module 变更，构建集合含库模块需 install"
+    fi
 }
 
 map_module_name() {

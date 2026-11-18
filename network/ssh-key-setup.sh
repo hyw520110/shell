@@ -12,6 +12,7 @@ TARGET_PASSWORD=""  # 目标主机密码（用于非交互式）
 USER_EXPLICIT=false   # 用户是否显式指定了用户名
 PORT_EXPLICIT=false  # 用户是否显式指定了端口
 PORT_AUTO_DETECTED=false
+SHOW_PUB=false       # 仅生成并输出公钥，不连接/不推送（用于手动追加到目标服务器 authorized_keys）
 
 # 检查是否有nc命令（用于连接测试）
 if command -v nc >/dev/null 2>&1; then
@@ -33,6 +34,7 @@ usage() {
     echo "  -t, --key-type <类型>     SSH密钥类型 (ed25519, rsa, ecdsa) (可选，默认为$KEY_TYPE)"
     echo "  -P, --password <密码>     目标主机的SSH密码 (用于非交互式设置)"
     echo "  --no-connect              设置密钥后不自动连接SSH"
+    echo "  --show-pub                仅生成并输出本机公钥，不连接/不推送（用于手动追加到目标服务器 authorized_keys）"
     echo "  -d, --debug               启用调试模式"
     echo "  -i, --interactive         使用交互式输入模式"
     echo "  --help                    显示此帮助信息"
@@ -556,6 +558,10 @@ while [[ $# -gt 0 ]]; do
             NO_CONNECT=true
             shift
             ;;
+        --show-pub|--show-public-key)
+            SHOW_PUB=true
+            shift
+            ;;
         -d|--debug)
             DEBUG_MODE=true
             shift
@@ -600,19 +606,24 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 如果没有提供目标IP且不在交互模式，则显示用法
-if [ -z "$TARGET_IP" ] && [ "$INTERACTIVE" = false ]; then
+# 如果没有提供目标IP且不在交互模式，则显示用法（--show-pub 模式除外）
+if [ -z "$TARGET_IP" ] && [ "$INTERACTIVE" = false ] && [ "$SHOW_PUB" = false ]; then
     log_error "必须指定目标主机IP或主机名"
     usage
 fi
 
-# 根据参数决定是否使用交互式输入
-if [ "$INTERACTIVE" = true ]; then
+# 根据参数决定是否使用交互式输入（--show-pub 模式不进入交互，直接用默认密钥类型）
+if [ "$INTERACTIVE" = true ] && [ "$SHOW_PUB" = false ]; then
     log_info "交互式模式启动..."
     get_target_ip
     get_target_user
     get_target_port
     get_key_type
+elif [ "$SHOW_PUB" = true ]; then
+    # --show-pub 模式：只生成并输出公钥，无需目标主机
+    target_ip="${TARGET_IP:-}"
+    target_user="$TARGET_USER"
+    target_port="$TARGET_PORT"
 else
     # 使用命令行参数
     target_ip="$TARGET_IP"
@@ -620,36 +631,39 @@ else
     target_port="$TARGET_PORT"
 fi
 
-# 执行基本验证
-if ! validate_port "$target_port"; then
-    log_error "无效的端口号: $target_port"
-    exit 1
-fi
+# 执行基本验证（--show-pub 模式跳过主机/端口验证）
+if [ "$SHOW_PUB" = false ]; then
+    if ! validate_port "$target_port"; then
+        log_error "无效的端口号: $target_port"
+        exit 1
+    fi
 
-if ! validate_host "$target_ip"; then
-    log_error "无效的主机格式: $target_ip"
-    exit 1
-fi
+    if ! validate_host "$target_ip"; then
+        log_error "无效的主机格式: $target_ip"
+        exit 1
+    fi
 
-# 未显式指定端口时，非交互模式也自动尝试 22 和 2222。
-if [ "$INTERACTIVE" = false ] && [ "$PORT_EXPLICIT" = false ]; then
-    if ! auto_detect_ssh_port "$target_ip"; then
+    # 未显式指定端口时，非交互模式也自动尝试 22 和 2222。
+    if [ "$INTERACTIVE" = false ] && [ "$PORT_EXPLICIT" = false ]; then
+        if ! auto_detect_ssh_port "$target_ip"; then
+            exit 1
+        fi
+    fi
+
+    if [ -z "$target_port" ]; then
+        log_error "22 和 2222 端口均不可用；请使用 -p/--port 指定自定义 SSH 端口。"
+        exit 1
+    fi
+
+    # 测试SSH连通性
+    if ! test_ssh_connectivity "$target_ip" "$target_port"; then
+        log_error "无法连接到 $target_ip:$target_port"
         exit 1
     fi
 fi
 
-if [ -z "$target_port" ]; then
-    log_error "22 和 2222 端口均不可用；请使用 -p/--port 指定自定义 SSH 端口。"
-    exit 1
-fi
-
-# 测试SSH连通性
-if ! test_ssh_connectivity "$target_ip" "$target_port"; then
-    log_error "无法连接到 $target_ip:$target_port"
-    exit 1
-fi
-
-# 检查目标主机是否在known_hosts中
+# 检查目标主机是否在known_hosts中（--show-pub 模式跳过）
+if [ "$SHOW_PUB" = false ]; then
 if ! check_known_hosts "$target_ip" "$target_port"; then
     log_info "主机 $target_ip:$target_port 不在known_hosts中，连接时可能需要确认主机密钥"
 else
@@ -659,6 +673,7 @@ else
         remove_stale_host_key "$target_ip" "$target_port"
         log_info "已准备重新接受新密钥，请继续。"
     fi
+fi
 fi
 
 # 生成SSH密钥对
@@ -672,6 +687,22 @@ if [ ! -f "$pub_key_path" ]; then
 fi
 
 log_debug "使用的公钥文件: $pub_key_path"
+
+# --show-pub 模式：输出公钥内容供手动追加到目标服务器，不连接/不推送
+if [ "$SHOW_PUB" = true ]; then
+    echo ""
+    echo "================================================"
+    echo " 本机 SSH 公钥（追加到目标服务器 ~/.ssh/authorized_keys）"
+    echo "================================================"
+    cat "$pub_key_path"
+    echo "================================================"
+    echo "公钥类型: $KEY_TYPE"
+    echo "公钥文件: $pub_key_path"
+    echo ""
+    log_info "请将上面的公钥内容追加到目标服务器的 ~/.ssh/authorized_keys 后，即可免密登录。"
+    log_info "追加命令（在目标服务器执行）: echo \"$(cat "$pub_key_path")\" >> ~/.ssh/authorized_keys"
+    exit 0
+fi
 
 # 本地权限修复（防止 config 等文件权限过宽）
 fix_local_ssh_permissions

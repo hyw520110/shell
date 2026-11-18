@@ -14,16 +14,27 @@ command_exists() {
 ensure_bb_browser() {
   if command_exists bb-browser; then
     ok "bb-browser 已安装: $(command -v bb-browser)"
-    return 0
+  else
+    command_exists npm || {
+      warn "未找到 npm，无法自动安装 bb-browser。"
+      return 1
+    }
+    info "正在安装 bb-browser..."
+    npm install -g bb-browser --registry "$NPM_REGISTRY"
   fi
 
-  command_exists npm || {
-    warn "未找到 npm，无法自动安装 bb-browser。"
-    return 1
-  }
-
-  info "正在安装 bb-browser..."
-  npm install -g bb-browser --registry "$NPM_REGISTRY"
+  # MCP server 由 bb-browser-api 提供（唯一带 --mcp / @modelcontextprotocol/sdk 的包）。
+  # bb-browser 本体只有 CLI 能力，无 MCP 支持，必须单独装 bb-browser-api。
+  if command_exists bb-browser-api; then
+    ok "bb-browser-api 已安装: $(command -v bb-browser-api)"
+  else
+    command_exists npm || {
+      warn "未找到 npm，无法自动安装 bb-browser-api。"
+      return 1
+    }
+    info "正在安装 bb-browser-api (MCP server)..."
+    npm install -g bb-browser-api --registry "$NPM_REGISTRY"
+  fi
 }
 
 ensure_site_adapters() {

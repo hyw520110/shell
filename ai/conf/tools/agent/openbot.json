@@ -1,0 +1,71 @@
+{
+  "id": "openbot",
+  "name": "OpenBot",
+  "description": "CopilotKit 开源 AI 同事平台：每个 Agent 拥有独立浏览器、文件与工具的电脑，所有动作先决策后记录，支持任意 AG-UI Agent（LangGraph/Mastra/CrewAI 等），Docker Compose 自托管",
+  "category": "ai-agent",
+  "tags": [
+    "ai",
+    "agents",
+    "platform",
+    "docker",
+    "self-hosted",
+    "bun",
+    "ag-ui"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "源码准备（Docker + Bun 自托管）",
+        "type": "custom",
+        "command": "base=\"$HOME/.local/share/ai-hub/OpenBot\"; mkdir -p \"$(dirname \"$base\")\"; if [ -d \"$base/.git\" ]; then git -C \"$base\" pull --ff-only; else git clone https://github.com/CopilotKit/OpenBot.git \"$base\"; fi; if [ -f \"$base/.env.example\" ] && [ ! -f \"$base/.env\" ]; then cp \"$base/.env.example\" \"$base/.env\"; fi; cd \"$base\" && bun install; echo '源码与依赖已准备；请编辑 .env 配置 CopilotKit Intelligence 与模型 Key 后执行 ai-hub.sh 操作 -> start'",
+        "check": "test -f \"$HOME/.local/share/ai-hub/OpenBot/docker-compose.yml\" && test -f \"$HOME/.local/share/ai-hub/OpenBot/.env\"",
+        "uninstall": [
+          "cd \"$HOME/.local/share/ai-hub/OpenBot\" 2>/dev/null && docker compose down 2>/dev/null; pkill -f openbot 2>/dev/null; true",
+          "rm -rf \"$HOME/.local/share/ai-hub/OpenBot\""
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "git -C \"$HOME/.local/share/ai-hub/OpenBot\" pull --ff-only && cd \"$HOME/.local/share/ai-hub/OpenBot\" && bun install",
+    "check": "test -d \"$HOME/.local/share/ai-hub/OpenBot\""
+  },
+  "process_check": "",
+  "config": {
+    "path": "$HOME/.local/share/ai-hub/OpenBot/.env",
+    "operations": {
+      "view": "sed -n '1,200p' \"$HOME/.local/share/ai-hub/OpenBot/.env\" 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vi} \"$HOME/.local/share/ai-hub/OpenBot/.env\"",
+      "reset": [
+        "cp \"$HOME/.local/share/ai-hub/OpenBot/.env.example\" \"$HOME/.local/share/ai-hub/OpenBot/.env\" 2>/dev/null || true"
+      ]
+    }
+  },
+  "commands": {
+    "start": "for _k in OPENAI_API_KEY ANTHROPIC_API_KEY GOOGLE_API_KEY; do\n  [ -n \"${!_k:-}\" ] && continue\n  while IFS= read -r _line; do\n    case \"$_line\" in\n      \"$_k=\"*)\n        _v=\"${_line#$_k=}\"\n        _v=\"${_v#\\\"}\"; _v=\"${_v%\\\"}\"\n        export \"$_k=$_v\"\n        ;;\n    esac\n  done < <(grep -E \"^[[:space:]]*export[[:space:]]+$_k=\" \"$HOME/.zshrc\" 2>/dev/null | sed -E \"s/^[[:space:]]*export[[:space:]]+//\")\ndone\nunset _k _line _v\nbash \"$HOME/.local/share/ai-hub/OpenBot/scripts/start.sh\"",
+    "stop": "bash \"$HOME/.local/share/ai-hub/OpenBot/scripts/stop.sh\"",
+    "logs": "cd \"$HOME/.local/share/ai-hub/OpenBot\" && docker compose logs -f",
+    "open": "if command -v open >/dev/null 2>&1; then open http://localhost:3010; elif command -v xdg-open >/dev/null 2>&1; then xdg-open http://localhost:3010 >/dev/null 2>&1 & else echo 'http://localhost:3010'; fi",
+    "login": "cd \"$HOME/.local/share/ai-hub/OpenBot\" && npx --yes copilotkit@latest login",
+    "setup": "cd \"$HOME/.local/share/ai-hub/OpenBot\" && npx --yes copilotkit@latest login && npx --yes copilotkit@latest project select && bun scripts/setup-learning.ts",
+    "dev": "cd \"$HOME/.local/share/ai-hub/OpenBot\" && bun run dev",
+    "version": "git -C \"$HOME/.local/share/ai-hub/OpenBot\" describe --tags --always 2>/dev/null || echo '已安装'"
+  },
+  "status_check": [
+    {
+      "name": "检查源码",
+      "command": "test -f \"$HOME/.local/share/ai-hub/OpenBot/docker-compose.yml\" && echo '源码已准备' || echo '未安装'"
+    },
+    {
+      "name": "检查服务",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:3010 >/dev/null 2>&1 && echo 'Web 运行中 (3010)' || echo 'Web 未运行'"
+    }
+  ],
+  "requirements": {
+    "docker": true
+  },
+  "homepage": "https://www.copilotkit.ai/openbot",
+  "repository": "https://github.com/CopilotKit/OpenBot",
+  "notes": "MIT 开源，Beta 阶段，自托管。需要 Docker、Bun 1.3+、CopilotKit Intelligence 项目与许可证（免费版可用，可自托管）、模型 Key。start.sh 会启动 Docker 服务并依次起 API(3001)/Worker/App(3010)。\n按约定：.env 仅保留模板非敏感默认值（DATABASE_URL 等），不写入任何 API key / token 等敏感值；模型 Key 等敏感变量从 ~/.zshrc 环境变量读取。start 命令会自动从 ~/.zshrc 注入 OPENAI_API_KEY（以及 ANTHROPIC_API_KEY / GOOGLE_API_KEY，若已导出），Bun 与 docker compose 均为进程环境变量优先，.env 空值不会覆盖注入值。"
+}

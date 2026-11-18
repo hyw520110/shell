@@ -1186,7 +1186,7 @@ setup_env() {
                 log_warn "无法写入 adl 系统路径链接: $install_path"
             fi
         else
-            log_warn "目录不可写: $install_dir，跳过软链接创建"
+            log_warn "目录不可写: ${install_dir}，跳过软链接创建"
         fi
     fi
 
@@ -1276,6 +1276,308 @@ verify_sha256() {
         return 1
     fi
 
+    return 0
+}
+
+# === 文件格式（魔数）验证 ===
+# 目标：拦下"下载到的根本不是这个后缀声称的东西"——服务端把 HTML 登录页 /
+# JSON 错误页当成 .zip / .dmg / .safetensors 落盘。这类事故后缀对、字节数也
+# 对，大小校验和 SHA256 都拦不住（SHA256 校验的是"下载对不对"，不是"内容对不对"）。
+#
+# 只依赖 od / gzip / xzcat / bunzip2 / zstdcat / lzma，macOS 与 Linux 通用。
+# 开关：
+#   ADL_FORMAT_CHECK=0   关闭格式校验
+#   ADL_FORMAT_STRICT=0  魔数与后缀不符时只告警不失败（默认失败）
+# 归档压缩格式优先：zip / tar / gzip / bzip2 / xz / zstd / 7z / rar / wim / iso / dmg
+
+# 读取文件头前 N 字节（十六进制，小写、无空格）
+adl_file_head_hex() {
+    local file="$1" bytes="${2:-16}" out=""
+    [[ -r "$file" ]] || return 1
+    out=$(LC_ALL=C od -An -tx1 -N "$bytes" "$file" 2>/dev/null | tr -d ' \n')
+    [[ -n "$out" ]] || return 1
+    printf '%s' "$out"
+    return 0
+}
+
+# 读取文件指定偏移处的 N 字节（十六进制）
+adl_read_hex_at() {
+    local file="$1" offset="$2" count="$3" out=""
+    out=$(LC_ALL=C od -An -tx1 -j "$offset" -N "$count" "$file" 2>/dev/null | tr -d ' \n')
+    printf '%s' "$out"
+    return 0
+}
+
+# 读取压缩流解压后的指定偏移字节（用于校验 tar.gz / tar.xz 的内层 tar 头）
+# 压缩工具缺失或解压失败时返回空串，调用方按"未能确认"处理，不误判为失败。
+adl_decompressed_hex() {
+    local file="$1" kind="$2" offset="$3" count="$4" stream=""
+    case "$kind" in
+        gz)   stream=$(command -v gzip) ;;
+        xz)   stream=$(command -v xzcat) ;;
+        bz2)  stream=$(command -v bunzip2) ;;
+        zst)  stream=$(command -v zstdcat) ;;
+        lzma) stream=$(command -v lzma) ;;
+        *)    stream="" ;;
+    esac
+    [[ -n "$stream" ]] || return 1
+    case "$kind" in
+        gz)   "$stream" -dc < "$file" 2>/dev/null | od -An -tx1 -j "$offset" -N "$count" | tr -d ' \n' ;;
+        xz)   "$stream" < "$file" 2>/dev/null | od -An -tx1 -j "$offset" -N "$count" | tr -d ' \n' ;;
+        bz2)  "$stream" -dc < "$file" 2>/dev/null | od -An -tx1 -j "$offset" -N "$count" | tr -d ' \n' ;;
+        zst)  "$stream" < "$file" 2>/dev/null | od -An -tx1 -j "$offset" -N "$count" | tr -d ' \n' ;;
+        lzma) "$stream" -dc < "$file" 2>/dev/null | od -An -tx1 -j "$offset" -N "$count" | tr -d ' \n' ;;
+        *) return 1 ;;
+    esac
+    return 0
+}
+
+# tar 没有文件头魔数，ustar 签名固定在偏移 257（"ustar" = 7573746172）。
+# 签名后跟 \0 或空格做版本位填充，所以只比前 10 个 hex 字符，不比对整段。
+# 参数是 od 输出的十六进制串（可能因尾部填充字节而异），不是 ASCII。
+adl_is_tar_signature() {
+    local sig="$1"
+    [[ "${sig:0:10}" == "7573746172" ]]
+}
+
+# 按魔数识别文件真实格式；识别不了返回 unknown
+adl_magic_name() {
+    local file="$1" head="" at4="" at8=""
+    head=$(adl_file_head_hex "$file" 16) || { echo "unknown"; return 0; }
+
+    case "$head" in
+        # 归档压缩（优先）
+        504b0304*|504b0506*|504b0507*) echo "zip"; return 0 ;;
+        1f8b08*)                       echo "gzip"; return 0 ;;
+        425a6839*)                      echo "bzip2"; return 0 ;;
+        fd377a58*)                      echo "xz"; return 0 ;;
+        4c5a4970*)                     echo "lzma"; return 0 ;;
+        28b52ffd*)                     echo "zstd"; return 0 ;;
+        377abcaf*)                     echo "7z"; return 0 ;;
+        52617221*|526172f6*)           echo "rar"; return 0 ;;
+        57494d57494d*)                 echo "wim"; return 0 ;;
+        4b4f4c42*)                     echo "hfs"; return 0 ;;
+        424b5452*|580000440000*)        echo "dmg"; return 0 ;;
+        68737173*)                     echo "squashfs"; return 0 ;;
+        # 其它常见格式
+        437773*) echo "safetensors"; return 0 ;;
+        5351514800*) echo "sqlite"; return 0 ;;
+        25504446*) echo "pdf"; return 0 ;;
+        89504e470d0a1a0a*) echo "png"; return 0 ;;
+        ffd8ff*|ffd9*|ffbff*) echo "jpeg"; return 0 ;;
+        4f67676f*) echo "ogg"; return 0 ;;
+        49443304*) echo "mp3"; return 0 ;;
+        fff2*|fff3*|fffa*|fffb*|ffe1*) echo "mp3"; return 0 ;;
+        4d5347530700*) echo "dos"; return 0 ;;
+        213cf903*) echo "ar"; return 0 ;;
+        edabe5db*) echo "elf"; return 0 ;;
+        4d415050496d616765*) echo "appimage"; return 0 ;;
+        52494646*)
+            at8=$(adl_read_hex_at "$file" 8 4)
+            if [[ "$at8" == "57454250" ]]; then echo "webp"; return 0; fi
+            echo "riff"; return 0 ;;
+    esac
+
+    at4=$(adl_read_hex_at "$file" 4 4)
+    if [[ "$at4" == "66747970" ]]; then echo "isobmff"; return 0; fi
+    # ISO9660 主卷描述符落在第 16 个扇区，文件头 16 字节没有任何签名
+    if [[ "$(adl_read_hex_at "$file" 32769 5)" == "4344303031" ]]; then echo "iso"; return 0; fi
+    # tar 没有文件头魔数，ustar 签名固定在偏移 257
+    if adl_is_tar_signature "$(adl_read_hex_at "$file" 257 6)"; then echo "tar"; return 0; fi
+    echo "unknown"
+    return 0
+}
+
+# 按文件后缀给出期望格式（unknown = 无已知签名；text = 文本类不做强校验）
+adl_expected_format() {
+    local base fmt
+    base=$(printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]')
+    case "$base" in
+        *.tar.gz|*.tgz)      echo "tar.gz"; return 0 ;;
+        *.tar.xz|*.txz)      echo "tar.xz"; return 0 ;;
+        *.tar.bz2|*.tbz2)    echo "tar.bz2"; return 0 ;;
+        *.tar.zst|*.tzst)    echo "tar.zst"; return 0 ;;
+        *.tar.lzma|*.tar.lz) echo "tar.lzma"; return 0 ;;
+        *.tar)               echo "tar"; return 0 ;;
+    esac
+    fmt="${base##*.}"
+    if [[ "$fmt" == "$base" ]]; then echo "none"; return 0; fi
+    case "$fmt" in
+        zip|jar|whl|aar|war|ear|docx|xlsx|pptx|epub|ipa|ods|odt|apks|apkx) echo "zip" ;;
+        gz) echo "gzip" ;;
+        bz2) echo "bzip2" ;;
+        xz|lzma) echo "xz" ;;
+        zst|zstd) echo "zstd" ;;
+        7z) echo "7z" ;;
+        rar) echo "rar" ;;
+        wim) echo "wim" ;;
+        squashfs) echo "squashfs" ;;
+        iso) echo "iso" ;;
+        dmg) echo "dmg" ;;
+        pdf) echo "pdf" ;;
+        png) echo "png" ;;
+        jpg|jpeg) echo "jpeg" ;;
+        webp) echo "webp" ;;
+        wav|avi) echo "riff" ;;
+        ogg) echo "ogg" ;;
+        mp3) echo "mp3" ;;
+        mp4|m4a|m4v|mov|3gp|webm|mkv) echo "isobmff" ;;
+        sqlite|sqlite3|db) echo "sqlite" ;;
+        safetensors) echo "safetensors" ;;
+        exe|dll) echo "dos" ;;
+        deb) echo "ar" ;;
+        appimage) echo "appimage" ;;
+        txt|md|markdown|log|json|jsonl|yaml|yml|toml|ini|cfg|conf|csv|tsv|xml|svg|html|htm|xhtml|css|scss|js|jsx|ts|tsx|py|sh|bash|zsh|c|cc|cpp|h|hpp|java|rb|go|rs|php|pl|sql|plist|properties|srt|vtt|tex|rst|lock|sum|sha256|md5|asc|pem|crt|cer|lic|license|manifest) echo "text" ;;
+        *) echo "unknown" ;;
+    esac
+    return 0
+}
+
+# 服务端错误页特征：把 HTML/JSON 当文件返回，落盘后后缀照样像模像样
+adl_looks_like_error_page() {
+    local file="$1" sample=""
+    sample=$(head -c 512 "$file" 2>/dev/null | LC_ALL=C tr -c '[:graph:]' ' ' | LC_ALL=C tr -s ' ')
+    [[ -n "$sample" ]] || return 1
+    case "$sample" in
+        *'<html'*|*'<!doctype'*|*'<?xml'*|*'<error'*|*'<pre'*|*'<title'*) return 0 ;;
+        *'{"detail"'*|*'{"error"'*|*'{"errors"'*|*'{"message"'*|*'{"code"'*|*'{"exception"'*) return 0 ;;
+    esac
+    return 1
+}
+
+ADL_FORMAT_DETECTED=""
+
+# 下载完成后的文件格式校验；返回 1 表示内容与后缀声明不符
+verify_file_format() {
+    local file="$1" expected detected="" result=0
+    ADL_FORMAT_DETECTED=""
+
+    if [[ "${ADL_FORMAT_CHECK:-1}" == "0" ]]; then
+        return 0
+    fi
+    if [[ ! -f "$file" ]]; then
+        log_warn "文件格式校验跳过：文件不存在 $file"
+        return 0
+    fi
+    if [[ ! -s "$file" ]]; then
+        log_warn "文件格式校验跳过：文件为空 $file"
+        return 0
+    fi
+
+    expected=$(adl_expected_format "$(basename "$file")")
+    detected=$(adl_magic_name "$file" 2>/dev/null || echo "unknown")
+
+    # 无后缀文件无从判断期望格式：ai-hub.sh 的 curl 包装器用 mktemp 生成
+    # /tmp/aihub-curl.XXXXXX 探测 HTTP，这些临时文件本就没有后缀，跳过即可。
+    if [[ "$expected" == "none" ]]; then
+        ADL_FORMAT_DETECTED="$detected"
+        return 0
+    fi
+
+    # 后缀不在已知清单（.foo 这类自定义格式）：不做失败判定，但错误页要提示，
+    # 因为"下载到的其实是服务端错误页"这件事与后缀无关。
+    if [[ "$expected" == "unknown" ]]; then
+        if [[ "$detected" == "unknown" ]] && adl_looks_like_error_page "$file"; then
+            log_warn "文件内容像是 HTML/JSON 错误页，但后缀 ${expected} 未在已知格式清单内，不做强校验"
+            ADL_FORMAT_DETECTED="error-page"
+            return 0
+        fi
+        if [[ "$detected" != "unknown" ]]; then
+            log_info "文件格式识别: ${detected}（后缀 ${expected}，未做强校验）"
+        fi
+        ADL_FORMAT_DETECTED="$detected"
+        return 0
+    fi
+
+    # 1) 无已知魔数 + 内容长得像错误页 = 服务端把错误页当成文件返回
+    if [[ "$detected" == "unknown" && "$expected" != "text" ]] && adl_looks_like_error_page "$file"; then
+        log_error "文件开头: $(head -c 160 "$file" 2>/dev/null | LC_ALL=C tr -c '[:graph:]' ' ' | tr -s ' ')"
+        ADL_FORMAT_DETECTED="error-page"
+        if [[ "${ADL_FORMAT_STRICT:-1}" == "0" ]]; then
+            log_warn "格式不符但 ADL_FORMAT_STRICT=0，仅告警不失败"
+            return 0
+        fi
+        return 1
+    fi
+
+    if [[ "$expected" == "text" ]]; then
+        if [[ "$detected" != "unknown" ]]; then
+            log_info "文件格式识别: ${detected}（后缀 ${expected}，未做强校验）"
+        fi
+        ADL_FORMAT_DETECTED="$detected"
+        return 0
+    fi
+
+    # 2) 组合后缀：外层压缩格式 + 内层 tar 头（ustar 签名在偏移 257）
+    case "$expected" in
+        tar.*)
+            local outer="${expected#tar.}" outer_magic="" inner=""
+            case "$outer" in
+                gz) outer_magic="gzip" ;;
+                bz2) outer_magic="bzip2" ;;
+                xz) outer_magic="xz" ;;
+                zst) outer_magic="zstd" ;;
+                lzma) outer_magic="lzma" ;;
+            esac
+            if [[ "$detected" != "$outer_magic" ]]; then
+                result=1
+                log_error "文件格式校验失败：期望 ${outer_magic}（tar.${outer} 容器），实际识别为 ${detected}"
+            else
+                inner=$(adl_decompressed_hex "$file" "$outer" 257 6 2>/dev/null || true)
+                if [[ -n "$inner" ]]; then
+                    if adl_is_tar_signature "$inner"; then
+                        log_info "内层 tar 头校验通过（ustar）"
+                    else
+                        log_warn "内层未找到 ustar 签名，可能不是标准 tar 归档"
+                    fi
+                else
+                    log_warn "缺少解压工具，未能确认内层 tar 头（${outer}）"
+                fi
+            fi
+            ADL_FORMAT_DETECTED="$detected"
+            if [[ $result -ne 0 && "${ADL_FORMAT_STRICT:-1}" == "0" ]]; then
+                log_warn "格式不符但 ADL_FORMAT_STRICT=0，仅告警不失败"
+                return 0
+            fi
+            return $result
+            ;;
+    esac
+
+    # 3) 偏移量签名（iso 引导扇区 / tar 的 ustar）与魔数比对
+    case "$expected" in
+        iso)
+            if [[ "$(adl_read_hex_at "$file" 32769 5)" == "4344303031" ]]; then
+                :
+            else
+                result=1
+                log_error "文件格式校验失败：期望 ISO9660（CD001 引导扇区），实际识别为 ${detected}"
+            fi
+            ;;
+        tar)
+            if adl_is_tar_signature "$(adl_read_hex_at "$file" 257 6)"; then
+                :
+            else
+                result=1
+                log_error "文件格式校验失败：期望 tar（ustar 签名），实际识别为 ${detected}"
+            fi
+            ;;
+        *)
+            if [[ "$detected" != "$expected" ]]; then
+                result=1
+                log_error "文件格式校验失败：期望 ${expected}，实际识别为 ${detected}"
+            fi
+            ;;
+    esac
+
+    ADL_FORMAT_DETECTED="$detected"
+    if [[ $result -ne 0 ]]; then
+        if [[ "${ADL_FORMAT_STRICT:-1}" == "0" ]]; then
+            log_warn "格式不符但 ADL_FORMAT_STRICT=0，仅告警不失败"
+            return 0
+        fi
+        return 1
+    fi
+    log_info "文件格式校验通过: ${detected}"
     return 0
 }
 
@@ -1585,7 +1887,7 @@ do_download() {
                 case "$action" in
                     cancel) log_warn "下载已中断，保留断点"; return 130 ;;
                     fatal) log_error "文件读写失败，停止重试"; return 1 ;;
-                    source) retired_urls+=("$try_url"); log_warn "当前源不可用（curl $curl_exit / HTTP $http_status），尝试其他源"; continue ;;
+                    source) retired_urls+=("$try_url"); log_warn "当前源不可用（curl $curl_exit / HTTP ${http_status}），尝试其他源"; continue ;;
                 esac
             fi
 
@@ -1692,6 +1994,18 @@ do_download() {
                     return 1
                 fi
 
+                # 文件格式校验：拦下"服务端把错误页/错类型内容当成文件落盘"
+                if verify_file_format "$local_file"; then
+                    :
+                else
+                    if [[ "${ADL_RETRY_ON_CHECKSUM:-0}" == "1" ]]; then
+                        log_warn "文件格式校验失败，按 ADL_RETRY_ON_CHECKSUM=1 继续重试..."
+                        continue
+                    fi
+                    log_error "文件格式校验失败，终止下载"
+                    return 1
+                fi
+
                 # 耗时包括重试和校验；断点续传不能用最终文件大小计算本次平均速度。
                 local end_time
                 end_time=$(date +%s)
@@ -1713,7 +2027,11 @@ do_download() {
                 fi
 
                 local verification=""
-                if [[ -n "${ADL_SHA256:-}" ]]; then
+                if [[ "${ADL_FORMAT_DETECTED:-}" == "error-page" ]]; then
+                    verification="，警告：内容疑似错误页，未按期望格式校验通过"
+                elif [[ -n "${ADL_FORMAT_DETECTED:-}" && "${ADL_FORMAT_DETECTED:-}" != "unknown" ]]; then
+                    verification="，文件格式校验通过（${ADL_FORMAT_DETECTED}）"
+                elif [[ -n "${ADL_SHA256:-}" ]]; then
                     verification="，SHA256 校验通过"
                 elif [[ "$remote_size_reliable" == true ]]; then
                     verification="，文件大小校验通过"
@@ -1769,7 +2087,7 @@ adl - Aria2 Downloader 并行下载加速工具
     - 智能重试策略：小文件有限重试，大文件无限重试
     - 断点续传支持，下载中断后自动继续
     - 优先使用 aria2 多线程加速
-    - 下载后校验文件大小，可选 SHA256 校验
+    - 下载后校验文件大小、文件格式（魔数）与可选 SHA256 校验
 
 提示: 首次运行建议执行: adl --setup-env
 
@@ -1803,6 +2121,8 @@ adl - Aria2 Downloader 并行下载加速工具
     ADL_AUTO_INSTALL=1           缺失时自动安装 aria2（macOS 用 Homebrew，Linux 用 apt/yum/dnf；ADL_AUTO_INSTALL=0 可关闭）
     ADL_INSECURE=1               禁用 HTTPS 证书校验（不推荐）
     ADL_SHA256=<hex>             校验下载文件的 SHA256 哈希
+    ADL_FORMAT_CHECK=1           下载后按魔数校验文件格式（0 关闭）
+    ADL_FORMAT_STRICT=1          格式与后缀不符即失败（0 仅告警）
     ADL_RETRY_ON_CHECKSUM=1      SHA256 校验失败后继续重试（默认失败即终止）
     ADL_PROXY_TEST_URL=https://github.com/favicon.ico 代理验证测试URL
     ADL_PROXY_TEST_TIMEOUT=5     代理验证超时时间(秒)

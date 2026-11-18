@@ -22,6 +22,13 @@ readonly NC='\033[0m'
 
 # Codex 下载地址
 readonly CODEX_DMG_URL="https://persistent.oaistatic.com/codex-app-prod/Codex.dmg"
+# macOS 兼容版: 系统 <= 12.x 时用构建 5848 (版本 26.721.41059, 2026-07-24)
+# ⚠️ 实测结论: 8月及以后版本 (构建 6223+/6415+) 虽然 Info.plist 声称 12.0 但主二进制 minos=13.0 无法运行
+#   只有 7月及更早版本 (构建 5848 等) 主二进制真正 minos=12.0, 兼容 macOS 12.7.6
+CODEX_COMPAT_VERSION="26.721.41059"
+CODEX_COMPAT_BUILD="5848"
+CODEX_COMPAT_URL="https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-x64-${CODEX_COMPAT_VERSION}.zip"
+CODEX_COMPAT_MAX_MAJOR="12"
 
 # === 日志函数 ===
 log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
@@ -87,6 +94,88 @@ download_file() {
     curl -f -L --retry 3 --connect-timeout 30 --max-time 600 -o "$output" "$url"
 }
 
+# === 安装 Codex CLI (npm 全局) ===
+install_codex_cli() {
+    log_header "安装 Codex CLI"
+
+    # 已安装则跳过
+    if command -v codex &> /dev/null; then
+        log_success "Codex CLI 已安装: $(codex --version 2>/dev/null | head -1 || echo 'codex')"
+        return 0
+    fi
+
+    # 确保 npm 存在
+    if ! command -v npm &> /dev/null; then
+        log_error "未找到 npm，请先安装 Node.js (brew install node)"
+        return 1
+    fi
+
+    log_info "使用 npm 安装 @openai/codex (全局)..."
+    if npm install -g @openai/codex; then
+        log_success "Codex CLI 安装完成: $(command -v codex)"
+    else
+        log_error "Codex CLI 安装失败"
+        return 1
+    fi
+}
+
+# === 当前 macOS 版本 ===
+macos_major() {
+    sw_vers -productVersion 2>/dev/null | cut -d. -f1 || echo 99
+}
+macos_full() {
+    sw_vers -productVersion 2>/dev/null || echo "0.0.0"
+}
+
+# === 检测 macOS 版本兼容性 (app 的 minos <= 当前系统) ===
+# 下载后、挂载前检查：避免安装后才发现二进制要求更高系统版本
+check_macos_compat() {
+    local volume="$1"
+    local app_name="$2"
+    local app_path="$volume/$app_name"
+
+    # 读取 Info.plist 的 LSMinimumSystemVersion
+    local min_os
+    min_os=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$app_path/Contents/Info.plist" 2>/dev/null || echo "")
+    # 读取二进制 minos (Mach-O)
+    local exe
+    exe=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$app_path/Contents/Info.plist" 2>/dev/null || echo "")
+    local bin_minos=""
+    if [[ -n "$exe" && -f "$app_path/Contents/MacOS/$exe" ]]; then
+        bin_minos=$(otool -l "$app_path/Contents/MacOS/$exe" 2>/dev/null | grep -A3 "LC_BUILD_VERSION" | grep minos | head -1 | awk '{print $2}')
+    fi
+
+    # 当前系统版本
+    local cur_ver cur_major
+    cur_ver=$(sw_vers -productVersion 2>/dev/null || echo "12.0")
+    cur_major=$(echo "$cur_ver" | cut -d. -f1)
+
+    # 用更高的那个作为实际要求
+    local req=""
+    if [[ -n "$bin_minos" ]]; then
+        req="$bin_minos"
+    elif [[ -n "$min_os" ]]; then
+        req="$min_os"
+    fi
+
+    if [[ -z "$req" ]]; then
+        log_info "未检测到系统版本要求，跳过兼容性检查"
+        return 0
+    fi
+
+    local req_major
+    req_major=$(echo "$req" | cut -d. -f1)
+    log_info "应用要求 macOS $req+, 当前系统 $cur_ver"
+
+    if (( req_major > cur_major )); then
+        log_error "不兼容：此应用要求 macOS $req+，当前系统为 $cur_ver，无法安装。"
+        log_error "请升级 macOS 到 $req+ 后再安装。"
+        return 1
+    fi
+    log_success "兼容性检查通过 (应用要求 $req+, 当前 $cur_ver)"
+    return 0
+}
+
 # === 安装 Codex Desktop App (macOS) ===
 install_codex_macos() {
     # 检查是否已安装
@@ -99,18 +188,35 @@ install_codex_macos() {
     user_home=$(get_user_home)
     local downloads_dir="$user_home/Downloads"
     local dmg_file="$downloads_dir/Codex.dmg"
+    local compat_url="" compat_file=""
+
+    # macOS <= 12.x: 用兼容版 (构建 5848, 26.721.41059, 主二进制 minos=12.0, 真正兼容 12.7.6)
+    local cur_major
+    cur_major=$(macos_major)
+    if [[ "$cur_major" != "99" ]] && (( cur_major <= CODEX_COMPAT_MAX_MAJOR )); then
+        log_warn "当前 macOS $(macos_full) <= 12.x, 使用兼容版 v${CODEX_COMPAT_VERSION} (构建 ${CODEX_COMPAT_BUILD})"
+        compat_url="$CODEX_COMPAT_URL"
+        compat_file="$downloads_dir/$(basename "$CODEX_COMPAT_URL")"
+    fi
 
     # 下载
     log_info "正在下载 Codex Desktop App..."
-    log_info "下载地址: $CODEX_DMG_URL"
-    log_info "保存路径: $dmg_file"
+    if [[ -n "$compat_url" ]]; then
+        log_info "下载地址: $compat_url"
+        log_info "保存路径: $compat_file"
+        dmg_file="$compat_file"
+    else
+        log_info "下载地址: $CODEX_DMG_URL"
+        log_info "保存路径: $dmg_file"
+    fi
     echo ""
 
     mkdir -p "$downloads_dir"
 
-    if ! download_file "$CODEX_DMG_URL" "$dmg_file"; then
+    local dl_url="${compat_url:-$CODEX_DMG_URL}"
+    if ! download_file "$dl_url" "$dmg_file"; then
         log_error "下载失败"
-        log_info "请手动下载: $CODEX_DMG_URL"
+        log_info "请手动下载: $dl_url"
         return 1
     fi
 
@@ -122,14 +228,27 @@ install_codex_macos() {
 
     log_info "文件大小: $(du -h "$dmg_file" | cut -f1)"
 
-    # 挂载 DMG
-    log_info "正在挂载 DMG 文件..."
-    local volume
-    volume=$(hdiutil attach "$dmg_file" 2>/dev/null | grep 'Volumes' | awk -F '\t' '{print $NF}')
-
-    if [[ -z "$volume" ]]; then
-        log_error "挂载 DMG 文件失败"
-        return 1
+    # 挂载 DMG 或解压 ZIP (兼容版是 zip)
+    local volume=""
+    local is_zip=0
+    if [[ "$dmg_file" == *.zip ]]; then
+        is_zip=1
+        log_info "正在解压 ZIP 文件..."
+        local extract_dir
+        extract_dir=$(mktemp -d "${TMPDIR:-/tmp}/codex-extract.XXXXXX")
+        if ! unzip -q "$dmg_file" -d "$extract_dir"; then
+            log_error "解压 ZIP 文件失败"
+            rm -rf "$extract_dir"
+            return 1
+        fi
+        volume="$extract_dir"
+    else
+        log_info "正在挂载 DMG 文件..."
+        volume=$(hdiutil attach "$dmg_file" 2>/dev/null | grep 'Volumes' | awk -F '\t' '{print $NF}')
+        if [[ -z "$volume" ]]; then
+            log_error "挂载 DMG 文件失败"
+            return 1
+        fi
     fi
 
     # 安装到 Applications
@@ -141,15 +260,32 @@ install_codex_macos() {
         app_name="ChatGPT.app"
     fi
     if [[ -n "$app_name" ]]; then
+        # 兼容性检查：app 要求 macOS 版本 > 当前系统则拒绝安装
+        if ! check_macos_compat "$volume" "$app_name"; then
+            if (( is_zip )); then
+                rm -rf "$volume"
+            else
+                hdiutil detach "$volume" > /dev/null 2>&1
+            fi
+            return 1
+        fi
         cp -R "$volume/$app_name" /Applications
     else
         log_error "未在镜像中找到 Codex.app 或 ChatGPT.app"
-        hdiutil detach "$volume" > /dev/null 2>&1
+        if (( is_zip )); then
+            rm -rf "$volume"
+        else
+            hdiutil detach "$volume" > /dev/null 2>&1
+        fi
         return 1
     fi
 
-    # 卸载 DMG
-    hdiutil detach "$volume" > /dev/null 2>&1
+    # 卸载 DMG / 清理解压目录
+    if (( is_zip )); then
+        rm -rf "$volume"
+    else
+        hdiutil detach "$volume" > /dev/null 2>&1
+    fi
     rm -f "$dmg_file"
 
     log_success "Codex Desktop App 安装完成"
@@ -160,15 +296,24 @@ install_codex_macos() {
     echo "  3. 配置 API Key: export OPENAI_API_KEY='sk-...'"
 }
 
-# === 安装 Codex Desktop App ===
+# === 安装 Codex (CLI + App) ===
 install_codex() {
-    log_header "安装 OpenAI Codex Desktop App"
+    local mode="${1:-all}"   # all | cli-only | app-only
+
+    log_header "安装 OpenAI Codex"
 
     local os=$(detect_os)
 
     case "$os" in
         macos)
-            install_codex_macos
+            # 安装 CLI (除非仅 app)
+            if [[ "$mode" != "app-only" ]]; then
+                install_codex_cli
+            fi
+            # 安装 App (除非仅 CLI)
+            if [[ "$mode" != "cli-only" ]]; then
+                install_codex_macos
+            fi
             ;;
         windows)
             log_info "Windows 系统"
@@ -226,10 +371,19 @@ uninstall_codex() {
 
 # === 查看状态 ===
 show_status() {
-    log_header "Codex Desktop App 状态"
+    log_header "Codex 状态"
 
     local os=$(detect_os)
     echo "系统: $os"
+    echo ""
+
+    # CLI 状态
+    if command -v codex &> /dev/null; then
+        echo "CLI: 已安装 ($(codex --version 2>/dev/null | head -1 || echo 'codex'))"
+        echo "CLI 路径: $(command -v codex)"
+    else
+        echo "CLI: 未安装 (安装: ./install-codex.sh --install-cli)"
+    fi
     echo ""
 
     case "$os" in
@@ -266,37 +420,39 @@ show_status() {
 # === 显示帮助 ===
 show_help() {
     cat << 'EOF'
-OpenAI Codex Desktop App 安装脚本
+OpenAI Codex 安装脚本 (CLI + Desktop App)
 
-Codex 是 OpenAI 推出的 AI 编程助手桌面应用，支持多智能体协作编程。
+Codex 是 OpenAI 推出的 AI 编程助手，含 CLI 与桌面应用 (ChatGPT.app/Codex.app)。
 
 用法: ./install-codex.sh [选项]
 
 选项:
-    --install       安装 Codex Desktop App (默认)
-    --uninstall     卸载 Codex
+    --install       安装 Codex CLI + Desktop App (默认)
+    --install-cli   仅安装 Codex CLI (npm @openai/codex)
+    --install-app   仅安装 Desktop App
+    --uninstall     卸载 Codex App (保留 CLI)
     --status        查看 Codex 状态
     -h, --help      显示此帮助
 
 功能:
-    - AI 代码生成和编辑
-    - 多智能体协作编程
-    - 自动化开发任务
-    - 代码 diff 查看
-    - 项目终端集成
+    - Codex CLI: npm install -g @openai/codex
+    - Desktop App: 下载 Codex.dmg 安装到 /Applications (ChatGPT.app/Codex.app)
+    - 兼容性检查: 安装前验证 app 要求的 macOS 版本 <= 当前系统，不兼容则拒绝
 
 支持系统:
-    - macOS (直接下载 DMG 安装)
+    - macOS (直接下载 DMG 安装，含兼容性检查)
     - Windows (Microsoft Store)
-    - Linux (不支持 Desktop App，请使用 CLI)
+    - Linux (仅 CLI)
 
 配置 API Key:
     export OPENAI_API_KEY='sk-...'
 
 示例:
-    ./install-codex.sh              # 一键安装
+    ./install-codex.sh              # 一键安装 CLI + App
+    ./install-codex.sh --install-cli  # 仅装 CLI
+    ./install-codex.sh --install-app  # 仅装 App
     ./install-codex.sh --status     # 查看状态
-    ./install-codex.sh --uninstall  # 卸载
+    ./install-codex.sh --uninstall  # 卸载 App
 
 官网: https://openai.com/codex
 EOF
@@ -305,8 +461,14 @@ EOF
 # === 主函数 ===
 main() {
     case "${1:-}" in
-        --install | "")
-            install_codex
+        --install | -i | "")
+            install_codex "all"
+            ;;
+        --install-cli)
+            install_codex "cli-only"
+            ;;
+        --install-app)
+            install_codex "app-only"
             ;;
         --uninstall)
             uninstall_codex

@@ -13,19 +13,14 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # 配置变量
-APP_NAME="${TRAE_PRODUCT:-TraeCode}"
-if [[ "$APP_NAME" == TraeWork ]]; then
-    APP_NAME="TRAE SOLO"
-fi
+# 官方已合并 TraeWork/TraeCode 为统一 TRAE（主产品，国内版 TRAE_CN / 国际版 TRAE）；
+# TraeWork 团队版（solo，TraeWork_CN）仍独立存在但非主产品，此处仅按地区选主产品。
+APP_NAME="Trae"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$HOME/Downloads}"
-INSTALL_DIR="/Applications"
+INSTALL_DIR="${INSTALL_DIR:-/Applications}"
 TRAE_DOWNLOAD_REGION="${TRAE_DOWNLOAD_REGION:-sg}"
 # 地区 CDN 不代表产品版本：中国版必须使用 /cn/latest 清单。
-if [[ "${TRAE_PRODUCT:-TraeCode}" == "TraeWork" && "${TRAE_DOWNLOAD_REGION:-sg}" == cn ]]; then
-    TRAE_DOWNLOAD_API="${TRAE_DOWNLOAD_API:-https://icube-normal.trae.ai/icube/api/v1/native/version/trae/cn/latest}"
-elif [[ "${TRAE_PRODUCT:-TraeCode}" == "TraeWork" ]]; then
-    TRAE_DOWNLOAD_API="${TRAE_DOWNLOAD_API:-https://icube-normal.trae.ai/icube/api/v1/native/version/trae/latest}"
-elif [[ "$TRAE_DOWNLOAD_REGION" == cn ]]; then
+if [[ "$TRAE_DOWNLOAD_REGION" == cn ]]; then
     TRAE_DOWNLOAD_API="${TRAE_DOWNLOAD_API:-https://icube-normal.trae.ai/icube/api/v1/native/version/trae/cn/latest}"
 else
     TRAE_DOWNLOAD_API="${TRAE_DOWNLOAD_API:-https://icube-normal.trae.ai/icube/api/v1/native/version/trae/latest}"
@@ -86,36 +81,23 @@ resolve_download_url() {
         return 1
     }
 
-    "$py" - "$chip" "$TRAE_DOWNLOAD_REGION" "$TRAE_DOWNLOAD_API" "${TRAE_PRODUCT:-TraeCode}" <<'PY'
+    "$py" - "$chip" "$TRAE_DOWNLOAD_REGION" "$TRAE_DOWNLOAD_API" <<'PY'
 import json
-import os
 import sys
 import urllib.request
 
 chip = sys.argv[1]
 region = (sys.argv[2] or "sg").lower()
 api = sys.argv[3]
-product = os.environ.get("TRAE_PRODUCT") or sys.argv[4] or "TraeCode"
 if region == "us":
     region = "va"
 
 request = urllib.request.Request(api, headers={"User-Agent": "ai-hub-installer/1.0"})
 with urllib.request.urlopen(request, timeout=60) as response:
     payload = json.load(response)
-downloads = None
-manifest = payload.get("data", {}).get("manifest", {})
-if product == "TraeWork":
-    downloads = (
-        payload.get("data", {})
-        .get("solo", {})
-        .get("darwin", {})
-        .get("download", [])
-    )
-if downloads is None:
-    downloads = (
-        manifest.get("darwin", {})
-        .get("download", [])
-    )
+# 官方已合并 TraeWork/TraeCode 为统一 TRAE：主产品 = manifest（国内版 TRAE_CN / 国际版 TRAE），
+# solo（团队版 TraeWork_CN）非主产品，此处仅取主产品 manifest。
+downloads = payload.get("data", {}).get("manifest", {}).get("darwin", {}).get("download", [])
 
 preferred = None
 for item in downloads:
@@ -167,6 +149,75 @@ download_file() {
         log_warn "未找到 adl，使用 curl 下载"
         curl -fL --retry 3 --connect-timeout 10 --max-time 0 -o "$target_file" "$url"
     fi
+}
+
+# 安装 .app 到 /Applications。
+# 不能直接 cp -R 到已存在的旧包上：那会把新旧 bundle 递归合并，Electron 的
+# Versions/Current、Framework 顶层链接等符号链接会撞上旧包里的同名目录，
+# 报 "cannot overwrite directory ... with non-directory"，并且留下半新半旧的包。
+# 这里改为：完整复制到临时目录 -> 退出旧版本 -> 原子替换 -> 清理备份。
+install_app_bundle() {
+    local src="$1"
+    if [ ! -d "$src" ]; then
+        log_error "应用目录不存在: $src"
+        return 1
+    fi
+
+    local bundle staging dest backup
+    bundle=$(basename "$src")
+    dest="$INSTALL_DIR/$bundle"
+    staging="$INSTALL_DIR/.$bundle.staging.$$"
+    backup="$INSTALL_DIR/.$bundle.backup.$$"
+
+    # 旧版本仍在运行时文件可能被锁，且替换后它运行的还是旧二进制。
+    if [ -e "$dest" ] || [ -L "$dest" ]; then
+        local app_bundle_id
+        app_bundle_id="${bundle%.app}"
+        osascript -e "tell application \"$app_bundle_id\" to quit" >/dev/null 2>&1 || true
+        pkill -f "$dest/Contents/MacOS/" >/dev/null 2>&1 || true
+        sleep 1
+    fi
+
+    rm -rf "$staging" "$backup" || {
+        log_error "无法清理 $INSTALL_DIR 下的临时目录（检查目录写入权限）"
+        return 1
+    }
+    # ditto 保留符号链接、资源分叉和签名信息，比 cp -R 更贴近 Finder 拖拽安装。
+    if command -v ditto >/dev/null 2>&1; then
+        if ! ditto "$src" "$staging"; then
+            log_error "复制 $bundle 失败（检查 /Applications 写入权限）"
+            rm -rf "$staging"
+            return 1
+        fi
+    elif ! cp -R "$src" "$staging"; then
+        log_error "复制 $bundle 失败（检查 /Applications 写入权限）"
+        rm -rf "$staging"
+        return 1
+    fi
+
+    if [ ! -f "$staging/Contents/Info.plist" ]; then
+        log_error "复制结果不完整，缺少 Contents/Info.plist: $staging"
+        rm -rf "$staging"
+        return 1
+    fi
+
+    if [ -e "$dest" ] || [ -L "$dest" ]; then
+        if ! mv "$dest" "$backup"; then
+            log_error "无法移除旧版本: $dest"
+            rm -rf "$staging"
+            return 1
+        fi
+    fi
+
+    if ! mv "$staging" "$dest"; then
+        log_error "无法安装到 $dest，正在回滚"
+        [ -e "$backup" ] && mv "$backup" "$dest"
+        rm -rf "$staging"
+        return 1
+    fi
+
+    rm -rf "$backup"
+    return 0
 }
 
 # 检测是否已安装
@@ -270,18 +321,18 @@ install_trae() {
     
     local app_in_volume
     app_in_volume=$(find "$volume_path" -maxdepth 1 -type d -iname "*trae*.app" | head -1)
-    if [ -n "$app_in_volume" ] && [ -d "$app_in_volume" ]; then
-        log_info "正在复制 $APP_NAME 到 $INSTALL_DIR..."
-        if ! cp -R "$app_in_volume" "$INSTALL_DIR/"; then
-            hdiutil detach "$volume_path" 2>/dev/null || true
-            return 1
-        fi
-    else
+    if [ -z "$app_in_volume" ] || [ ! -d "$app_in_volume" ]; then
         log_error "未在镜像中找到 Trae 应用"
         hdiutil detach "$volume_path" 2>/dev/null || true
         return 1
     fi
-    
+
+    log_info "正在复制 $(basename "$app_in_volume") 到 $INSTALL_DIR..."
+    if ! install_app_bundle "$app_in_volume"; then
+        hdiutil detach "$volume_path" 2>/dev/null || true
+        return 1
+    fi
+
     hdiutil detach "$volume_path" || return 1
     if rm -f -- "$dmg_path" "$dmg_path.url"; then
         log_info "已删除安装包: $dmg_path"
@@ -304,8 +355,9 @@ main() {
     fi
 
     if [[ "${1:-}" != "--yes" ]] && check_installed; then
-        log_warn "Trae 已安装 (版本: $(get_version))"
-        read -p "是否重新安装? (y/N): " reinstall
+        log_warn "已安装 TRAE 相关应用（版本: $(get_version)）"
+        log_warn "官网已合并为统一 TRAE，如升级提示要求卸载旧版应用，请按提示操作"
+        read -p "是否继续安装/替换? (y/N): " reinstall
         if [[ ! "$reinstall" =~ ^[Yy]$ ]]; then
             exit 0
         fi

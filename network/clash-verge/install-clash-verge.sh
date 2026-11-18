@@ -131,10 +131,13 @@ query_release() {
   }
   [ -z "$json" ] && { echo "API_EMPTY" >&2; return 1; }
 
-  printf "%s" "$json" | python3 - <<'PY'
-import json, subprocess, sys
+  # 注意：不能用 `printf "$json" | python3 - <<'PY'`，heredoc 会抢占 python 的 stdin，
+  # 导致 sys.stdin.read() 读空串、json.loads 报 "Expecting value: line 1 column 1"。
+  # JSON 改由环境变量传入，heredoc 仅作为脚本载体。
+  ZCV_JSON="$json" python3 - <<'PY'
+import json, os, subprocess, sys
 try:
-    release = json.loads(sys.stdin.read())
+    release = json.loads(os.environ["ZCV_JSON"])
 except Exception as e:
     print(f"JSON_ERROR {e}", file=sys.stderr); sys.exit(1)
 
@@ -361,6 +364,14 @@ install_clash_verge() {
         fi
       fi
     fi
+  fi
+
+  # 默认安装成功即删除安装包；KEEP_PACKAGE=1 时保留
+  if [ "${KEEP_PACKAGE:-0}" != "1" ] && [ -n "$pkg_path" ]; then
+    case "$pkg_path" in
+      /*) rm -f -- "$pkg_path" "$pkg_path.url" 2>/dev/null || true && ok "已删除安装包: $pkg_path" ;;
+      *) warn "跳过删除安装包（非绝对路径）: $pkg_path" ;;
+    esac
   fi
 }
 

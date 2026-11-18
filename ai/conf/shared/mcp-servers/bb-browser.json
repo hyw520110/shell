@@ -1,0 +1,80 @@
+{
+  "id": "bb-browser",
+  "name": "bb-browser MCP",
+  "description": "AI 代理浏览器控制工具。复用真实浏览器（Chrome）的登录态和 Cookie，支持 36+ 主流平台的自动化操作。MCP server 由 bb-browser-api 提供（唯一带 @modelcontextprotocol/sdk 依赖、支持 --mcp 的包）。",
+  "category": "automation",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g bb-browser-api",
+    "prepare": "bash ${SCRIPT_DIR}/scripts/mcp/prepare-bb-browser.sh",
+    "pre_install": [
+      "npm uninstall -g bb-browser-api 2>/dev/null || true"
+    ],
+    "post_install": [
+      {
+        "description": "缓存 npx 运行时避免首次超时",
+        "command": "bb-browser-api --version >/dev/null 2>&1 || true"
+      }
+    ]
+  },
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "bb-browser-api",
+      "--mcp"
+    ],
+    "transportType": "stdio",
+    "env": {}
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查 bb-browser-api 安装",
+      "command": "command -v bb-browser-api >/dev/null 2>&1 || echo '未安装'"
+    },
+    {
+      "name": "检查 bb-browser CLI",
+      "command": "command -v bb-browser >/dev/null 2>&1 || echo '未安装'"
+    },
+    {
+      "name": "检查 daemon",
+      "command": "bb-browser daemon status 2>/dev/null | grep -q 'Daemon running: yes' && echo 'daemon 运行中' || echo 'daemon 未运行'"
+    }
+  ],
+  "options": {
+    "browser": {
+      "description": "浏览器类型",
+      "values": [
+        "chrome",
+        "chromium"
+      ],
+      "default": "chrome"
+    }
+  },
+  "tags": [
+    "浏览器",
+    "自动化",
+    "登录态",
+    "爬虫",
+    "Agent"
+  ],
+  "scenarios": [
+    "productivity",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/skVPN/bb-browser-api",
+  "repository": "https://github.com/skVPN/bb-browser-api",
+  "recommended_scenarios": "复用 Chrome 登录态的网页自动化和数据抓取",
+  "unsuitable_scenarios": "需要无头浏览器且无登录态的场景（建议 playwright）"
+}

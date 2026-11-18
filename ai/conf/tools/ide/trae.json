@@ -1,31 +1,53 @@
 {
   "id": "trae",
   "name": "Trae",
-  "description": "TraeWork / TraeCode，支持国内版和国际版；安装/更新时多选版本",
+  "description": "字节跳动推出的 AI IDE，集成 Trae Agent，支持 Claude / GPT 等多模型，含国内版与国际版。",
   "category": "ai-ide",
+  "sort_order": 12,
+  "sort_key": "Trae",
   "tags": [
-    "ai",
-    "ide",
-    "bytedance"
+    "AI编程",
+    "IDE",
+    "字节跳动",
+    "Trae",
+    "Claude",
+    "GPT",
+    "MCP"
   ],
+  "scenarios": [
+    "coding",
+    "code-review",
+    "agent-workbench"
+  ],
+  "experimental": false,
+  "optional": false,
   "install": {
     "methods": [
       {
-        "name": "版本选择安装 (via 脚本)",
+        "name": "Trae 国内版 (TRAE_CN)",
         "type": "bash",
-        "command": "bash ide/trae/install-trae.sh",
-        "check": "command -v trae >/dev/null 2>&1 || command -v trae-cn >/dev/null 2>&1 || command -v traecode >/dev/null 2>&1 || command -v traework >/dev/null 2>&1 || { for app in /Applications/*[Tt][Rr][Aa][Ee]*.app; do [ ! -d \"$app\" ] || exit 0; done; exit 1; }",
-        "uninstall": [
-          "echo '请手动在 /Applications 中删除 Trae 应用'"
-        ]
+        "command": "TRAE_DOWNLOAD_REGION=cn bash ../ide/install-trae.sh --yes",
+        "check": "for app in /Applications/*[Tt][Rr][Aa][Ee]*.app; do [ -d \"$app\" ] && [ -x \"$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c \"Print :CFBundleExecutable\" \"$app/Contents/Info.plist\" 2>/dev/null)\" ] && exit 0; done; exit 1"
+      },
+      {
+        "name": "Trae 国际版 (TRAE)",
+        "type": "bash",
+        "command": "TRAE_DOWNLOAD_REGION=sg bash ../ide/install-trae.sh --yes",
+        "check": "for app in /Applications/*[Tt][Rr][Aa][Ee]*.app; do [ -d \"$app\" ] && [ -x \"$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c \"Print :CFBundleExecutable\" \"$app/Contents/Info.plist\" 2>/dev/null)\" ] && exit 0; done; exit 1"
       }
     ],
     "default_method": 0
   },
   "update": {
-    "command": "bash ide/trae/install-trae.sh",
-    "check": "command -v trae >/dev/null 2>&1 || command -v trae-cn >/dev/null 2>&1 || command -v traecode >/dev/null 2>&1 || command -v traework >/dev/null 2>&1 || { for app in /Applications/*[Tt][Rr][Aa][Ee]*.app; do [ ! -d \"$app\" ] || exit 0; done; exit 1; }"
+    "command": "TRAE_DOWNLOAD_REGION=cn bash ../ide/install-trae.sh --yes"
   },
+  "references": {
+    "homepage": "https://www.trae.cn",
+    "docs": "https://www.trae.cn/ide/download",
+    "international": "https://www.trae.ai/download",
+    "install_script": "ide/install-trae.sh"
+  },
+  "notes": "单一安装脚本: ide/install-trae.sh（389 行），已通过 TRAE_PRODUCT / TRAE_DOWNLOAD_REGION 环境变量区分产品与地区，无需分发器脚本。官方已合并 TraeWork/TraeCode 为统一 Trae：TraeWork 团队版（TRAE SOLO）已废弃，仅保留 TraeCode 产品（cn=国内版 TRAE_CN，sg=国际版 TRAE）。下载走 adl（存在时）优先，回退 curl；下载后校验 DMG 体积 ≥10MB 且非 HTML，并用 hdiutil verify。安装采用「临时目录完整复制 -> 退出旧版本 -> 原子替换」，避免 cp -R 到旧包导致 Electron Versions/Current 符号链接冲突。check 不再用 command -v trae-cn：/usr/local/bin/trae-cn 是断裂符号链接，app 被删后 command -v 仍会返回路径造成假阳性。",
   "config": {
     "path": "$HOME/Library/Application Support/Trae/User/settings.json",
     "operations": {
@@ -39,10 +61,7 @@
   "status_check": [
     {
       "name": "检查应用",
-      "command": "bash -c 'command -v trae >/dev/null 2>&1 || command -v trae-cn >/dev/null 2>&1 || command -v traecode >/dev/null 2>&1 || command -v traework >/dev/null 2>&1 || { for app in /Applications/*[Tt][Rr][Aa][Ee]*.app; do [ ! -d \"$app\" ] || exit 0; done; exit 1; }' && echo '已安装' || echo '未安装'"
+      "command": "bash -c 'command -v trae >/dev/null 2>&1 || command -v trae-cn >/dev/null 2>&1 || { for app in /Applications/*[Tt][Rr][Aa][Ee]*.app; do [ ! -d \"$app\" ] || exit 0; done; exit 1; }' && echo '已安装' || echo '未安装'"
     }
-  ],
-  "mcp_servers": {},
-  "skills": {},
-  "notes": "IDE 分类仅显示一个 Trae 入口。安装/更新时多选 TraeWork 国内版、TraeCode 国内版、TraeWork 国际版、TraeCode 国际版。macOS TraeCode 使用官方接口安装；TraeWork 和其他平台提供官方下载指引，待手动安装不会报告安装成功。"
+  ]
 }

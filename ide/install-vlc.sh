@@ -15,7 +15,9 @@ TARGET="/Applications/VLC.app"
 ARCH="intel64"
 [[ "$(uname -m)" == "arm64" ]] && ARCH="arm64"
 VERSION="${VLC_VERSION:-3.0.24}"
-URL="https://get.videolan.org/vlc/${VERSION}/macosx/vlc-${VERSION}-${ARCH}.dmg"
+# 注意：必须用 download.videolan.org（官方主镜像，返回 octet-stream 真 dmg）；
+# get.videolan.org 对单文件直连返回 HTML 页面（反爬），导致下载到 HTML 而非 dmg。
+URL="https://download.videolan.org/vlc/${VERSION}/macosx/vlc-${VERSION}-${ARCH}.dmg"
 
 case "${1:-}" in
     --status)

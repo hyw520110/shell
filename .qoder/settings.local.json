@@ -18,7 +18,19 @@
       "Bash(ls /Users/mac/workspace/shell/ai/conf /Users/mac/workspace/shell/ai/conf/tools 2>/dev/null; echo \"---\"; cat /Users/mac/workspace/shell/ai/conf/tools/ide/qoder*.json 2>/dev/null | head -60; echo \"---\"; ls /Users/mac/workspace/shell/ai/conf/tools/ide /Users/mac/workspace/shell/ai/conf/tools/cli 2>/dev/null)",
       "Bash(ls -la ~/.codex/ 2>/dev/null && echo \"---\" && ls ~/.codex/config.toml 2>/dev/null)",
       "Read(//Users/mac/.codex/**)",
-      "Bash(bash /Users/mac/workspace/shell/ai/ai-hub.sh --help 2>&1 | head -80)"
+      "Bash(bash /Users/mac/workspace/shell/ai/ai-hub.sh --help 2>&1 | head -80)",
+      "Bash(cd /Users/mac/workspace/shell && grep -rn \"Schema version\\\\|Migration v\\\\|code-review-graph\\\\|graph\" --include=*.sh --include=*.json --include=*.toml -l . 2>/dev/null | head -30)",
+      "Bash(cat ~/.qoder/settings.json 2>/dev/null; echo ---; ls /Users/mac/workspace/shell; echo ---; cat /Users/mac/workspace/shell/.qoder/settings.json 2>/dev/null; cat /Users/mac/workspace/shell/.mcp.json 2>/dev/null)",
+      "Read(//Users/mac/.qoder/**)",
+      "Bash(cd /Users/mac/workspace/shell && grep -rn \"graph\\\\|Graph\" git/giter.sh | head -20; echo \"=== settings hooks ===\"; ls -d .qoder 2>/dev/null && ls -R .qoder | head -40; echo \"=== global mcp ===\"; cat ~/.qoder/mcp.json 2>/dev/null; ls ~/.qoder)",
+      "Bash(cd /Users/mac/workspace/shell && cat .qoder/settings.local.json; echo \"=== plugins ===\"; ls ~/.qoder/plugins; find ~/.qoder/plugins -maxdepth 3 -name \"*.json\" | head -20)",
+      "Bash(cd /Users/mac/workspace/shell && grep -rls \"name_tokens\\\\|nodes_fts_state\\\\|target_resolution\" ~/.qoder ~/.config /Users/mac/workspace/shell 2>/dev/null | head -20)",
+      "Bash(cd /Users/mac/workspace/shell && grep -rli \"hooks\" ~/.qoder/settings.json .qoder/ 2>/dev/null; echo \"=== search binaries/scripts that print Schema version ===\"; grep -rl \"running migrations\" ~/.qoder ~/.npm-global ~/.local /usr/local/bin /opt/homebrew/bin 2>/dev/null | head)",
+      "Bash(cd /Users/mac/workspace/shell && ls .git/hooks | grep -v sample; echo \"=== giter repo conf ===\"; ls ~/.config/giter/repos 2>/dev/null; grep -rn \"review\\\\|graph\\\\|schema\\\\|migrat\" ~/.config/giter 2>/dev/null | head)",
+      "Bash(cd /Users/mac/workspace/shell && head -20 .git/hooks/post-commit .git/hooks/pre-commit .git/hooks/post-checkout)",
+      "Bash(command -v code-review-graph; code-review-graph --version 2>&1 | head -3; echo \"=== db ===\"; sqlite3 /Users/mac/workspace/shell/.code-review-graph/graph.db \"select * from meta limit 10;\" 2>/dev/null || sqlite3 /Users/mac/workspace/shell/.code-review-graph/graph.db \".tables\" 2>&1 | head)",
+      "Bash(cd /Users/mac/workspace/shell && code-review-graph daemon status 2>&1 | head -20; echo \"=== repos registry ===\"; code-review-graph repos 2>&1 | head -15)",
+      "Bash(curl -sS -m 30 \"https://api.github.com/repos/freefq/free\" | head -40)"
     ]
   }
 }

@@ -129,6 +129,11 @@ install_vscode_macos() {
     hdiutil detach "/Volumes/Visual Studio Code"
     
     log_info "Visual Studio Code 安装完成！"
+    # 默认安装成功即删除安装包；KEEP_PACKAGE=1 时保留
+    if [ "${KEEP_PACKAGE:-0}" != "1" ]; then
+        rm -f -- "$DOWNLOAD_DIR/$download_file" "$DOWNLOAD_DIR/$download_file.url" 2>/dev/null || true
+        log_info "已删除安装包: $DOWNLOAD_DIR/$download_file"
+    fi
 }
 
 # 安装VS Code（Linux）
@@ -234,6 +239,67 @@ configure_vscode() {
     log_info "Visual Studio Code 配置完成！"
 }
 
+# 卸载 Visual Studio Code（应用 + CLI 符号链接；用户数据默认保留，--purge 才删）
+uninstall_vscode() {
+    local app="/Applications/Visual Studio Code.app"
+    local cli="/usr/local/bin/code"
+    local userdata="$HOME/.vscode"
+    local app_support="$HOME/Library/Application Support/Code"
+    local caches="$HOME/Library/Caches/com.microsoft.VSCode"
+
+    if [ ! -d "$app" ] && [ ! -e "$cli" ]; then
+        log_warn "Visual Studio Code 似乎未安装（无 .app 且无 CLI 链接）"
+    fi
+
+    # 退出正在运行的实例
+    if pgrep -f "Visual Studio Code" >/dev/null 2>&1; then
+        log_info "检测到 VS Code 正在运行，尝试退出..."
+        osascript -e 'tell application "Visual Studio Code" to quit' 2>/dev/null || true
+        sleep 2
+        pkill -f "Visual Studio Code" 2>/dev/null || true
+    fi
+
+    # 删除 CLI 符号链接（若是断裂或指向该 app 的链接）
+    if [ -L "$cli" ]; then
+        local target
+        target=$(readlink "$cli" 2>/dev/null)
+        if [ -n "$target" ] && [[ "$target" == *"Visual Studio Code.app"* ]]; then
+            log_info "删除 CLI 符号链接: $cli"
+            rm -f -- "$cli" 2>/dev/null || true
+        else
+            log_info "CLI 链接 $cli 指向 $target（非本 app），跳过"
+        fi
+    fi
+
+    # 删除应用本体（带前缀保护，杜绝 rm -rf 空值事故）
+    if [ -d "$app" ]; then
+        log_info "删除应用: $app"
+        rm -rf -- "$app" 2>/dev/null || {
+            log_warn "无法删除 $app，尝试 sudo"
+            sudo rm -rf -- "$app" 2>/dev/null || log_error "删除失败: $app"
+        }
+    fi
+
+    # 用户数据（默认保留；--purge 才删除）
+    if [ "${PURGE_USER_DATA:-0}" = "1" ]; then
+        for p in "$userdata" "$app_support" "$caches"; do
+            if [ -e "$p" ]; then
+                log_info "删除用户数据: $p"
+                rm -rf -- "$p" 2>/dev/null || true
+            fi
+        done
+    else
+        log_info "用户数据保留: $HOME/.vscode（如需一并删除请用 --purge）"
+    fi
+
+    # 验证卸载干净
+    if [ -d "$app" ] || [ -L "$cli" ]; then
+        log_error "卸载不完整，仍有残留"
+        return 1
+    fi
+    log_info "Visual Studio Code 卸载完成"
+}
+
 # 显示使用帮助
 show_help() {
     cat << EOF
@@ -246,12 +312,15 @@ Visual Studio Code 一键安装配置脚本
   -v, --version    显示版本信息（空表示未安装）
   -i, --install    安装 Visual Studio Code
   -p, --plugins    配置常用插件（需要已安装）
+  -u, --uninstall  卸载 Visual Studio Code（保留用户数据；加 --purge 一并删除用户数据）
 
 示例:
   $0              # 交互式安装
   $0 --version    # 检查是否已安装
   $0 --install    # 直接安装
   $0 --plugins    # 配置常用插件
+  $0 --uninstall  # 卸载（保留用户数据）
+  $0 --uninstall --purge  # 卸载并删除用户数据
 
 EOF
 }
@@ -267,6 +336,12 @@ main() {
             ;;
         -p|--plugins)
             configure_vscode
+            ;;
+        -u|--uninstall)
+            if [[ "${2:-}" == "--purge" ]]; then
+                PURGE_USER_DATA=1
+            fi
+            uninstall_vscode
             ;;
         -i|--install|"")
             if check_installed; then

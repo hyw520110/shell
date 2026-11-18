@@ -604,7 +604,11 @@ backup_existing_install() {  # $1=已有安装路径
 commit_install() {
     if [ -n "$APP_BACKUP" ] && [ -e "$APP_BACKUP" ]; then
         log_info "验证通过，删除旧版本备份"
-        rm -rf "$APP_BACKUP"
+        # 安全防护：仅删除带 .bak- 后缀的备份，防止变量异常时误删
+        case "$APP_BACKUP" in
+            */.*.bak-*|/*/*.bak-*) rm -rf "$APP_BACKUP" ;;
+            *) log_warn "跳过删除备份（路径异常）: $APP_BACKUP" ;;
+        esac
     fi
     APP_BACKUP=""
     APP_BACKUP_ORIG=""
@@ -613,7 +617,13 @@ commit_install() {
 rollback_install() {
     [ -n "$APP_BACKUP" ] && [ -e "$APP_BACKUP" ] || return 0
     log_warn "安装/升级未通过验证，回滚到原有安装..."
-    [ -n "${CURRENT_APP:-}" ] && [ -e "$CURRENT_APP" ] && rm -rf "$CURRENT_APP"
+    # 安全防护：仅删除 /Applications 下的 .app，防止变量异常时误删
+    if [ -n "${CURRENT_APP:-}" ] && [ -e "$CURRENT_APP" ]; then
+        case "$CURRENT_APP" in
+            /Applications/*.app) rm -rf "$CURRENT_APP" ;;
+            *) log_warn "跳过回滚删除（路径异常）: $CURRENT_APP" ;;
+        esac
+    fi
     mv "$APP_BACKUP" "$APP_BACKUP_ORIG"
     APP_BACKUP=""
     log_warn "已回滚: $APP_BACKUP_ORIG"
@@ -960,6 +970,13 @@ install_eclipse() {
     log_info "Eclipse IDE 安装完成: $CURRENT_APP"
     log_info "版本: $(get_version)"
     log_info "可执行: eclipse  或  open -a Eclipse"
+    # 默认安装成功即删除安装包；KEEP_PACKAGE=1 时保留
+    if [ "${KEEP_PACKAGE:-0}" != "1" ] && [ -n "$ARTIFACT" ]; then
+        case "$ARTIFACT" in
+            /*) rm -f -- "$ARTIFACT" "$ARTIFACT.url" 2>/dev/null || true && log_info "已删除安装包: $ARTIFACT" ;;
+            *) log_warn "跳过删除安装包（非绝对路径）: $ARTIFACT" ;;
+        esac
+    fi
 }
 
 # ---------- doctor ----------

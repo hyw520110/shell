@@ -32,7 +32,7 @@
 #   TTS_ASYNC=false           同步播放（默认后台播放）
 #   TTS_MAX_TEXT=160          单次播报最大字符数
 #   TTS_THROTTLE=5            连续播报最小间隔秒数（0=禁用）
-#   TTS_CONCURRENCY=skip      并发模式: skip 跳过 / queue 排队 / latest 只播最新
+#   TTS_CONCURRENCY=queue     并发模式: skip 跳过 / queue 排队(默认,按事件优先级) / latest 只播最新
 #   TTS_QUEUE_TIMEOUT=30      queue 模式最大排队等待秒数
 #   TTS_PLAY_TIMEOUT=8        单条播报超时秒数（防止引擎挂起）
 #   TTS_LOCK_TIMEOUT=60       播报锁超时秒数（异常残留后自动回收）
@@ -46,10 +46,18 @@
 #   TTS_FORCE=true            允许替换同名非本脚本软链接
 #   TTS_CLIENTS="codex ..."   自定义客户端发现清单
 #   TTS_VERBOSE=true          输出调试日志到 stderr
+#   TTS_DESKTOP_NOTIFY=false  启用桌面通知（macOS osascript / Linux notify-send）
+#   TTS_WEBHOOK_URL=""        可选 Webhook URL（企业微信/钉钉/Telegram/Server酱等）
+#   TTS_WEBHOOK_SECRET=""     可选 Webhook 密钥（用于签名或 Bearer）
+#   TTS_WEBHOOK_TIMEOUT=5     Webhook 请求超时秒数
+#   TTS_LOG_FILE=""           播报历史日志（默认 ~/.local/share/tts-notify/history.log）
+#   TTS_RATE=0                播放速率，-100~100 (edge-tts rate；0 为默认)
+#   TTS_VOLUME=0              音量，-100~100 (edge-tts volume；0 为默认)
+#   TTS_PITCH=0               音调，-100~100 (edge-tts pitch；0 为默认)
 
 set -u -o pipefail
 
-TTS_NOTIFY_VERSION="1.3.0"
+TTS_NOTIFY_VERSION="1.4.0"
 
 usage() {
     printf '%s\n' \
@@ -57,12 +65,12 @@ usage() {
         "      $0 clients" \
         "      $0 detect" \
         "      $0 integrate [--tool <name>]" \
-        "      $0 complete [--tool <name>]" \
-        "      $0 confirm [--tool <name>]" \
-        "      $0 error [--tool <name>]" \
-        "      $0 info --text '自定义提示' [--tool <name>]" \
-        "      $0 run [--tool <name>] -- <command> [args...]" \
-        "      $0 --text '自定义提示' [--tool <name>]" \
+        "      $0 complete [--tool <name>] [--rate N] [--volume N] [--pitch N] [--local]" \
+        "      $0 confirm [--tool <name>] [--rate N] [--volume N] [--pitch N] [--local]" \
+        "      $0 error [--tool <name>] [--rate N] [--volume N] [--pitch N] [--local]" \
+        "      $0 info --text '自定义提示' [--tool <name>] [--rate N] [--local]" \
+        "      $0 run [--tool <name>] [--text '成功消息'] [--error-text '失败消息'] [--quiet] [--stats] [--on-success CMD] [--on-fail CMD] -- <command> [args...]" \
+        "      $0 --text '自定义提示' [--tool <name>] [--rate N] [--volume N] [--pitch N] [--local]" \
         "      $0 voices" \
         "      $0 install-espeak [--check]" \
         "      $0 --version" \
@@ -88,6 +96,10 @@ tool_display_name() {
         aider)             echo "Aider" ;;
         goose)             echo "Goose" ;;
         qoder|qodercli)    echo "Qoder" ;;
+        comate|comatecli)  echo "Comate" ;;
+        deepseek|dsh)      echo "DeepSeek Harness" ;;
+        trae|trae-cn)      echo "Trae" ;;
+        hermes)            echo "Hermes" ;;
         generic|"")        echo "" ;;
         *)                 echo "$1" ;;
     esac
@@ -99,6 +111,10 @@ normalize_tool() {
         claude-code) echo "claude" ;;
         gemini-cli) echo "gemini" ;;
         agy-cli) echo "agy" ;;
+        qodercli) echo "qoder" ;;
+        comatecli) echo "comate" ;;
+        dsh) echo "deepseek" ;;
+        trae-cn) echo "trae" ;;
         "") echo "generic" ;;
         *) echo "$1" ;;
     esac
@@ -116,6 +132,11 @@ client_commands() {
         aider) echo "aider" ;;
         goose) echo "goose" ;;
         qwen|tongyi) echo "qwen qwen-code" ;;
+        qoder) echo "qoder qoder-cli" ;;
+        comate) echo "comatecli" ;;
+        deepseek) echo "dsh" ;;
+        trae) echo "trae trae-cn" ;;
+        hermes) echo "hermes" ;;
         *) echo "" ;;
     esac
 }
@@ -144,6 +165,11 @@ tool_from_command() {
         aider) echo aider ;;
         goose) echo goose ;;
         qwen|qwen-code) echo qwen ;;
+        qoder|qoder-cli) echo qoder ;;
+        comatecli) echo comate ;;
+        dsh) echo deepseek ;;
+        trae|trae-cn) echo trae ;;
+        hermes) echo hermes ;;
         *) echo "" ;;
     esac
 }
@@ -167,6 +193,11 @@ tool_from_proc() {
         aider) echo aider; return ;;
         goose) echo goose; return ;;
         qwen|qwen-code) echo qwen; return ;;
+        qoder|qoder-cli) echo qoder; return ;;
+        comatecli) echo comate; return ;;
+        dsh) echo deepseek; return ;;
+        trae|trae-cn) echo trae; return ;;
+        hermes) echo hermes; return ;;
         node|bun|deno|python|python3|python3.1*)
             local rest arg sub
             rest="${1#* }"
@@ -181,6 +212,11 @@ tool_from_proc() {
                             *claude-code*|*@anthropic-ai/claude*|*claude/cli*|*claude.js) echo claude; return ;;
                             *opencode*) echo opencode; return ;;
                             *qwen*) echo qwen; return ;;
+                            *qoder*) echo qoder; return ;;
+                            *comate*) echo comate; return ;;
+                            *deepseek-harness*|*@deepseek-ai/dsh*) echo deepseek; return ;;
+                            *trae*) echo trae; return ;;
+                            *hermes-agent*|*hermes/cli*|*hermes_cli*) echo hermes; return ;;
                         esac
                         return ;;
                 esac
@@ -219,7 +255,7 @@ detect_tool() {
 }
 
 discover_clients() {
-    local list="${TTS_CLIENTS:-codex opencode agy claude gemini cursor aider goose}"
+    local list="${TTS_CLIENTS:-codex opencode agy claude gemini cursor aider goose qoder comate deepseek trae hermes}"
     local tool binary
     for tool in $list; do
         if binary="$(first_client_command "$tool" 2>/dev/null)"; then
@@ -608,6 +644,17 @@ play_tts_once() {
     local timeout="${TTS_PLAY_TIMEOUT:-8}" p0
     local edge_proxy="${TTS_EDGE_PROXY:-${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}}"
     local -a edge_args=(--voice "$voice" --text "$text")
+    # 播放参数: rate/volume/pitch (仅当非 0 时添加，避免 edge-tts 报错)
+    local rate="${TTS_RATE:-0}" volume="${TTS_VOLUME:-0}" pitch="${TTS_PITCH:-0}"
+    if [ "$rate" != "0" ] && [ -n "$rate" ]; then
+        edge_args+=(--rate "+${rate}%")
+    fi
+    if [ "$volume" != "0" ] && [ -n "$volume" ]; then
+        edge_args+=(--volume "+${volume}%")
+    fi
+    if [ "$pitch" != "0" ] && [ -n "$pitch" ]; then
+        edge_args+=(--pitch "+${pitch}Hz")
+    fi
     if [ -n "$edge_proxy" ]; then
         edge_args+=(--proxy "$edge_proxy")
     fi
@@ -616,9 +663,16 @@ play_tts_once() {
     # 1) edge-tts + play（需在线；PIPESTATUS 校验 edge-tts 退出码，防止假成功）
     if command -v edge-tts >/dev/null 2>&1 && command -v play >/dev/null 2>&1 \
         && net_available; then
-        perl -e 'alarm shift; exec @ARGV' "$timeout" edge-tts "${edge_args[@]}" 2>/dev/null \
-            | play -q -t mp3 - >/dev/null 2>&1
-        p0="${PIPESTATUS[0]}"
+        # 瞬时失败重试 1 次，避免偶发网络抖动导致音质降级到本地引擎
+        p0=1
+        for attempt in 1 2; do
+            perl -e 'alarm shift; exec @ARGV' "$timeout" edge-tts "${edge_args[@]}" 2>/dev/null \
+                | play -q -t mp3 - >/dev/null 2>&1
+            p0="${PIPESTATUS[0]}"
+            [ "$p0" -eq 0 ] && break
+            tts_log "edge-tts 第 ${attempt} 次播放失败，重试/回退"
+            [ "$attempt" -eq 1 ] && sleep 1
+        done
         if [ "$p0" -eq 0 ]; then
             tts_log "使用 edge-tts + play"
             return 0
@@ -679,40 +733,81 @@ acquire_lock() {
                 return 0
             fi
         fi
+    else
+        # 无 owner 的残留目录（异常中断后 trap 未清或 owner 丢失）：
+        # 空目录视为失效锁，立即回收，避免永久静音。
+        if [ -z "$(ls -A "$lock_root" 2>/dev/null)" ]; then
+            tts_log "检测到无 owner 的残留锁目录，回收"
+            rmdir "$lock_root" 2>/dev/null || rm -rf "$lock_root" 2>/dev/null || true
+            if mkdir "$lock_root" 2>/dev/null; then
+                printf '%s %s\n' "$$" "$(date +%s)" > "$lock_root/owner" 2>/dev/null
+                return 0
+            fi
+        fi
     fi
     return 1
+}
+
+# 事件 -> 优先级 (数值越小越优先: error > confirm > complete > info > text)
+priority_for_event() {
+    case "$1" in
+        error)   echo 0 ;;
+        confirm) echo 1 ;;
+        complete) echo 2 ;;
+        info)    echo 3 ;;
+        *)       echo 4 ;;
+    esac
+}
+
+# 队列目录: 每个待播项是一个文件, 文件名 "<priority>_<seq>", 内容为 "event<TAB>text"
+# 同一优先级按 seq 升序 (FIFO); 不同优先级按数值升序 (高优先级先播)
+queue_root() { printf '%s\n' "${TMPDIR:-/tmp}/tts-notify.play.queue"; }
+
+enqueue_item() {
+    local qroot event text priority seq
+    qroot="$(queue_root)"
+    event="$1" text="$2"
+    priority="$(priority_for_event "$event")"
+    mkdir -p "$qroot" 2>/dev/null || return 0
+    seq="$(date +%s%N 2>/dev/null || date +%s).$$.$RANDOM"
+    printf '%s\t%s\n' "$event" "$text" > "$qroot/${priority}_${seq}" 2>/dev/null || return 0
+    tts_log "已排队 (priority=$priority event=$event): $text"
+}
+
+# 取出并删除优先级最高的待播项; 无则输出空
+dequeue_highest() {
+    local qroot picked
+    qroot="$(queue_root)"
+    [ -d "$qroot" ] || return 1
+    picked="$(ls -1 "$qroot" 2>/dev/null | sort -t_ -k1,1n -k2,2n | head -n 1)"
+    [ -n "$picked" ] || return 1
+    cat "$qroot/$picked" 2>/dev/null
+    rm -f "$qroot/$picked" 2>/dev/null || true
 }
 
 # 语音播报（按优先级回退，失败不影响退出码）
 # 并发控制: 通过 mkdir 原子锁防止多个通知同时播放而叠加;
 # TTS_CONCURRENCY 决定已有播报进行中时的行为:
-#   skip   (默认) 跳过本次播报
-#   queue          排队等待, 按顺序播报 (最多等 TTS_QUEUE_TIMEOUT 秒)
+#   skip           跳过本次播报 (已有播报进行中时)
+#   queue          排队等待, 按事件优先级播报 (error>confirm>complete>info>text, 同优先级 FIFO)
 #   latest         不等待: 记录为最新待播通知 (覆盖旧待播), 当前播报结束后立即接续
 # 锁老化: 锁被异常中断残留超过 TTS_LOCK_TIMEOUT 秒时自动回收，避免永久静音
 tts_speak_sync() {
-    local text="$1" mode="${TTS_CONCURRENCY:-skip}"
+    local text="$1" event="${2:-text}"
+    local mode="${TTS_CONCURRENCY:-queue}"
     local lock_root="${TMPDIR:-/tmp}/tts-notify.play.lock"
-    local waited current next
+    local waited current next event_next line
 
     # 抢占锁：失败说明已有播报进行中，按模式处理
     if ! acquire_lock "$lock_root"; then
         case "$mode" in
             queue)
-                tts_log "已有播报进行中，排队等待（最多 ${TTS_QUEUE_TIMEOUT:-30}s）"
-                waited=0
-                while [ "$waited" -lt $(( ${TTS_QUEUE_TIMEOUT:-30} * 2 )) ]; do
-                    sleep 0.5
-                    acquire_lock "$lock_root" && break
-                    waited=$((waited + 1))
-                done
-                acquire_lock "$lock_root" || {
-                    tts_log "排队超时，跳过本次播报"
-                    return 0
-                }
+                tts_log "已有播报进行中，按优先级排队 (event=$event)"
+                enqueue_item "$event" "$text"
+                return 0
                 ;;
             latest)
-                printf '%s\n' "$text" > "$lock_root/pending" 2>/dev/null || return 0
+                printf '%s\n%s\n' "$event" "$text" > "$lock_root/pending" 2>/dev/null || return 0
                 tts_log "已有播报进行中，已记录为最新通知，播报结束后接续"
                 return 0
                 ;;
@@ -726,18 +821,30 @@ tts_speak_sync() {
         # 锁目录内含 owner/pending 文件，必须 rm -rf 而非 rmdir 才能完整释放
         trap 'rm -rf "${TMPDIR:-/tmp}/tts-notify.play.lock" 2>/dev/null || true' EXIT
         current="$text"
+        event_current="$event"
         while :; do
             # 续期锁时间戳，避免正常播放被其他调用者当作过期锁回收
             printf '%s %s\n' "$$" "$(date +%s)" > "$lock_root/owner" 2>/dev/null
             play_tts_once "$current"
             next=""
+            # 1) 优先接续 latest 模式记录的待播项
             if [ -f "$lock_root/pending" ]; then
-                next="$(cat "$lock_root/pending" 2>/dev/null || true)"
+                IFS=$'\n' read -r event_next next < "$lock_root/pending" 2>/dev/null || { next=""; event_next=""; }
                 rm -f "$lock_root/pending"
+            fi
+            # 2) 否则从优先级队列取最高优先级项
+            if [ -z "$next" ]; then
+                line="$(dequeue_highest 2>/dev/null || true)"
+                if [ -n "$line" ]; then
+                    IFS=$'\t' read -r event_next next <<EOF
+$line
+EOF
+                fi
             fi
             [ -n "$next" ] || break
             current="$next"
-            tts_log "接续播报最新通知"
+            event_current="${event_next:-text}"
+            tts_log "接续播报 (event=$event_current)"
         done
     )
     return 0
@@ -745,18 +852,66 @@ tts_speak_sync() {
 
 # 默认后台播放，避免通知阻塞 AI 客户端；需要严格等待时传 --sync。
 # 异步子 shell 仅吞 stdout，保留 stderr 供 TTS_VERBOSE 调试（默认无输出）。
+# disown 防止脚本退出时 SIGHUP 杀死后台播报；作为 hook 调用时配合 TTS_FORCE_LOCAL 使用。
 tts_speak() {
-    local text="$1"
+    local text="$1" event="${2:-text}"
     if [ "${TTS_ASYNC:-true}" = "true" ]; then
-        (tts_speak_sync "$text") >/dev/null &
+        tts_speak_sync "$text" "$event" >/dev/null 2>&1 &
+        disown 2>/dev/null || true
     else
-        tts_speak_sync "$text"
+        tts_speak_sync "$text" "$event"
     fi
     return 0
 }
 
+# 桌面通知（可选，静音场景也能看到）：macOS osascript / Linux notify-send
+desktop_notify() {
+    local text="$1" title="${2:-任务提醒}"
+    [ "${TTS_DESKTOP_NOTIFY:-false}" = "true" ] || return 0
+    if command -v osascript >/dev/null 2>&1; then
+        osascript -e "display notification \"$(printf '%s' "$text" | sed 's/"/\\"/g')\" with title \"$(printf '%s' "$title" | sed 's/"/\\"/g')\"" >/dev/null 2>&1 || true
+    elif command -v notify-send >/dev/null 2>&1; then
+        notify-send "$title" "$text" >/dev/null 2>&1 || true
+    else
+        tts_log "TTS_DESKTOP_NOTIFY=true 但未找到 osascript/notify-send"
+    fi
+}
+
+# Webhook 转发（可选）：企业微信/钉钉/Telegram/Server酱等，异步不阻塞播报。
+# TTS_WEBHOOK_URL 支持 {event} 占位符（complete/confirm/error/info/text）。
+# 请求体: {"event": "...", "tool": "...", "message": "...", "time": "<epoch>"}
+webhook_notify() {
+    local url="${TTS_WEBHOOK_URL:-}" event="$1" tool="$2" text="$3" body
+    [ -n "$url" ] || return 0
+    [ -n "$tool" ] || tool="generic"
+    body="$(printf '{"event":"%s","tool":"%s","message":"%s","time":"%s"}' \
+        "$event" "$tool" "$text" "$(date +%s)")"
+    url="${url//\{event\}/$event}"
+    {
+        if [ -n "${TTS_WEBHOOK_SECRET:-}" ]; then
+            curl -sS --max-time "${TTS_WEBHOOK_TIMEOUT:-5}" -X POST \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer ${TTS_WEBHOOK_SECRET}" \
+                -d "$body" "$url" >/dev/null 2>&1
+        else
+            curl -sS --max-time "${TTS_WEBHOOK_TIMEOUT:-5}" -X POST \
+                -H "Content-Type: application/json" \
+                -d "$body" "$url" >/dev/null 2>&1
+        fi
+    } &
+    tts_log "Webhook 已异步发送 (event=$event tool=$tool)"
+}
+
+# 播报历史日志：追加一行 时间/事件/工具/文本，便于排查"为什么没响/是否被节流"
+history_log() {
+    local file="${TTS_LOG_FILE:-$HOME/.local/share/tts-notify/history.log}" event="$1" tool="$2" text="$3"
+    [ -n "$file" ] || return 0
+    mkdir -p "$(dirname "$file")" 2>/dev/null || return 0
+    printf '%s\t%s\t%s\t%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$event" "$tool" "$text" >> "$file" 2>/dev/null || true
+}
+
 notify_current() {
-    local throttle_file now last
+    local throttle_file now last event="text"
     if [ "${TTS_ENABLED:-true}" = "false" ]; then
         tts_log "TTS_ENABLED=false，跳过语音播报"
         return 0
@@ -777,11 +932,25 @@ notify_current() {
     fi
     TOOL_FINAL="$(detect_tool)"
     TTS_MSG="$(resolve_message "$TOOL_FINAL")"
-    tts_speak "$TTS_MSG"
+    # 从 MESSAGE 推导事件类型，供 webhook/历史日志分流
+    case "$MESSAGE" in
+        __COMPLETE__) event="complete" ;;
+        __CONFIRM__)  event="confirm" ;;
+        __ERROR__)    event="error" ;;
+        __INFO__)     event="info" ;;
+        *)            event="text" ;;
+    esac
+    # 先落扩展渠道（桌面/Webhook/历史），再播语音；任一步失败都不影响语音
+    desktop_notify "$TTS_MSG" "$(tool_display_name "$TOOL_FINAL")"
+    webhook_notify "$event" "$TOOL_FINAL" "$TTS_MSG"
+    history_log "$event" "$TOOL_FINAL" "$TTS_MSG"
+    tts_speak "$TTS_MSG" "$event"
 }
 
 run_wrapped_command() {
     local tool="auto" rc detected
+    local success_text="" error_text="" quiet="false" stats="false"
+    local on_success="" on_fail="" start_time=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --tool)
@@ -791,6 +960,34 @@ run_wrapped_command() {
                     return 2
                 fi
                 tool="$2"
+                shift 2
+                ;;
+            --text)
+                [ $# -ge 2 ] || { printf '%s\n' "--text 缺少参数" >&2; return 2; }
+                success_text="$2"
+                shift 2
+                ;;
+            --error-text)
+                [ $# -ge 2 ] || { printf '%s\n' "--error-text 缺少参数" >&2; return 2; }
+                error_text="$2"
+                shift 2
+                ;;
+            --quiet)
+                quiet="true"
+                shift
+                ;;
+            --stats)
+                stats="true"
+                shift
+                ;;
+            --on-success)
+                [ $# -ge 2 ] || { printf '%s\n' "--on-success 缺少参数" >&2; return 2; }
+                on_success="$2"
+                shift 2
+                ;;
+            --on-fail)
+                [ $# -ge 2 ] || { printf '%s\n' "--on-fail 缺少参数" >&2; return 2; }
+                on_fail="$2"
                 shift 2
                 ;;
             --)
@@ -807,15 +1004,37 @@ run_wrapped_command() {
         detected="$(tool_from_command "$1")"
         tool="${detected:-generic}"
     fi
+    if [ "$stats" = "true" ]; then
+        start_time="$(date +%s)"
+    fi
     "$@"
     rc=$?
     REQUESTED_TOOL="$tool"
     if [ "$rc" -eq 0 ]; then
         MESSAGE="__COMPLETE__"
+        [ -n "$success_text" ] && MESSAGE="$success_text"
+        # --stats 追加耗时到成功消息
+        if [ "$stats" = "true" ] && [ -n "$start_time" ]; then
+            local elapsed=$(( $(date +%s) - start_time ))
+            MESSAGE="${MESSAGE}（用时 ${elapsed}s）"
+        fi
     else
         MESSAGE="__ERROR__"
+        [ -n "$error_text" ] && MESSAGE="$error_text"
+        # --stats 追加耗时到失败消息
+        if [ "$stats" = "true" ] && [ -n "$start_time" ]; then
+            local elapsed=$(( $(date +%s) - start_time ))
+            MESSAGE="${MESSAGE}（用时 ${elapsed}s）"
+        fi
     fi
-    notify_current
+    # 回调: 成功/失败后额外执行，失败回调不改变退出码
+    if [ "$rc" -eq 0 ] && [ -n "$on_success" ]; then
+        eval "$on_success" >/dev/null 2>&1 || true
+    fi
+    if [ "$rc" -ne 0 ] && [ -n "$on_fail" ]; then
+        eval "$on_fail" >/dev/null 2>&1 || true
+    fi
+    [ "$quiet" = "true" ] || notify_current
     return "$rc"
 }
 
@@ -846,8 +1065,27 @@ parse_event_args() {
                 TTS_VOICE="$2"
                 shift 2
                 ;;
+            --rate)
+                [ $# -ge 2 ] || { printf '%s\n' "--rate 缺少参数" >&2; return 2; }
+                TTS_RATE="$2"
+                shift 2
+                ;;
+            --volume)
+                [ $# -ge 2 ] || { printf '%s\n' "--volume 缺少参数" >&2; return 2; }
+                TTS_VOLUME="$2"
+                shift 2
+                ;;
+            --pitch)
+                [ $# -ge 2 ] || { printf '%s\n' "--pitch 缺少参数" >&2; return 2; }
+                TTS_PITCH="$2"
+                shift 2
+                ;;
             --sync)
                 TTS_ASYNC=false
+                shift
+                ;;
+            --local)
+                TTS_FORCE_LOCAL=true
                 shift
                 ;;
             *)
@@ -922,8 +1160,27 @@ main() {
                         TTS_VOICE="$2"
                         shift 2
                         ;;
+                    --rate)
+                        [ $# -ge 2 ] || { printf '%s\n' "--rate 缺少参数" >&2; return 2; }
+                        TTS_RATE="$2"
+                        shift 2
+                        ;;
+                    --volume)
+                        [ $# -ge 2 ] || { printf '%s\n' "--volume 缺少参数" >&2; return 2; }
+                        TTS_VOLUME="$2"
+                        shift 2
+                        ;;
+                    --pitch)
+                        [ $# -ge 2 ] || { printf '%s\n' "--pitch 缺少参数" >&2; return 2; }
+                        TTS_PITCH="$2"
+                        shift 2
+                        ;;
                     --sync)
                         TTS_ASYNC=false
+                        shift
+                        ;;
+                    --local)
+                        TTS_FORCE_LOCAL=true
                         shift
                         ;;
                     *)

@@ -204,6 +204,13 @@ install_windsurf() {
     
     hdiutil detach "$volume_path"
     log_info "Windsurf/Devin Desktop 安装完成！"
+    # 默认安装成功即删除安装包；KEEP_PACKAGE=1 时保留
+    if [ "${KEEP_PACKAGE:-0}" != "1" ] && [ -n "$dmg_path" ]; then
+        case "$dmg_path" in
+            /*) rm -f -- "$dmg_path" "$dmg_path.url" 2>/dev/null || true && log_info "已删除安装包: $dmg_path" ;;
+            *) log_warn "跳过删除安装包（非绝对路径）: $dmg_path" ;;
+        esac
+    fi
 }
 
 # 主函数

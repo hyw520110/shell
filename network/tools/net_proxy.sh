@@ -11,6 +11,13 @@ PROXY_VARS="HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy"
 PROXY_DIR="$HOME/.net_proxy"
 mkdir -p "$PROXY_DIR"
 
+# 直连例外（NO_PROXY）的默认值，只放任何机器都成立的条目：本机地址 + 国内顶级域。
+# 国内站点的长尾不用写在这儿：Clash 配置里 GEOSITE,cn / GEOIP,CN 已经让它们直连了，
+# NO_PROXY 唯一的用处是「代理客户端没起来时也必须连得上」，所以列表越短越好。
+DEFAULT_NO_PROXY="localhost,127.0.0.1,::1,.local,.cn,.com.cn"
+# 要再加例外就改这个文件，一行一个后缀，脚本会把它并进 NO_PROXY
+NO_PROXY_FILE="$PROXY_DIR/no_proxy"
+
 # 脚本参数
 # 执行操作
 ACTION=""
@@ -48,6 +55,13 @@ show_help() {
     echo "  $0 -v                    # 查看当前代理信息"
     echo "  $0 -d http               # 下载HTTP代理列表"
     echo "  $0 -d socks5             # 下载SOCKS5代理列表"
+    echo ""
+    echo "直连例外（NO_PROXY）:"
+    echo "  默认值: $DEFAULT_NO_PROXY"
+    echo "  自定义文件: $NO_PROXY_FILE （一行一个域名后缀，# 开头是注释）"
+    echo "  例: echo '.example.com' >> $NO_PROXY_FILE && $0 -s"
+    echo "  国内站点不用逐条列：Clash 配置里 GEOSITE,cn / GEOIP,CN 已经直连，"
+    echo "  这里只放「代理客户端没起来时也必须连得上」的地址（如自建服务、内网机器）"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -220,12 +234,84 @@ delete_proxy_from_config() {
     }
 }
 
+# 首次使用时给例外文件放一份起点内容，已存在就绝不覆盖
+ensure_no_proxy_file() {
+    [[ -f "$NO_PROXY_FILE" ]] && return 0
+    cat > "$NO_PROXY_FILE" <<'EOF'
+# 一行一个域名后缀（开头带点表示连子域一起），net_proxy.sh -s 会把这里的内容并进 NO_PROXY
+# 只放「代理客户端没运行时也必须直连」的地址；国内通用站点靠 .cn / .com.cn 就够了
+# 别放直连不通的域（先 curl --noproxy '*' https://该域/ 验一下），否则等于把它从代理里踢出去打死
+# curl 8.x 认网段（Node/undici 不认，只会当不匹配、不会出错），所以内网写网段就够，别写单个 IP
+
+# 国内大厂主域（.com 结尾、.cn 覆盖不到的那批）
+.aliyun.com
+.aliyuncs.com
+.qq.com
+.tencent.com
+.tencentcloudapi.com
+.myqcloud.com
+.huaweicloud.com
+.myhuaweicloud.com
+.jd.com
+.163.com
+.126.com
+.baidu.com
+.taobao.com
+.tmall.com
+.1688.com
+.alipay.com
+.amap.com
+.dingtalk.com
+.volcengine.com
+.bilibili.com
+.toutiao.com
+.weibo.com
+.sohu.com
+.ifeng.com
+
+# 开发常用：代码托管、镜像源、文档
+gitee.com
+.npmmirror.com
+.csdn.net
+.oschina.net
+.upyun.com
+.qiniu.com
+
+# 内网网段（curl 8.x 生效；客户端开着时 profile 的 private 规则也兜着）
+192.168.0.0/16
+192.168.1.0/16
+10.0.0.0/8
+172.16.0.0/12
+EOF
+}
+
+# 默认值加自定义文件合成 NO_PROXY 的取值：去空行、去重、保持先后顺序
+build_no_proxy() {
+    local line items="$DEFAULT_NO_PROXY" re='^[A-Za-z0-9._:/-]+$'
+    if [[ -f "$NO_PROXY_FILE" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            line="${line%%#*}"
+            line="$(printf '%s' "$line" | tr -d ' \t\r')"
+            [[ -z "$line" ]] && continue
+            # 这个值最终要写进 ~/.zshrc，非法条目一律拦掉，不让文件内容拼出命令来
+            # 允许 / 是因为 curl 8.x 认 CIDR（192.168.0.0/16），Node/undici 只是不匹配、不会出错
+            if [[ "$line" =~ $re ]]; then
+                items="$items,$line"
+            else
+                echo "已跳过 $NO_PROXY_FILE 中的非法条目: $line" >&2
+            fi
+        done < "$NO_PROXY_FILE"
+    fi
+    printf '%s' "$items" | tr ',' '\n' | awk 'NF && !seen[$0]++' | paste -sd, -
+}
+
 # 在配置文件中设置环境变量（添加或更新）
 set_proxy_in_config() {
     local USR_ENV_FILE="$1"
     local ip="$2"
     local port="$3"
     local proxy_type="${4:-http}"
+    local no_proxy_value
 
     # 检查配置文件是否存在，如果不存在则创建
     if [[ ! -f "$USR_ENV_FILE" ]]; then
@@ -235,10 +321,14 @@ set_proxy_in_config() {
     # 先删除现有的代理设置
     delete_proxy_from_config "$USR_ENV_FILE"
 
+    ensure_no_proxy_file
+    no_proxy_value="$(build_no_proxy)"
+
     # 添加新的代理设置到文件末尾
     {
         echo ""
         echo "# 网络代理设置 - 由 net_proxy.sh 自动生成"
+        echo "# 直连例外来自 ${NO_PROXY_FILE}，改完重新执行 net_proxy.sh -s"
         if [[ "$proxy_type" == "socks5" ]]; then
             echo "export ALL_PROXY=\"socks5://$ip:$port\""
             echo "export all_proxy=\"socks5://$ip:$port\""
@@ -253,7 +343,7 @@ set_proxy_in_config() {
             echo "export https_proxy=\"http://$ip:$port\""
             echo "#export ALL_PROXY=\"socks5://$ip:$port\"  # 如果需要socks代理，取消注释此行"
         fi
-        echo "export NO_PROXY=\"\""
+        echo "export NO_PROXY=\"$no_proxy_value\""
         echo "export no_proxy=\"\$NO_PROXY\""
     } >> "$USR_ENV_FILE"
 
@@ -593,7 +683,7 @@ auto_detect_and_set_proxy() {
                 # 端口连通，继续用 curl 测试
                 local ip=$(echo "$proxy_url" | sed 's/.*:\/\/\([^:]*\):.*/\1/')
                 local port=$(echo "$proxy_url" | sed 's/.*:\/\/[^:]*:\(.*\)/\1/')
-                echo "  端口连通: $ip:$port，正在用 curl 测试..."
+                echo "  端口连通: ${ip}:${port}，正在用 curl 测试..."
                 if test_proxy_with_curl "$proxy_url" 5; then
                     IP="$ip"
                     PORT="$port"
@@ -719,7 +809,7 @@ case "$ACTION" in
             export http_proxy="$HTTP_PROXY"
             export https_proxy="$HTTPS_PROXY"
         fi
-        export NO_PROXY=""
+        export NO_PROXY="$(build_no_proxy)"
         export no_proxy="$NO_PROXY"
 
         # 获取shell配置文件路径并更新配置文件

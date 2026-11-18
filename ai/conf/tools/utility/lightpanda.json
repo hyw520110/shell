@@ -1,0 +1,54 @@
+{
+  "id": "lightpanda",
+  "name": "Lightpanda",
+  "description": "用 Zig 实现的极轻 headless 浏览器，内置 Chrome DevTools Protocol（CDP），可被 Playwright、Puppeteer、browser-use、crawl4ai 等通过 CDP 接入，适合无头自动化与 Agent 浏览任务。",
+  "category": "ai-utility",
+  "tags": [
+    "浏览器",
+    "自动化",
+    "CDP",
+    "headless",
+    "Agent",
+    "爬虫"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "GitHub Release 二进制下载",
+        "type": "bash",
+        "command": "bash scripts/browser/install-lightpanda.sh",
+        "check": "command -v lightpanda >/dev/null 2>&1 && lightpanda --version 2>&1 | head -1 || echo '未安装'",
+        "uninstall": [
+          "rm -f ~/.local/bin/lightpanda",
+          "rm -rf ~/.ai-hub/tools/lightpanda"
+        ]
+      }
+    ],
+    "default_method": 0,
+    "prepare": ""
+  },
+  "update": {
+    "command": "bash scripts/browser/update-lightpanda.sh",
+    "check": "lightpanda --version 2>&1 | head -1"
+  },
+  "commands": {
+    "start-cdp": "lightpanda --host 127.0.0.1 --port 9222",
+    "version": "lightpanda --version"
+  },
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "command -v lightpanda >/dev/null 2>&1 && lightpanda --version 2>&1 | head -1 || echo '未安装'"
+    }
+  ],
+  "notes": "默认监听 127.0.0.1:9222 的 CDP。Lightpanda 不复用本地 Chrome 登录态，如需已登录场景请优先使用 bb-browser。可在 browser-use 中设置 browser_type: 'cdp'、cdp_url: 'http://127.0.0.1:9222' 接入。",
+  "homepage": "https://github.com/lightpanda-io/browser",
+  "repository": "https://github.com/lightpanda-io/browser",
+  "docs": "https://github.com/lightpanda-io/browser#readme",
+  "scenarios": [
+    "web-automation"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true
+}

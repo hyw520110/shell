@@ -49,9 +49,23 @@ check_installed() {
         return 0
     fi
     
-    # 方法4: 检查/Applications (macOS)
-    if [ -d "/Applications/IntelliJ IDEA.app" ] || [ -d "/Applications/IntelliJ IDEA CE.app" ]; then
-        return 0
+    # 方法4: 检查/Applications (macOS) - 需验证主二进制非空，避免空壳误判为已安装
+    local mac_app=""
+    if [ -d "/Applications/IntelliJ IDEA.app" ]; then
+        mac_app="/Applications/IntelliJ IDEA.app"
+    elif [ -d "/Applications/IntelliJ IDEA CE.app" ]; then
+        mac_app="/Applications/IntelliJ IDEA CE.app"
+    fi
+    if [ -n "$mac_app" ]; then
+        local exe
+        exe=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$mac_app/Contents/Info.plist" 2>/dev/null)
+        if [ -n "$exe" ] && [ -s "$mac_app/Contents/MacOS/$exe" ]; then
+            return 0
+        else
+            # 目录存在但二进制为空/缺失 = 安装不完整，视为未安装（触发重装）
+            log_warn "检测到 IntelliJ 安装不完整（二进制为空/缺失），将重新安装"
+            return 1
+        fi
     fi
     
     return 1
@@ -230,7 +244,23 @@ install_idea() {
         
         local app_path=$(find "$volume_path" -maxdepth 1 -name "*.app" | head -1)
         if [ -n "$app_path" ] && [ -d "$app_path" ]; then
+            # 先移除旧版（若存在），避免 cp -R 合并残留；仅删 IntelliJ 系列，杜绝 rm -rf 空值事故
+            local app_name=$(basename "$app_path")
+            if [ -n "$app_name" ] && [[ "$app_name" == *IntelliJ*.app ]]; then
+                rm -rf "/Applications/$app_name" 2>/dev/null || true
+            else
+                log_warn "跳过旧版删除（app 名不匹配 IntelliJ）: $app_name"
+            fi
             cp -R "$app_path" /Applications/
+            # 完整性校验：主二进制必须非空，否则判定安装失败
+            local installed_exe
+            installed_exe=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "/Applications/$app_name/Contents/Info.plist" 2>/dev/null)
+            if [ -z "$installed_exe" ] || [ ! -s "/Applications/$app_name/Contents/MacOS/$installed_exe" ]; then
+                log_error "安装完整性校验失败：主二进制为空或缺失，请重新下载/安装"
+                hdiutil detach "$volume_path" 2>/dev/null || true
+                return 1
+            fi
+            log_info "完整性校验通过: $app_name 主二进制非空"
         else
             log_error "未在卷中找到 IntelliJ IDEA 应用"
             ls -la "$volume_path/" 2>/dev/null || true
@@ -254,6 +284,14 @@ install_idea() {
     create_command_launcher
     
     log_info "IntelliJ IDEA 安装完成！"
+    # 默认安装成功即删除安装包；KEEP_PACKAGE=1 时保留
+    if [ "${KEEP_PACKAGE:-0}" != "1" ] && [ -n "$download_dir" ] && [ -n "$download_file" ]; then
+        local pkg_abs="$download_dir/$download_file"
+        case "$pkg_abs" in
+            /*) rm -f -- "$pkg_abs" "$pkg_abs.url" 2>/dev/null || true && log_info "已删除安装包: $pkg_abs" ;;
+            *) log_warn "跳过删除安装包（非绝对路径）: $pkg_abs" ;;
+        esac
+    fi
 }
 
 # 创建桌面快捷方式
@@ -337,7 +375,7 @@ main() {
             get_version
             ;;
         -i|--install|"")
-            if check_installed; then
+            if [ "$1" != "--force" ] && check_installed; then
                 log_warn "IntelliJ IDEA 已安装"
                 echo "版本: $(get_version)"
                 read -p "是否重新安装? (y/N): " reinstall
@@ -345,6 +383,9 @@ main() {
                     exit 0
                 fi
             fi
+            install_idea
+            ;;
+        --force)
             install_idea
             ;;
         *)
