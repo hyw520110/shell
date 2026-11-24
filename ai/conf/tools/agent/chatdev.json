@@ -1,0 +1,63 @@
+{
+  "id": "chatdev",
+  "name": "ChatDev",
+  "description": "多智能体虚拟软件公司，通过聊天链驱动软件开发。清华/上交出品，支持 CEO/CTO/程序员/测试/设计师等多角色协作",
+  "category": "ai-agent",
+  "tags": ["ai", "agents", "multi-agent", "software-development", "python"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "pip 安装（推荐）",
+        "type": "pip",
+        "command": "pip3 install ChatDev",
+        "check": "pip3 show ChatDev",
+        "uninstall": ["pip3 uninstall -y ChatDev"]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "pip3 install --upgrade ChatDev",
+    "check": "pip3 show ChatDev"
+  },
+
+  "post_install": [
+    {"description": "显示配置提示", "command": "echo -e '\\nChatDev 已安装。运行方式:\\n  python -m ChatDev --config [配置文件]\\n  或使用 ChatDev 2.0 GUI 拖拽式创建 Agent 团队\\n\\n请设置环境变量配置 LLM API:\\n  export OPENAI_API_KEY=your_key\\n  export OPENAI_MODEL=gpt-4o'"}
+  ],
+
+  "post_uninstall": [],
+
+  "config": {
+    "path": "$HOME/.ChatDev/config.json",
+    "operations": {
+      "view": "cat $HOME/.ChatDev/config.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.ChatDev/config.json",
+      "reset": [
+        "rm -rf $HOME/.ChatDev 2>/dev/null || true"
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "python -m ChatDev",
+    "version": "pip3 show ChatDev 2>/dev/null | grep Version"
+  },
+
+  "status_check": [
+    {"name": "检查安装", "command": "pip3 show ChatDev 2>/dev/null | grep Name || echo '未安装'"},
+    {"name": "检查版本", "command": "pip3 show ChatDev 2>/dev/null | grep Version || echo '未安装'"}
+  ],
+
+  "mcp_servers": {},
+
+  "skills": {},
+
+  "references": {
+    "shared_mcp_servers": ["filesystem", "github"],
+    "shared_skills": ["git"]
+  },
+
+  "notes": "清华/上交 OpenBMB 出品。通过多 Agent 聊天链模拟软件公司协作开发。ChatDev 2.0 支持拖拽式 GUI 创建 Agent 团队，扩展至 3D 建模、游戏制作等场景。需配置 OpenAI API Key 或兼容 API。"
+}

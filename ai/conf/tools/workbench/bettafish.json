@@ -1,0 +1,70 @@
+{
+  "id": "bettafish",
+  "name": "BettaFish",
+  "description": "多 Agent 舆情分析与研究报告工作台，可生成 HTML/Markdown/PDF 报告并作为 MiroFish 预测仿真的上游种子材料",
+  "category": "ai-workbench",
+  "sort_order": 2440,
+  "sort_key": "BettaFish",
+  "tags": ["workbench", "public-opinion", "analysis", "reporting", "multi-agent", "docker"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "自动部署 (Docker Compose 优先，源码兜底)",
+        "type": "bash",
+        "command": "bash workbench/bettafish/startup.sh install",
+        "check": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:5000 >/dev/null 2>&1 || [ -d \"$HOME/BettaFish/.git\" ] || (command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q '^bettafish$')",
+        "uninstall": [
+          "bash workbench/bettafish/startup.sh uninstall"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash workbench/bettafish/startup.sh update",
+    "check": "bash workbench/bettafish/startup.sh status"
+  },
+
+  "config": {
+    "path": "$HOME/.bettafish-aihub/.env",
+    "operations": {
+      "view": "cat $HOME/.bettafish-aihub/.env 2>/dev/null || echo '配置文件不存在；安装或启动后自动生成'",
+      "edit": "${EDITOR:-vim} $HOME/.bettafish-aihub/.env"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "运行状态",
+      "command": "bash workbench/bettafish/startup.sh status"
+    },
+    {
+      "name": "主应用",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:5000 >/dev/null && echo '主应用正常' || echo '主应用未响应'"
+    },
+    {
+      "name": "报告目录",
+      "command": "bash workbench/bettafish/startup.sh reports"
+    }
+  ],
+
+  "commands": {
+    "start": "bash workbench/bettafish/startup.sh start",
+    "stop": "bash workbench/bettafish/startup.sh stop",
+    "status": "bash workbench/bettafish/startup.sh status",
+    "logs": "bash workbench/bettafish/startup.sh logs",
+    "reports": "bash workbench/bettafish/startup.sh reports",
+    "mirofish_guide": "bash workbench/bettafish/startup.sh mirofish-guide",
+    "doctor": "bash workbench/bettafish/startup.sh doctor"
+  },
+
+  "prompts": {
+    "configure_models": "引导我为 BettaFish 配置各 Agent 的 OpenAI-compatible 模型、搜索 API 和数据库环境变量",
+    "run_public_opinion_report": "说明如何用 BettaFish 生成一次舆情分析报告",
+    "use_with_mirofish": "说明如何把 BettaFish 生成的报告作为 MiroFish 的种子材料进行全景预测"
+  },
+
+  "notes": "BettaFish 默认主应用端口 5000，Insight/Media/Query 单引擎端口分别为 8501/8502/8503，Docker 模式包含 PostgreSQL 并默认映射到本机 5444。项目主页: https://github.com/666ghj/BettaFish"
+}

@@ -1,0 +1,62 @@
+{
+  "id": "replicate",
+  "name": "Replicate CLI",
+  "description": "Replicate 模型调用 CLI，支持云端运行 ML 模型",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "brew"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "brew",
+        "command": "brew install replicate",
+        "check": true,
+        "uninstall": [
+          "brew uninstall replicate"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "brew install replicate",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.replicate/config.yaml",
+    "operations": {
+      "view": "cat $HOME/.replicate/config.yaml 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.replicate/config.yaml",
+      "reset": [
+        "cp $HOME/.replicate/config.yaml $HOME/.replicate/config.yaml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.replicate/config.yaml"
+      ]
+    }
+  },
+  "commands": {
+    "start": "replicate",
+    "version": "replicate --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "replicate --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.replicate/config.yaml 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

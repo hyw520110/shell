@@ -1,0 +1,31 @@
+{
+  "id": "nine-router",
+  "name": "9router",
+  "description": "高性能 AI 模型分发与路由网关，支持多渠道负载均衡和精细化额度管理",
+  "category": "ai-gateway",
+  "tags": ["gateway", "router", "proxy"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "二进制安装 (macOS)",
+        "type": "bash",
+        "command": "echo '请前往 9router 官网下载最新版' && open https://9router.com",
+        "check": "command -v 9router",
+        "uninstall": [
+          "echo '请手动卸载 9router'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "status_check": [
+    {
+      "name": "检查命令",
+      "command": "command -v 9router >/dev/null && echo '已安装' || echo '未安装'"
+    }
+  ],
+
+  "notes": "9router 是一款闭源但高性能的商业/社区混合网关。集成到 ai-cli 主要用于管理其配置和快速启动。"
+}

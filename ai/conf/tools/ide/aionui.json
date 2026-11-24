@@ -1,0 +1,58 @@
+{
+  "id": "aionui",
+  "name": "AionUi",
+  "description": "免费开源的桌面 GUI 应用，为 Gemini CLI、Claude Code、Codex、Qwen Code、OpenClaw、Hermes Agent 等 20+ 种 CLI AI 工具提供图形化界面，支持多智能体协作",
+  "category": "ai-ide",
+  "tags": ["ai", "ide", "gui", "electron", "multi-agent", "cli-wrapper", "desktop"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "自动下载 GitHub Releases 安装",
+        "type": "bash",
+        "command": "bash ide/aionui/install-aionui.sh",
+        "check": "[ -d '/Applications/AionUi.app' ] || [ -d '/Applications/AionUi.app' ] || (command -v aionui >/dev/null 2>&1 && aionui --version >/dev/null 2>&1)",
+        "uninstall": [
+          "echo '请手动删除 AionUi 应用：macOS 通常位于 /Applications/AionUi.app'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash ide/aionui/install-aionui.sh",
+    "check": "[ -d '/Applications/AionUi.app' ] || [ -d '/Applications/AionUi.app' ] || (command -v aionui >/dev/null 2>&1 && aionui --version >/dev/null 2>&1)"
+  },
+
+  "config": {
+    "path": "",
+    "operations": {
+      "view": "echo 'AionUi 使用自身应用配置；请在应用内查看设置。'",
+      "edit": "open -a AionUi 2>/dev/null || open https://github.com/aionui/aionui"
+    }
+  },
+
+  "commands": {
+    "start": "open -a AionUi 2>/dev/null || aionui"
+  },
+
+  "status_check": [
+    {
+      "name": "检查应用",
+      "command": "[ -d '/Applications/AionUi.app' ] || (command -v aionui >/dev/null 2>&1 && aionui --version >/dev/null 2>&1) && echo '已安装' || echo '未安装'"
+    },
+    {
+      "name": "下载页面",
+      "command": "echo 'https://github.com/aionui/aionui/releases'"
+    }
+  ],
+
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "AionUi 是为 CLI AI 工具提供 GUI 的桌面应用，支持 20+ 种 AI 工具集成，适合放在 AI IDE 分类。"
+}

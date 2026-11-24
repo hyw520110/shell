@@ -1,0 +1,67 @@
+{
+  "id": "agent-reach",
+  "name": "Agent Reach",
+  "description": "为 AI Agent 安装、体检和路由互联网访问能力，覆盖网页、YouTube、RSS、GitHub、搜索、Bilibili、Twitter/X、小红书等渠道。",
+  "category": "ai-utility",
+  "tags": [
+    "互联网能力",
+    "搜索",
+    "RSS",
+    "YouTube",
+    "Agent"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "pipx 安全安装",
+        "type": "pipx",
+        "command": "command -v pipx >/dev/null 2>&1 || python3 -m pip install --user pipx; pipx install https://github.com/Panniantong/agent-reach/archive/main.zip && agent-reach install --env=auto --safe",
+        "check": "agent-reach --help"
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "pipx upgrade agent-reach || pipx install --force https://github.com/Panniantong/agent-reach/archive/main.zip",
+    "check": "agent-reach --help"
+  },
+  "config": {
+    "path": "$HOME/.agent-reach/config.json",
+    "operations": {
+      "view": "cat $HOME/.agent-reach/config.json 2>/dev/null || echo 'Agent Reach 配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.agent-reach/config.json"
+    }
+  },
+  "commands": {
+    "doctor": "agent-reach doctor",
+    "install-safe": "agent-reach install --env=auto --safe",
+    "install-all": "agent-reach install --env=auto --channels=all",
+    "help": "agent-reach --help"
+  },
+  "status_check": [
+    {
+      "name": "检查 Agent Reach CLI",
+      "command": "agent-reach --help >/dev/null 2>&1 && echo 'Agent Reach 已安装' || echo 'Agent Reach 未安装'"
+    },
+    {
+      "name": "检查诊断",
+      "command": "agent-reach doctor 2>/dev/null || echo 'doctor 不可用或尚未完成配置'"
+    }
+  ],
+  "prompts": {
+    "doctor": "运行 agent-reach doctor，检查当前 Agent 的互联网渠道可用性并给出修复建议。",
+    "safe-install": "按安全模式安装 Agent Reach，不使用 sudo，不污染当前项目目录。",
+    "channels": "根据我的使用场景，推荐 Agent Reach 应启用哪些渠道。"
+  },
+  "notes": "默认安装命令使用 --safe，不自动安装系统包。需要 Twitter/X、小红书等登录态时，应使用专用账号和 Cookie-Editor 导入，避免主账号风险。",
+  "homepage": "https://github.com/Panniantong/Agent-Reach",
+  "repository": "https://github.com/Panniantong/Agent-Reach",
+  "scenarios": [
+    "research",
+    "marketing-ops",
+    "agent-workbench"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false
+}

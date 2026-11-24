@@ -1,0 +1,101 @@
+{
+  "id": "workbuddy",
+  "name": "WorkBuddy",
+  "description": "腾讯出品的全场景 AI 智能体桌面工作台，支持 Ask/Plan/Craft 三大模式，可安装 Skill/MCP 插件扩展能力，具备本地沙箱执行与远程 Agent 协作。",
+  "category": "ai-ide",
+  "sort_order": 50,
+  "sort_key": "WorkBuddy",
+  "tags": [
+    "Agent平台",
+    "Agent工作台",
+    "桌面客户端",
+    "插件市场",
+    "MCP",
+    "腾讯"
+  ],
+  "scenarios": ["productivity", "coding", "agent-workbench", "product-docs", "diagramming", "design-prototype"],
+  "experimental": false,
+  "optional": false,
+
+  "install": {
+    "methods": [
+      {
+        "name": "官方 dmg 自动安装 (macOS)",
+        "type": "bash",
+        "command": "bash ../ide/install-workbuddy.sh",
+        "check": "[ -d '/Applications/WorkBuddy.app' ]",
+        "uninstall": [
+          "echo '正在卸载 WorkBuddy...'",
+          "rm -rf /Applications/WorkBuddy.app 2>/dev/null || sudo rm -rf /Applications/WorkBuddy.app",
+          "read -p '是否同时删除配置数据 (~/.workbuddy/)？[y/N] ' _wbAns && [[ \"$_wbAns\" == 'y' ]] && rm -rf ~/.workbuddy/",
+          "echo '✅ WorkBuddy 已卸载'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash ../ide/install-workbuddy.sh",
+    "check": "[ -d '/Applications/WorkBuddy.app' ]"
+  },
+
+  "config": {
+    "path": "$HOME/.workbuddy/.mcp.json",
+    "operations": {
+      "view": "cat \"$HOME/.workbuddy/.mcp.json\" 2>/dev/null | jq . || echo 'MCP 配置文件不存在'",
+      "edit": "${EDITOR:-vim} \"$HOME/.workbuddy/.mcp.json\"",
+      "reset": [
+        "cp \"$HOME/.workbuddy/.mcp.json\" \"$HOME/.workbuddy/.mcp.json.backup.$(date +%Y%m%d_%H%M%S)\" 2>/dev/null || true",
+        "echo '{\"mcpServers\":{}}' > \"$HOME/.workbuddy/.mcp.json\""
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "open -a WorkBuddy",
+    "version": "defaults read /Applications/WorkBuddy.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo '未知'",
+    "settings": "open -a WorkBuddy && echo '请在 WorkBuddy 左下角进入设置'"
+  },
+
+  "status_check": [
+    {
+      "name": "应用状态",
+      "command": "[ -d '/Applications/WorkBuddy.app' ] && defaults read /Applications/WorkBuddy.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null | xargs echo '已安装 v' || echo '未安装'"
+    },
+    {
+      "name": "MCP 配置",
+      "command": "[ -f \"$HOME/.workbuddy/.mcp.json\" ] && jq '.mcpServers | keys | length' \"$HOME/.workbuddy/.mcp.json\" 2>/dev/null | xargs echo '已配置 MCP 数量' || echo 'MCP 配置未初始化'"
+    },
+    {
+      "name": "插件市场",
+      "command": "ls \"$HOME/.workbuddy/plugins/marketplaces/\" 2>/dev/null | wc -l | xargs echo '已安装市场数'"
+    }
+  ],
+
+  "references": {
+    "homepage": "https://www.codebuddy.cn/work",
+    "docs": "https://www.codebuddy.cn/docs/workbuddy",
+    "shared_mcp_servers": [
+      "filesystem",
+      "github",
+      "fetch",
+      "brave-search",
+      "playwright",
+      "sequential-thinking",
+      "context-mode",
+      "gitnexus"
+    ],
+    "shared_skills": [
+      "pdf",
+      "frontend-design",
+      "planning-with-files",
+      "superpowers",
+      "skill-creator",
+      "open-design",
+      "context-curator"
+    ]
+  },
+
+  "notes": "WorkBuddy 是腾讯云代码助手团队出品的桌面 AI 工作台。安装脚本自动下载 dmg (https://www.codebuddy.cn/work/WorkBuddy-darwin-{arch}.dmg)，挂载后安装到 /Applications。MCP 配置写入 ~/.workbuddy/.mcp.json（标准 JSON 格式）。Skills 通过内置插件市场安装，ai-hub 暂不支持自动写入 Skill 配置。"
+}

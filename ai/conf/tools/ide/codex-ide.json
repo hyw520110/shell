@@ -1,0 +1,61 @@
+{
+  "id": "codex-ide",
+  "name": "OpenAI Codex IDE",
+  "description": "OpenAI 官方推出的 AI 原生集成开发环境，含 CLI (npm @openai/codex) 与桌面应用 (ChatGPT.app/Codex.app)，自动做 macOS 兼容性检查",
+  "category": "ai-ide",
+  "tags": [
+    "ide",
+    "openai",
+    "codex",
+    "professional",
+    "cli"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "CLI + App 一键安装 (macOS, 含兼容性检查)",
+        "type": "bash",
+        "command": "bash ../ide/install-codex.sh --install",
+        "check": "command -v codex >/dev/null 2>&1 || [ -d '/Applications/Codex.app' ] || [ -d '/Applications/ChatGPT.app' ] || [ -d '/Applications/OpenAI Codex.app' ]",
+        "uninstall": [
+          "echo '卸载: bash ../ide/install-codex.sh --uninstall'"
+        ]
+      },
+      {
+        "name": "仅安装 CLI (npm @openai/codex)",
+        "type": "bash",
+        "command": "bash ../ide/install-codex.sh --install-cli",
+        "check": "command -v codex >/dev/null 2>&1"
+      },
+      {
+        "name": "仅安装 Desktop App (含兼容性检查)",
+        "type": "bash",
+        "command": "bash ../ide/install-codex.sh --install-app",
+        "check": "[ -d '/Applications/Codex.app' ] || [ -d '/Applications/ChatGPT.app' ] || [ -d '/Applications/OpenAI Codex.app' ]"
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "bash ../ide/install-codex.sh --install"
+  },
+  "status_check": [
+    {
+      "name": "CLI 状态",
+      "command": "command -v codex >/dev/null 2>&1 && codex --version 2>/dev/null | head -1 || echo '未安装'"
+    },
+    {
+      "name": "应用状态",
+      "command": "([ -d '/Applications/OpenAI Codex.app' ] || [ -d '/Applications/Codex.app' ] || [ -d '/Applications/ChatGPT.app' ]) && echo '已安装' || echo '未安装'"
+    }
+  ],
+  "commands": {
+    "start": "open -a 'ChatGPT' || open -a 'Codex' || open -a 'OpenAI Codex'"
+  },
+  "references": {
+    "homepage": "https://openai.com/codex",
+    "cli_npm": "@openai/codex",
+    "install_script": "ide/install-codex.sh"
+  },
+  "notes": "OpenAI Codex IDE：CLI 走 npm @openai/codex，桌面应用实际打包为 ChatGPT.app。统一脚本 ide/install-codex.sh 支持 --install (CLI+App) / --install-cli / --install-app，安装前自动做 macOS 版本兼容性检查（minos <= 当前系统），不兼容则拒绝安装并提示升级系统。"
+}

@@ -1,0 +1,47 @@
+# ============================================
+# MySQL 基础配置文件（所有版本通用）
+# 注意: 仅包含所有版本都支持的配置项
+#       版本特有配置请放在 my-{version}.cnf 中
+# ============================================
+
+[mysqld]
+# 基本设置
+port = 3306
+bind-address = 0.0.0.0
+# user = mysql  # brew 安装不需要，手动安装时由脚本设置
+
+# 字符集与排序
+character-set-server = utf8mb4
+collation-server = utf8mb4_general_ci
+
+# 连接与缓存
+max_allowed_packet = 128M
+max_connections = 200
+thread_stack = 256K
+table_open_cache = 4096
+
+# 表名大小写不敏感（Linux/macOS 通用）
+# 注意: 必须在初始化之前设置，初始化后不可更改
+lower_case_table_names = 1
+
+# InnoDB 基础配置（所有版本通用）
+innodb_buffer_pool_size = 1G
+innodb_buffer_pool_instances = 2
+innodb_flush_log_at_trx_commit = 1
+innodb_file_per_table = 1
+
+# 慢查询日志
+slow_query_log = 1
+long_query_time = 10
+min_examined_row_limit = 250
+
+# SQL模式
+sql_mode = STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION
+
+[mysql]
+# 禁用自动重新哈希
+no-auto-rehash
+
+[client]
+# 设置默认字符集
+default-character-set = utf8mb4

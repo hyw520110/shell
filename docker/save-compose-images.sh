@@ -1,7 +1,75 @@
 #!/bin/bash
 
+# 显示帮助信息
+show_help() {
+    cat << EOF
+Docker Compose镜像保存脚本
+
+保存Docker Compose环境中使用的所有镜像到本地。
+
+用法: ./save-compose-images.sh [选项] [docker-compose文件]
+
+参数:
+    docker-compose文件    Docker Compose文件路径 (默认: docker-compose.yml)
+
+选项:
+    -h, --help            显示此帮助信息
+    -d, --dir <目录>      指定保存目录 (默认: 当前目录)
+    -c, --compress        压缩保存的镜像文件
+
+说明:
+    - 自动解析docker-compose.yml文件中的所有镜像
+    - 保存格式: image_仓库名_标签.tar
+    - 支持压缩保存以节省空间
+    - 保存的镜像可用于离线环境部署
+
+示例:
+    ./save-compose-images.sh                    # 使用默认设置
+    ./save-compose-images.sh docker-compose.yml # 指定compose文件
+    ./save-compose-images.sh -d /backup -c      # 压缩保存到指定目录
+
+注意事项:
+    - 需要Docker Compose环境
+    - 确保有足够的磁盘空间
+    - 保存大镜像可能需要较长时间
+
+EOF
+}
+
+# 参数解析
+SAVE_DIR="$(pwd)"
+COMPRESS=false
+COMPOSE_FILE="docker-compose.yml"
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -d|--dir)
+            SAVE_DIR="$2"
+            shift 2
+            ;;
+        -c|--compress)
+            COMPRESS=true
+            shift
+            ;;
+        -*)
+            echo "未知选项: $1"
+            show_help
+            exit 1
+            ;;
+        *)
+            # 假定是compose文件路径
+            COMPOSE_FILE="$1"
+            shift
+            ;;
+    esac
+done
+
 # 默认的docker-compose文件路径
-compose_file=${1:-"docker-compose.yml"}
+compose_file="${COMPOSE_FILE}"
 
 # 检查docker-compose文件是否存在
 while [ ! -f "$compose_file" ]; do

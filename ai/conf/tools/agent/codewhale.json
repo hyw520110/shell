@@ -1,0 +1,61 @@
+{
+  "id": "codewhale",
+  "name": "CodeWhale",
+  "description": "DeepSeek 原生终端智能体，支持 Plan/Agent/YOLO 模式，内置 LSP 诊断与 MCP 支持，适配 100 万 Token 上下文。",
+  "category": "ai-agent",
+  "tags": ["agent", "terminal", "deepseek", "tui", "mcp"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "插件全自动安装",
+        "type": "plugin",
+        "plugin": "codewhale",
+        "command": "",
+        "check": "command -v codewhale && command -v codewhale-tui",
+        "uninstall": []
+      },
+      {
+        "name": "npm 直接安装",
+        "type": "npm",
+        "plugin": "",
+        "command": "npm install -g codewhale --registry {{npm_registry}}",
+        "check": "command -v codewhale",
+        "uninstall": [
+          "npm uninstall -g codewhale"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "status_check": [
+    {
+      "name": "核心程序 (codewhale)",
+      "command": "command -v codewhale >/dev/null 2>&1 && echo '就绪' || echo '未找到'"
+    },
+    {
+      "name": "终端界面 (codewhale-tui)",
+      "command": "command -v codewhale-tui >/dev/null 2>&1 && echo '就绪' || echo '未找到'"
+    },
+    {
+      "name": "环境变量 (DEEPSEEK_API_KEY)",
+      "command": "[[ -n \"$DEEPSEEK_API_KEY\" ]] && echo '已设置' || echo '未设置'"
+    }
+  ],
+
+  "commands": {
+    "start": "codewhale-tui",
+    "version": "codewhale --version",
+    "config": "codewhale setup",
+    "serve": "codewhale serve"
+  },
+
+  "scenarios": [
+    "productivity",
+    "coding",
+    "agent-workbench"
+  ],
+
+  "notes": "CodeWhale 是 DeepSeek V4 的最佳终端搭档。安装后请运行 'codewhale setup' 配置 API Key。支持多端同步和移动端控制。"
+}

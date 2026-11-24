@@ -1,0 +1,39 @@
+# ============================================
+# MySQL 9.x 特有配置
+# ============================================
+# 注意: MySQL 9 基于 8.4，以下变量已被移除或废弃:
+#   - innodb_log_file_size (已移除，由 innodb_redo_log_capacity 替代)
+#   - innodb_flush_method (macOS 上 O_DIRECT 不可用)
+#   - binlog_format (已废弃，默认 ROW)
+#   - expire_logs_days (已废弃，使用 binlog_expire_logs_seconds)
+#   - default_authentication_plugin (MySQL 9.0 已移除 mysql_native_password)
+# ============================================
+
+[mysqld]
+# MySQL 9 默认使用 caching_sha2_password
+# 注意: mysql_native_password 在 MySQL 9.0 中已被移除
+# default_authentication_plugin = caching_sha2_password  # MySQL 9.0+ 不再需要设置
+
+# Performance Schema
+performance_schema = ON
+
+# 错误日志详细程度
+log_error_verbosity = 2
+
+# 显式默认时间戳
+explicit_defaults_for_timestamp = 1
+
+# InnoDB 日志配置（MySQL 9 使用 innodb_redo_log_capacity 替代 innodb_log_file_size）
+# innodb_redo_log_capacity = 128M  # 默认 100M，按需调整
+
+# 二进制日志配置
+log_bin = mysql-bin
+# binlog_format = ROW  # MySQL 9 已废弃，默认 ROW，无需设置
+max_binlog_size = 100M
+# expire_logs_days = 7  # MySQL 9 已废弃，使用 binlog_expire_logs_seconds
+binlog_expire_logs_seconds = 604800  # 7天 = 7 * 24 * 3600
+server_id = 1
+
+# GTID 配置（可选，生产环境建议开启）
+# gtid_mode = ON
+# enforce_gtid_consistency = ON

@@ -5,7 +5,7 @@
 readonly DEFAULT_INSTALL_DIR="$HOME/rocketmq"
 readonly DEFAULT_VERSION="5.3.3"
 readonly DEFAULT_DOWNLOAD_URL="https://dist.apache.org/repos/dist/release/rocketmq/${DEFAULT_VERSION}/rocketmq-all-${DEFAULT_VERSION}-bin-release.zip"
-readonly DOWNLOAD_DIR="/tmp"
+readonly DOWNLOAD_DIR="${DOWNLOAD_DIR:-$HOME/Downloads}"
 readonly TEMP_EXTRACT_DIR="/tmp"
 
 # === 日志函数 ===
@@ -65,8 +65,9 @@ validate_ip() {
 
 # === 进程管理函数 ===
 check_running_processes() {
-    local namesrv_running=$(pgrep -f "mqnamesrv")
-    local broker_running=$(pgrep -f "mqbroker")
+    local namesrv_running broker_running
+    namesrv_running=$(pgrep -f 'mqnamesrv|org\.apache\.rocketmq\.namesrv\.NamesrvStartup' || true)
+    broker_running=$(pgrep -f 'mqbroker|org\.apache\.rocketmq\.broker\.BrokerStartup' || true)
     
     if [ -n "$namesrv_running" ] || [ -n "$broker_running" ]; then
         log_info "检测到 RocketMQ 进程正在运行"

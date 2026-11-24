@@ -1,0 +1,58 @@
+{
+  "id": "open-interpreter",
+  "name": "Open Interpreter",
+  "description": "让语言模型能够在本地直接执行代码 (Python/Shell) 的数据分析与系统操作工作台。特别适合处理 CSV/Excel 数据和生成图表。",
+  "category": "ai-workbench",
+  "sort_order": 2500,
+  "sort_key": "OpenInterpreter",
+  "tags": ["workbench", "code-interpreter", "data-analysis", "python"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "PIP 安装",
+        "type": "pip",
+        "package": "open-interpreter",
+        "command": "pip3 install open-interpreter",
+        "check": "command -v interpreter >/dev/null 2>&1",
+        "uninstall": [
+          "pip3 uninstall -y open-interpreter"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "pip3 install --upgrade open-interpreter",
+    "check": "command -v interpreter >/dev/null 2>&1"
+  },
+
+  "config": {
+    "path": "$HOME/.config/open-interpreter/config.yaml",
+    "operations": {
+      "view": "cat $HOME/.config/open-interpreter/config.yaml 2>/dev/null || echo '配置不存在，运行一次即可生成'",
+      "edit": "${EDITOR:-vim} $HOME/.config/open-interpreter/config.yaml"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "CLI 状态",
+      "command": "command -v interpreter >/dev/null 2>&1 && interpreter --version || echo '未安装'"
+    }
+  ],
+
+  "commands": {
+    "start": "interpreter",
+    "start_local": "interpreter --local",
+    "start_os": "interpreter --os"
+  },
+
+  "prompts": {
+    "data_analysis": "说明如何使用 Open Interpreter 读取本地的 Excel 数据表并进行可视化分析和图表绘制？",
+    "local_model": "如何将 Open Interpreter 接入本地的 Ollama 服务以实现免费的数据处理？"
+  },
+
+  "notes": "这是一款直接在终端或 Jupyter 中运行的本地代码解释器。使用 `操作 -> start_local` 可以直接利用本地的 LM Studio 或 Ollama 模型进行免费执行。项目主页: https://github.com/OpenInterpreter/open-interpreter"
+}

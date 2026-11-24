@@ -1,0 +1,69 @@
+{
+  "id": "rtk-mcp",
+  "name": "RTK MCP",
+  "description": "RTK 的 MCP 桥接服务，将 shell 命令通过 Rust Token Killer 过滤后返回给 MCP 客户端。",
+  "category": "ai",
+  "scenarios": [
+    "context-optimizer"
+  ],
+  "view_group": "上下文/Token",
+  "tags": [
+    "Token优化",
+    "命令输出压缩",
+    "MCP",
+    "Rust"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/ousamabenyounes/rtk-mcp",
+  "repository": "https://github.com/ousamabenyounes/rtk-mcp",
+  "install": {
+    "type": "bash",
+    "command": "bash \"${SCRIPT_DIR}/conf/shared/mcp-servers/rtk-mcp/install.sh\" --install",
+    "prerequisites": [
+      {
+        "name": "cargo (Rust)",
+        "check": "command -v cargo >/dev/null 2>&1",
+        "install_hint": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+      },
+      {
+        "name": "git",
+        "check": "command -v git >/dev/null 2>&1",
+        "install_hint": "brew install git"
+      }
+    ]
+  },
+  "config": {
+    "command": "sh",
+    "args": [
+      "-c",
+      "python3 \"$HOME/.local/share/ai-hub/rtk-mcp/proxy.py\""
+    ],
+    "transportType": "stdio",
+    "env": {}
+  },
+  "required_tools": [
+    "cargo",
+    "git"
+  ],
+  "status_check": [
+    {
+      "name": "检查 RTK",
+      "command": "rtk --version 2>/dev/null || echo 'RTK 未安装'"
+    },
+    {
+      "name": "检查 RTK MCP",
+      "command": "test -x $HOME/.local/share/ai-hub/rtk-mcp/target/release/rtk-mcp && echo 'RTK MCP 已构建' || echo 'RTK MCP 未构建'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "run_command",
+      "description": "通过 RTK 压缩后执行 shell 命令并返回输出"
+    }
+  ],
+  "notes": "可选 MCP。它会暴露命令执行能力，应只在可信项目和可信 MCP 客户端中启用。",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

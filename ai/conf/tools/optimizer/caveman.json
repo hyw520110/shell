@@ -1,0 +1,52 @@
+{
+  "id": "caveman",
+  "name": "Caveman Code",
+  "description": "Caveman 生态中的 token-efficient coding agent CLI，强调提示词/上下文压缩和 agent-native 工作流。",
+  "category": "ai-optimizer",
+  "sort_order": 700,
+  "sort_key": "Caveman Code",
+  "tags": [
+    "Token优化",
+    "上下文压缩",
+    "Agent CLI",
+    "实验"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "NPM 全局安装",
+        "type": "npm",
+        "command": "npm install -g @juliusbrussee/caveman-code --registry {{npm_registry}}",
+        "check": "command -v caveman",
+        "uninstall": [
+          "npm uninstall -g @juliusbrussee/caveman-code"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @juliusbrussee/caveman-code --registry {{npm_registry}} --force",
+    "check": "command -v caveman"
+  },
+  "commands": {
+    "start": "caveman",
+    "version": "caveman --version",
+    "explain": "caveman \"explain this codebase\""
+  },
+  "status_check": [
+    {
+      "name": "检查 Caveman",
+      "command": "caveman --version 2>/dev/null || echo 'Caveman 未安装'"
+    },
+    {
+      "name": "检查模型 Key",
+      "command": "test -n \"$ANTHROPIC_API_KEY\" && echo 'ANTHROPIC_API_KEY 已设置' || echo '未设置 ANTHROPIC_API_KEY'"
+    }
+  ],
+  "references": {
+    "homepage": "https://getcaveman.dev/",
+    "github": "https://github.com/JuliusBrussee/caveman-code"
+  },
+  "notes": "实验型收录。首次使用需要设置 ANTHROPIC_API_KEY。建议先在小项目试用，确认压缩策略不会影响调试信息。"
+}

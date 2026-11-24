@@ -1,0 +1,62 @@
+{
+  "id": "wrenai",
+  "name": "WrenAI",
+  "description": "企业级 Text-to-SQL 智能分析引擎。直接连接业务数据库，让非技术人员通过自然语言询问业务指标，并自动分析数据关联与生成可视化结果。",
+  "category": "ai-workbench",
+  "sort_order": 2520,
+  "sort_key": "WrenAI",
+  "tags": ["workbench", "text-to-sql", "data-analysis", "bi", "docker"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "Docker 快速部署",
+        "type": "bash",
+        "command": "if [ ! -d \"$HOME/wrenai\" ]; then mkdir -p \"$HOME/wrenai\" && cd \"$HOME/wrenai\" && curl -L https://raw.githubusercontent.com/Canner/WrenAI/main/docker/docker-compose.yml -o docker-compose.yml; fi && cd \"$HOME/wrenai\" && docker compose up -d",
+        "check": "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q 'wrenai-ui'",
+        "uninstall": [
+          "cd \"$HOME/wrenai\" && docker compose down -v",
+          "rm -rf \"$HOME/wrenai\""
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "cd \"$HOME/wrenai\" && curl -L https://raw.githubusercontent.com/Canner/WrenAI/main/docker/docker-compose.yml -o docker-compose.yml && docker compose pull && docker compose up -d",
+    "check": "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q 'wrenai-ui'"
+  },
+
+  "config": {
+    "path": "$HOME/wrenai/.env",
+    "operations": {
+      "view": "cat $HOME/wrenai/.env 2>/dev/null || echo '配置在前端 UI 中完成初始设定'",
+      "edit": "${EDITOR:-vim} $HOME/wrenai/.env"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "前端 UI 状态",
+      "command": "command -v docker >/dev/null 2>&1 && docker ps --filter 'name=wrenai-ui' --format '{{.Names}} - {{.Status}}' || echo '未运行'"
+    },
+    {
+      "name": "AI 引擎状态",
+      "command": "command -v docker >/dev/null 2>&1 && docker ps --filter 'name=wrenai-ai' --format '{{.Names}} - {{.Status}}' || echo '未运行'"
+    }
+  ],
+
+  "commands": {
+    "start": "cd \"$HOME/wrenai\" && docker compose up -d",
+    "stop": "cd \"$HOME/wrenai\" && docker compose down",
+    "logs": "cd \"$HOME/wrenai\" && docker compose logs -f"
+  },
+
+  "prompts": {
+    "setup_wrenai": "说明如何启动 WrenAI 并连接到一个只读的 MySQL 分析库中进行业务语义建模。",
+    "data_security": "WrenAI 的架构是如何保障我的原始数据不会被泄露给云端大模型的？"
+  },
+
+  "notes": "WrenAI 默认会启动多个服务（前端 UI、AI 引擎、Postgres 知识图谱等），UI 默认运行在本机的 3000 端口。推荐机器内存 >= 8GB。项目主页: https://github.com/Canner/WrenAI"
+}

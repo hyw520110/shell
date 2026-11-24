@@ -1,0 +1,58 @@
+{
+  "id": "aider-desk",
+  "name": "AiderDesk",
+  "description": "Aider 的桌面工作台与编排层，支持项目/任务管理、Git worktrees、差异审查、多模型协作与 MCP 能力",
+  "category": "ai-ide",
+  "tags": ["ai", "ide", "aider", "gui", "electron", "mcp", "workbench"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "自动下载 GitHub Releases 安装",
+        "type": "bash",
+        "command": "bash ide/aider-desk/install-aider-desk.sh",
+        "check": "[ -d '/Applications/AiderDesk.app' ] || [ -d '/Applications/Aider Desk.app' ] || (command -v aider-desk >/dev/null 2>&1 && aider-desk --version >/dev/null 2>&1)",
+        "uninstall": [
+          "echo '请手动删除 AiderDesk 应用：macOS 通常位于 /Applications/AiderDesk.app'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash ide/aider-desk/install-aider-desk.sh",
+    "check": "[ -d '/Applications/AiderDesk.app' ] || [ -d '/Applications/Aider Desk.app' ] || (command -v aider-desk >/dev/null 2>&1 && aider-desk --version >/dev/null 2>&1)"
+  },
+
+  "config": {
+    "path": "",
+    "operations": {
+      "view": "echo 'AiderDesk 使用自身应用配置；请在应用内查看设置。'",
+      "edit": "open -a AiderDesk 2>/dev/null || open -a 'Aider Desk' 2>/dev/null || open https://github.com/hotovo/aider-desk"
+    }
+  },
+
+  "commands": {
+    "start": "open -a AiderDesk 2>/dev/null || open -a 'Aider Desk' 2>/dev/null || aider-desk"
+  },
+
+  "status_check": [
+    {
+      "name": "检查应用",
+      "command": "[ -d '/Applications/AiderDesk.app' ] || [ -d '/Applications/Aider Desk.app' ] || (command -v aider-desk >/dev/null 2>&1 && aider-desk --version >/dev/null 2>&1) && echo '已安装' || echo '未安装'"
+    },
+    {
+      "name": "下载页面",
+      "command": "echo 'https://github.com/hotovo/aider-desk/releases'"
+    }
+  ],
+
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "AiderDesk 是 Aider 的 GUI/桌面编排层，适合放在 AI IDE 分类；不要把 MCP 配置写入 Aider CLI 的 ~/.aider.conf.yml。"
+}

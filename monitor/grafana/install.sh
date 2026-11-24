@@ -1,347 +1,417 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Grafana一键安装配置脚本
 
-# 检查是否为 root 用户
-if [ "$(id -u)" -ne 0 ]; then
-  echo "请以 root 用户运行此脚本"
-  exit 1
-fi
+set -e
 
-# 提取常用变量
-DOWNLOAD_DIR="/opt/softs"
-PROMETHEUS_VERSION=$(curl -s https://api.github.com/repos/prometheus/prometheus/releases/latest | grep -Po '"tag_name": "\K(.*)(?=")')
-GRAFANA_VERSION=$(curl -s https://api.github.com/repos/grafana/grafana/releases/latest | grep -Po '"tag_name": "\K(.*)(?=")')
-DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K(.*)(?=")')
-PROMETHEUS_URL="https://github.com/prometheus/prometheus/releases/download/${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
-GRAFANA_URL="https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz"
-DOCKER_COMPOSE_URL="https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)"
+GRAFANA_VERSION="${GRAFANA_VERSION:-11.4.0}"
+DEFAULT_INSTALL_DIR="$HOME/grafana"
+DOWNLOAD_DIR="${DOWNLOAD_DIR:-$HOME/Downloads}"
+INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+OS_TYPE="$(uname -s)"
+INSTALL_MODE="host"
+UNINSTALL_MODE=false
 
-# 创建下载目录
-mkdir -p ${DOWNLOAD_DIR}
+show_usage() {
+    cat <<EOF
+Grafana一键安装配置脚本
 
-# 选择安装模式
-echo "选择安装模式："
-echo "1、Docker Compose"
-echo "2、主机安装（默认）"
-echo "3、仅安装 Grafana（Debian/RedHat）"
-read -t 5 -n 1 -p "输入数字选择模式（默认为主机安装）> " MODE
+用法: ./install.sh [选项]
 
-# 如果用户没有在5秒内输入，设置默认值
-if [ -z "$MODE" ]; then
-  MODE=2
-fi
-
-# 安装依赖
-install_dependencies() {
-  case $(uname -s) in
-    Linux)
-      if [ -f /etc/debian_version ]; then
-        apt-get update
-        apt-get install -y curl wget
-      elif [ -f /etc/redhat-release ]; then
-        yum update -y
-        yum install -y curl wget
-      fi
-      ;;
-    *)
-      echo "不支持的操作系统"
-      exit 1
-      ;;
-  esac
+选项:
+    -h, --help                  显示此帮助信息
+    -v, --version               检测Grafana是否已安装
+    -d, --dir DIR               安装父目录或实际安装目录 (默认: ~/grafana)
+    --download-dir DIR          下载目录 (默认: ~/Downloads，可用 DOWNLOAD_DIR 覆盖)
+    --version-num VERSION       Grafana 版本 (默认: $GRAFANA_VERSION，也可用 GRAFANA_VERSION 覆盖)
+    -m, --mode MODE             安装模式: docker|host (默认: host)
+    --uninstall                 卸载 Grafana
+EOF
 }
 
-# Docker Compose 模式
-install_docker_compose() {
-  # 安装 Docker
-  if ! command -v docker &> /dev/null; then
-    echo "安装 Docker..."
-    case $(uname -s) in
-      Linux)
-        if [ -f /etc/debian_version ]; then
-          curl -fsSL https://get.docker.com -o ${DOWNLOAD_DIR}/get-docker.sh
-          sh ${DOWNLOAD_DIR}/get-docker.sh
-          systemctl start docker
-          systemctl enable docker
-        elif [ -f /etc/redhat-release ]; then
-          yum install -y docker
-          systemctl start docker
-          systemctl enable docker
+normalize_install_dir() {
+    local input="${1:-$DEFAULT_INSTALL_DIR}"
+    input="${input/#\~/$HOME}"
+    input="${input%/}"
+    if [ "$(basename "$input")" = "grafana" ]; then
+        echo "$input"
+    else
+        echo "$input/grafana"
+    fi
+}
+
+parse_args() {
+    local opt
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                show_usage
+                exit 0
+                ;;
+            -v|--version)
+                if command -v grafana-server >/dev/null 2>&1; then
+                    grafana-server --version 2>/dev/null | head -1
+                    exit 0
+                elif pgrep -f "grafana-server" >/dev/null 2>&1; then
+                    echo "运行中"
+                    exit 0
+                fi
+                exit 1
+                ;;
+            -d|--dir|--install-dir|--install-parent|--base-dir)
+                opt="$1"
+                shift
+                [ $# -gt 0 ] || { echo "错误: $opt 需要指定目录" >&2; exit 1; }
+                INSTALL_DIR="$(normalize_install_dir "$1")"
+                ;;
+            --dir=*|--install-dir=*|--install-parent=*|--base-dir=*)
+                INSTALL_DIR="$(normalize_install_dir "${1#*=}")"
+                ;;
+            --download-dir)
+                opt="$1"
+                shift
+                [ $# -gt 0 ] || { echo "错误: $opt 需要指定目录" >&2; exit 1; }
+                DOWNLOAD_DIR="${1/#\~/$HOME}"
+                ;;
+            --download-dir=*)
+                DOWNLOAD_DIR="${1#*=}"
+                DOWNLOAD_DIR="${DOWNLOAD_DIR/#\~/$HOME}"
+                ;;
+            --version-num)
+                opt="$1"
+                shift
+                [ $# -gt 0 ] || { echo "错误: $opt 需要指定版本" >&2; exit 1; }
+                GRAFANA_VERSION="$1"
+                ;;
+            --version-num=*)
+                GRAFANA_VERSION="${1#*=}"
+                ;;
+            -m|--mode)
+                opt="$1"
+                shift
+                [ $# -gt 0 ] || { echo "错误: $opt 需要指定模式" >&2; exit 1; }
+                INSTALL_MODE="$1"
+                ;;
+            --uninstall)
+                UNINSTALL_MODE=true
+                ;;
+            *)
+                echo "未知选项: $1" >&2
+                show_usage
+                exit 1
+                ;;
+        esac
+        shift
+    done
+}
+
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+find_adl() {
+    # 刷新常见工具路径，确保 SSH 非交互模式也能找到 adl
+    local _d
+    for _d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+        [ -d "$_d" ] && case ":$PATH:" in *":$_d:"*) ;; *) PATH="$_d:$PATH" ;; esac
+    done
+
+    if command_exists adl && adl --help >/dev/null 2>&1; then
+        command -v adl
+        return 0
+    fi
+    return 1
+}
+
+download_file() {
+    local url="$1"
+    local output="$2"
+    local output_dir
+    local filename
+    local adl_path
+
+    output_dir="$(dirname "$output")"
+    filename="$(basename "$output")"
+
+    # 确保下载目录存在且当前用户可写
+    if [ -d "$output_dir" ]; then
+        if [ ! -w "$output_dir" ]; then
+            echo "下载目录无写入权限，尝试修复: $output_dir"
+            if command -v sudo >/dev/null 2>&1; then
+                sudo chown "$(id -u):$(id -g)" "$output_dir" 2>/dev/null || true
+            fi
         fi
-        ;;
-      *)
-        echo "不支持的操作系统"
-        exit 1
-        ;;
-    esac
-  fi
+    else
+        mkdir -p "$output_dir" || {
+            echo "错误: 无法创建下载目录: $output_dir" >&2
+            return 1
+        }
+    fi
 
-  # 安装 Docker Compose
-  if ! command -v docker-compose &> /dev/null; then
-    echo "安装 Docker Compose..."
-    curl -L "${DOCKER_COMPOSE_URL}" -o ${DOWNLOAD_DIR}/docker-compose
-    chmod +x ${DOWNLOAD_DIR}/docker-compose
-    mv ${DOWNLOAD_DIR}/docker-compose /usr/local/bin/docker-compose
-  fi
+    # 如果目标文件存在但不可写（如之前用 sudo 下载的残留），删除它
+    if [ -f "$output" ] && [ ! -w "$output" ]; then
+        echo "目标文件存在但无写入权限，尝试删除: $output"
+        if command -v sudo >/dev/null 2>&1; then
+            sudo rm -f "$output" 2>/dev/null || {
+                echo "错误: 无法删除只读文件: $output" >&2
+                return 1
+            }
+        else
+            echo "错误: 目标文件只读且无法删除: $output" >&2
+            return 1
+        fi
+    fi
 
-  # 创建 Docker Compose 文件
-  cat <<EOF > docker-compose.yml
-version: '3'
-  services:
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    restart: always
+    # 清理 aria2 断点文件
+    if [ -f "$output.aria2" ] && [ ! -w "$output.aria2" ]; then
+        sudo rm -f "$output.aria2" 2>/dev/null || rm -f "$output.aria2" 2>/dev/null || true
+    fi
 
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./grafana/data:/var/lib/grafana
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    restart: always
-EOF
+    if adl_path="$(find_adl)"; then
+        echo "检测到可用 adl，优先使用 adl 下载: $filename"
+        if "$adl_path" "$url" "$output_dir" "$filename"; then
+            return 0
+        fi
+        echo "adl 下载失败，回退 curl/wget: $filename"
+    fi
 
-  # 创建 Prometheus 配置文件
-  mkdir -p prometheus
-  cat <<EOF > prometheus/prometheus.yml
-global:
-  scrape_interval: 15s
-
-scrape_configs:
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
-  - job_name: 'spring-boot-app'
-    static_configs:
-      - targets: ['your-spring-boot-app-host:8080']
-EOF
-
-  # 启动 Docker Compose
-  docker-compose up -d
+    if command_exists curl; then
+        curl -L --fail -o "$output" "$url"
+    elif command_exists wget; then
+        wget -O "$output" "$url"
+    else
+        echo "错误: 未找到可用下载工具，请安装 adl、curl 或 wget" >&2
+        return 1
+    fi
 }
 
-# 主机安装模式
-install_host() {
-  # 下载 Prometheus
-  if [ ! -f "${DOWNLOAD_DIR}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" ]; then
-    wget -O "${DOWNLOAD_DIR}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" "${PROMETHEUS_URL}"
-  fi
+verify_tar_gz() {
+    local file="$1"
+    [ -f "$file" ] || return 1
+    gunzip -c "$file" 2>/dev/null | tar -t -f - >/dev/null 2>&1
+}
 
-  # 安装 Prometheus
-  tar xvfz "${DOWNLOAD_DIR}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" -C ${DOWNLOAD_DIR}
-  mv ${DOWNLOAD_DIR}/prometheus-${PROMETHEUS_VERSION}.linux-amd64 /opt/prometheus
-  ln -s /opt/prometheus/prometheus /usr/local/bin/prometheus
-  ln -s /opt/prometheus/promtool /usr/local/bin/promtool
+platform_suffix() {
+    local os
+    local arch
+    case "$OS_TYPE" in
+        Darwin) os="darwin" ;;
+        Linux) os="linux" ;;
+        *) echo "不支持的系统: $OS_TYPE" >&2; return 1 ;;
+    esac
 
-  # 创建 Prometheus 配置文件
-  mkdir -p /etc/prometheus
-  cat <<EOF > /etc/prometheus/prometheus.yml
-global:
-  scrape_interval: 15s
+    case "$(uname -m)" in
+        x86_64|amd64) arch="amd64" ;;
+        arm64|aarch64) arch="arm64" ;;
+        *) echo "不支持的架构: $(uname -m)" >&2; return 1 ;;
+    esac
 
-scrape_configs:
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
-  - job_name: 'spring-boot-app'
-    static_configs:
-      - targets: ['your-spring-boot-app-host:8080']
+    echo "$os-$arch"
+}
+
+create_scripts() {
+    mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/logs"
+
+    cat > "$INSTALL_DIR/start.sh" <<EOF
+#!/usr/bin/env bash
+cd "$INSTALL_DIR"
+nohup "$INSTALL_DIR/bin/grafana-server" \\
+  --homepath "$INSTALL_DIR" \\
+  --config "$INSTALL_DIR/conf/defaults.ini" \\
+  > "$INSTALL_DIR/logs/grafana.log" 2>&1 &
+echo "Grafana started: http://localhost:3000"
 EOF
 
-  # 创建 Prometheus 服务
-  cat <<EOF > /etc/systemd/system/prometheus.service
-[Unit]
-Description=Prometheus
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-User=prometheus
-Group=prometheus
-Type=simple
-ExecStart=/usr/local/bin/prometheus \
-    --config.file /etc/prometheus/prometheus.yml \
-    --storage.tsdb.path /var/lib/prometheus/ \
-    --web.console.templates=/etc/prometheus/consoles \
-    --web.console.libraries=/etc/prometheus/console_libraries
-
-[Install]
-WantedBy=multi-user.target
+    cat > "$INSTALL_DIR/stop.sh" <<EOF
+#!/usr/bin/env bash
+pids=\$(pgrep -f "$INSTALL_DIR/bin/grafana-server" 2>/dev/null || true)
+if [ -n "\$pids" ]; then
+  kill \$pids
+  echo "Grafana stopped"
+else
+  echo "Grafana is not running"
+fi
 EOF
 
-  useradd --no-create-home --shell /bin/false prometheus
-  mkdir -p /var/lib/prometheus
-  chown prometheus:prometheus /var/lib/prometheus
-  chown -R prometheus:prometheus /etc/prometheus
-  systemctl daemon-reload
-  systemctl start prometheus
-  systemctl enable prometheus
+    chmod +x "$INSTALL_DIR/start.sh" "$INSTALL_DIR/stop.sh"
+}
 
-  # 下载 Grafana
-  if [ ! -f "${DOWNLOAD_DIR}/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz" ]; then
-    wget -O "${DOWNLOAD_DIR}/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz" "${GRAFANA_URL}"
-  fi
+install_grafana() {
+    local suffix
+    local url
+    local archive
+    local root_dir
 
-  # 安装 Grafana
-  tar xvfz "${DOWNLOAD_DIR}/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz" -C ${DOWNLOAD_DIR}
-  mv ${DOWNLOAD_DIR}/grafana-${GRAFANA_VERSION} /opt/grafana
-  ln -s /opt/grafana/bin/grafana-server /usr/local/bin/grafana-server
+    suffix="$(platform_suffix)"
+    url="https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.${suffix}.tar.gz"
+    archive="$DOWNLOAD_DIR/${url##*/}"
 
-  # 创建 Grafana 服务
-  cat <<EOF > /etc/systemd/system/grafana.service
+    mkdir -p "$DOWNLOAD_DIR" "$INSTALL_DIR"
+    echo "安装目录: $INSTALL_DIR"
+    echo "下载目录: $DOWNLOAD_DIR"
+    echo "平台: $suffix"
+
+    if ! verify_tar_gz "$archive"; then
+        [ -f "$archive" ] && echo "检测到安装包损坏或不完整，尝试重新下载: $archive"
+        download_file "$url" "$archive"
+    fi
+    if ! verify_tar_gz "$archive"; then
+        echo "错误: 安装包不是有效 tar.gz: $archive" >&2
+        exit 1
+    fi
+
+    root_dir="$(gunzip -c "$archive" | tar -t -f - | head -1 | cut -d/ -f1)"
+    rm -rf "$DOWNLOAD_DIR/$root_dir"
+    gunzip -c "$archive" | tar -x -f - -C "$DOWNLOAD_DIR"
+    rm -rf "$INSTALL_DIR"
+    mv "$DOWNLOAD_DIR/$root_dir" "$INSTALL_DIR"
+    create_scripts
+
+    if [ "$OS_TYPE" = "Linux" ] && command_exists systemctl && [ "$EUID" -eq 0 ]; then
+        cat > /etc/systemd/system/grafana.service <<EOF
 [Unit]
 Description=Grafana
 After=network.target
 
 [Service]
-User=grafana
-Group=grafana
-ExecStart=/usr/local/bin/grafana-server \
-    -config /opt/grafana/conf/defaults.ini \
-    -homepath /opt/grafana
+Type=simple
+ExecStart=$INSTALL_DIR/bin/grafana-server --homepath $INSTALL_DIR --config $INSTALL_DIR/conf/defaults.ini
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 EOF
+        systemctl daemon-reload
+        systemctl enable grafana
+        systemctl restart grafana
+    else
+        "$INSTALL_DIR/start.sh"
+    fi
 
-  useradd --no-create-home --shell /bin/false grafana
-  chown -R grafana:grafana /opt/grafana
-  systemctl daemon-reload
-  systemctl start grafana
-  systemctl enable grafana
+    echo "Grafana 安装完成，默认账号密码: admin / admin"
 }
 
-# 仅安装 Grafana（Debian/RedHat）
-install_grafana_debian_redhat() {
-  check_root
-  setup_environment
-  add_grafana_repo
-  install_grafana
-  configure_and_start_grafana
-  configure_firewall
-  echo "Grafana 安装完成！默认可以通过 http://<服务器IP>:3000 访问，默认用户名和密码均为 'admin'。"
-}
+# === Docker 模式安装 ===
+install_grafana_docker() {
+    echo "使用 Docker 模式安装 Grafana..."
+    mkdir -p "$INSTALL_DIR"
 
-# 检查是否为 root 用户
-check_root() {
-  if [ "$EUID" -ne 0 ]; then
-    echo "必须以root用户运行此脚本"
-    exit 1
-  fi
-}
+    cat > "$INSTALL_DIR/docker-compose.yml" <<EOF
+version: '3.8'
 
-# 设置环境
-setup_environment() {
-  local package_manager=$(command -v apt-get || command -v yum)
-  [[ -z "$package_manager" ]] && echo "未知的操作系统，无法继续" && exit 1
+services:
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION}
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./provisioning:/etc/grafana/provisioning
+    networks:
+      - grafana-network
 
-  $package_manager update -y
-  $package_manager install -y wget curl
-}
+volumes:
+  grafana-data:
 
-# 添加 Grafana 仓库
-add_grafana_repo() {
-  if [ -f /etc/debian_version ]; then
-    echo "deb https://packages.grafana.com/oss/deb stable main" > /etc/apt/sources.list.d/grafana.list
-    wget -q -O - https://packages.grafana.com/gpg.key | apt-key add -
-  elif [ -f /etc/redhat-release ]; then
-    cat <<EOF > /etc/yum.repos.d/grafana.repo
-[grafana]
-name=grafana
-baseurl=https://packages.grafana.com/oss/rpm
-repo_gpgcheck=1
-enabled=1
-gpgcheck=1
-gpgkey=https://packages.grafana.com/gpg.key
+networks:
+  grafana-network:
+    driver: bridge
 EOF
-  fi
-}
 
-# 安装 Grafana
-install_grafana() {
-  if [ -f /etc/debian_version ]; then
-    apt-get install -y grafana
-  elif [ -f /etc/redhat-release ]; then
-    yum install -y grafana
-  fi
-}
-
-# 配置并启动 Grafana 服务
-configure_and_start_grafana() {
-  systemctl daemon-reload
-  systemctl enable grafana-server
-  systemctl start grafana-server
-
-  if systemctl is-active --quiet grafana-server; then
-    echo "Grafana 服务已成功启动。"
-  else
-    echo "Grafana 服务启动失败，请检查日志。"
-    exit 1
-  fi
-}
-
-# 配置防火墙规则（仅限于使用 firewalld 的系统）
-configure_firewall() {
-  if command -v firewall-cmd > /dev/null 2>&1; then
-    firewall-cmd --zone=public --add-port=3000/tcp --permanent
-    firewall-cmd --reload
-    echo "防火墙已配置为允许端口 3000 的流量。"
-  else
-    echo "未检测到 firewalld 或不需要配置防火墙。"
-  fi
-}
-
-# 主程序
-install_dependencies
-
-case $MODE in
-  1)
-    install_docker_compose
-    ;;
-  2)
-    install_host
-    ;;
-  3)
-    install_grafana_debian_redhat
-    ;;
-  *)
-    echo "未知模式"
-    exit 1
-    ;;
-esac
-
-# 显示配置说明
-if [ "$MODE" != "3" ]; then
-  echo "安装完成！"
-  echo ""
-  echo "配置 Grafana:"
-  echo "1. 访问 Grafana："
-  echo "   打开浏览器，访问 http://localhost:3000，默认用户名和密码都是 admin。"
-  echo "2. 添加数据源："
-  echo "   导航到 Configuration -> Data Sources。"
-  echo "   点击 Add data source。"
-  echo "   选择 Prometheus。"
-  echo "   在 HTTP 标签页中，输入 Prometheus 的 URL（例如 http://localhost:9090）。"
-  echo "   点击 Save & Test。"
-  echo "3. 导入仪表盘："
-  echo "   导航到 Create -> Import。"
-  echo "   输入或上传一个 Prometheus 监控仪表盘的 JSON 文件（可以从 Grafana 官方库中找到）。"
-  echo "   选择之前添加的 Prometheus 数据源。"
-  echo "   点击 Import。"
-  echo ""
-  echo "测试监控："
-  echo "1. 启动 Spring Boot 应用："
-  echo "   运行你的 Spring Boot 应用，确保它正在监听 8080 端口。"
-  echo "2. 访问 Prometheus："
-  echo "   打开浏览器，访问 http://localhost:9090/targets，确保你的 Spring Boot 应用被成功抓取。"
-  echo "3. 查看 Grafana 仪表盘："
-  echo "   返回 Grafana，查看已导入的仪表盘，你应该能看到你的 Spring Boot 应用的监控数据。"
+    cat > "$INSTALL_DIR/start.sh" <<'EOF'
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+if docker compose version &>/dev/null; then
+    docker compose up -d
 else
-  echo "Grafana 已成功安装！"
-  echo "访问地址：http://<服务器IP>:3000"
-  echo "默认用户名/密码：admin/admin"
+    docker-compose up -d
 fi
+echo "Grafana 已启动: http://localhost:3000"
+EOF
+    chmod +x "$INSTALL_DIR/start.sh"
+
+    cat > "$INSTALL_DIR/stop.sh" <<'EOF'
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+if docker compose version &>/dev/null; then
+    docker compose down
+else
+    docker-compose down
+fi
+echo "Grafana 已停止"
+EOF
+    chmod +x "$INSTALL_DIR/stop.sh"
+
+    echo "Grafana Docker 配置创建完成"
+    echo "启动: $INSTALL_DIR/start.sh"
+}
+
+# === 卸载 ===
+uninstall_grafana() {
+    echo "卸载 Grafana..."
+
+    # 停止主机进程
+    if pgrep -f "$INSTALL_DIR/bin/grafana-server" &>/dev/null; then
+        echo "停止 Grafana 进程..."
+        pids="$(pgrep -f "$INSTALL_DIR/bin/grafana-server" || true)"
+        [ -n "$pids" ] && kill $pids 2>/dev/null || true
+        sleep 2
+        pids="$(pgrep -f "$INSTALL_DIR/bin/grafana-server" || true)"
+        [ -n "$pids" ] && kill -9 $pids 2>/dev/null || true
+    fi
+
+    # 停止 Docker 容器
+    if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+        echo "停止 Docker 容器..."
+        cd "$INSTALL_DIR"
+        if docker compose version &>/dev/null; then
+            docker compose down -v 2>/dev/null || true
+        elif command -v docker-compose &>/dev/null; then
+            docker-compose down -v 2>/dev/null || true
+        fi
+    fi
+
+    # 删除安装目录
+    if [ -d "$INSTALL_DIR" ]; then
+        echo "删除安装目录: $INSTALL_DIR"
+        rm -rf "$INSTALL_DIR"
+    fi
+
+    # 删除 systemd 服务
+    if [ "$OS_TYPE" = "Linux" ] && [ -f "/etc/systemd/system/grafana.service" ]; then
+        systemctl stop grafana 2>/dev/null || true
+        systemctl disable grafana 2>/dev/null || true
+        rm -f /etc/systemd/system/grafana.service
+        systemctl daemon-reload 2>/dev/null || true
+    fi
+
+    echo "Grafana 卸载完成"
+}
+
+# === 主入口 ===
+main() {
+    parse_args "$@"
+
+    if [[ "$UNINSTALL_MODE" == true ]]; then
+        uninstall_grafana
+        exit 0
+    fi
+
+    case "$INSTALL_MODE" in
+        docker)
+            install_grafana_docker ;;
+        host)
+            install_grafana ;;
+        *)
+            echo "错误: 未知安装模式: $INSTALL_MODE" >&2
+            exit 1 ;;
+    esac
+}
+
+main "$@"

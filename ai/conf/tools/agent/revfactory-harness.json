@@ -1,0 +1,73 @@
+{
+  "id": "revfactory-harness",
+  "name": "RevFactory Harness",
+  "description": "Claude Code 的 Team-Architecture Factory，自动生成 Agent 团队架构和 Skills。6 种预定义架构模式",
+  "category": "ai-agent",
+  "tags": [
+    "ai",
+    "agent",
+    "claude-code",
+    "plugin",
+    "skill-generation",
+    "team-architecture"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Git 安装",
+        "type": "bash",
+        "command": "bash \"${SCRIPT_DIR}/agent/revfactory-harness/install-revfactory-harness.sh\" install",
+        "check": true
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "bash \"${SCRIPT_DIR}/agent/revfactory-harness/install-revfactory-harness.sh\" update",
+    "check": true
+  },
+  "commands": {
+    "status": "bash \"${SCRIPT_DIR}/agent/revfactory-harness/install-revfactory-harness.sh\" status"
+  },
+  "status_check": [
+    {
+      "name": "检查安装状态",
+      "command": "if [ -d \"${HOME}/.claude/skills/harness\" ]; then echo '已安装'; else echo '未安装'; fi"
+    }
+  ],
+  "setup_guide": {
+    "manual": "安装后，在 Claude Code 中使用 'Build a harness for this project' 触发插件",
+    "workflows": [
+      {
+        "name": "快速开始",
+        "example": "在 Claude Code 中输入: 'Build a harness for this project'"
+      }
+    ]
+  },
+  "mcp_servers": {},
+  "skills": {
+    "revfactory-harness": "${SCRIPT_DIR}/conf/shared/skills/revfactory-harness.json"
+  },
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": [
+      "revfactory-harness"
+    ]
+  },
+  "notes": "Claude Code 插件，需要在 Claude Code 中使用。支持 6 种架构模式：Pipeline、Fan-out/Fan-in、Expert Pool、Producer-Reviewer、Supervisor、Hierarchical Delegation。生成的 Agent 团队和 Skills 会保存在项目的 .claude/ 目录中。",
+  "post_install": [
+    {
+      "description": "显示使用指引",
+      "command": "echo '\n========================================' && echo 'RevFactory Harness 安装完成！' && echo '========================================' && echo '' && echo '在 Claude Code 中使用以下提示词:' && echo '' && echo '  1. Build a harness for this project' && echo '  2. Design an agent team for this domain' && echo '  3. Set up a harness' && echo '' && echo '支持 6 种架构模式:' && echo '  1. Pipeline - 顺序任务' && echo '  2. Fan-out/Fan-in - 并行任务' && echo '  3. Expert Pool - 专家池' && echo '  4. Producer-Reviewer - 生成-评审' && echo '  5. Supervisor - 监督者' && echo '  6. Hierarchical Delegation - 分层委派' && echo '' && echo '文档: https://github.com/revfactory/harness' && echo '========================================\n'"
+    }
+  ],
+  "post_uninstall": [
+    "echo 'Harness 已卸载'"
+  ],
+  "uninstall_extended": [
+    {
+      "description": "彻底清理所有 Harness 文件",
+      "command": "bash \"${SCRIPT_DIR}/agent/revfactory-harness/install-revfactory-harness.sh\" uninstall"
+    }
+  ]
+}

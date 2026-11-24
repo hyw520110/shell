@@ -1,0 +1,55 @@
+{
+  "id": "superagi",
+  "name": "SuperAGI",
+  "description": "开源自主智能体框架，提供 Web UI、工具包、工作流、记忆和向量数据库集成",
+  "category": "ai-agent",
+  "tags": ["ai", "agents", "autonomous", "python", "docker", "web-ui"],
+  "install": {
+    "methods": [
+      {
+        "name": "源码准备（Docker 启动）",
+        "type": "custom",
+        "command": "base=\"$HOME/.local/share/ai-hub/SuperAGI\"; mkdir -p \"$(dirname \"$base\")\"; if [ -d \"$base/.git\" ]; then git -C \"$base\" pull --ff-only; else git clone https://github.com/TransformerOptimus/SuperAGI.git \"$base\"; fi; cp -n \"$base/config_template.yaml\" \"$base/config.yaml\" 2>/dev/null || true; echo '源码已准备；请确认 Docker Desktop 运行后执行 ai-hub.sh 操作 -> start'",
+        "check": "test -f \"$HOME/.local/share/ai-hub/SuperAGI/docker-compose.yaml\" && test -f \"$HOME/.local/share/ai-hub/SuperAGI/config.yaml\"",
+        "uninstall": ["cd \"$HOME/.local/share/ai-hub/SuperAGI\" 2>/dev/null && docker compose down 2>/dev/null || true", "rm -rf \"$HOME/.local/share/ai-hub/SuperAGI\""]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "git -C \"$HOME/.local/share/ai-hub/SuperAGI\" pull --ff-only",
+    "check": "test -d \"$HOME/.local/share/ai-hub/SuperAGI\""
+  },
+  "process_check": "",
+  "config": {
+    "path": "$HOME/.local/share/ai-hub/SuperAGI/config.yaml",
+    "operations": {
+      "view": "sed -n '1,160p' \"$HOME/.local/share/ai-hub/SuperAGI/config.yaml\" 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vi} \"$HOME/.local/share/ai-hub/SuperAGI/config.yaml\"",
+      "reset": ["cp \"$HOME/.local/share/ai-hub/SuperAGI/config_template.yaml\" \"$HOME/.local/share/ai-hub/SuperAGI/config.yaml\""]
+    }
+  },
+  "commands": {
+    "start": "cd \"$HOME/.local/share/ai-hub/SuperAGI\" && docker compose -f docker-compose.yaml up -d --build",
+    "stop": "cd \"$HOME/.local/share/ai-hub/SuperAGI\" && docker compose -f docker-compose.yaml down",
+    "logs": "cd \"$HOME/.local/share/ai-hub/SuperAGI\" && docker compose -f docker-compose.yaml logs -f",
+    "open": "if command -v open >/dev/null 2>&1; then open http://127.0.0.1:3000; elif command -v xdg-open >/dev/null 2>&1; then xdg-open http://127.0.0.1:3000 >/dev/null 2>&1 & else echo 'http://127.0.0.1:3000'; fi",
+    "version": "git -C \"$HOME/.local/share/ai-hub/SuperAGI\" describe --tags --always 2>/dev/null || echo '已安装'"
+  },
+  "status_check": [
+    {
+      "name": "检查源码",
+      "command": "test -f \"$HOME/.local/share/ai-hub/SuperAGI/docker-compose.yaml\" && echo '源码已准备' || echo '未安装'"
+    },
+    {
+      "name": "检查 Web UI",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:3000 >/dev/null 2>&1 && echo 'Web UI 运行中' || echo 'Web UI 未运行'"
+    }
+  ],
+  "requirements": {
+    "docker": true
+  },
+  "homepage": "https://superagi.com/",
+  "repository": "https://github.com/TransformerOptimus/SuperAGI",
+  "notes": "官方本地部署使用 Docker Compose，默认 Web UI 地址为 http://127.0.0.1:3000；项目仍处于持续开发状态。"
+}

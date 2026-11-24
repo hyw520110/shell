@@ -1,0 +1,76 @@
+{
+  "id": "doubao",
+  "name": "豆包",
+  "description": "豆包电脑版 (Doubao Desktop) - 字节跳动 AI 全能助手，支持办公任务、AI 自动化、生图/生视频、Agent 工作台与本地电脑协作",
+  "category": "ai-ide",
+  "sort_order": 30,
+  "sort_key": "豆包",
+  "tags": ["ai", "ide", "assistant", "desktop", "bytedance", "chat"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "官方源自动下载安装 (macOS DMG)",
+        "type": "bash",
+        "command": "bash ide/doubao/install-doubao.sh",
+        "check": "[ -d \"/Applications/Doubao.app\" ]",
+        "uninstall": [
+          "echo '请先退出豆包（或运行 osascript -e \"quit app \\\"Doubao\\\"\"），然后在 Finder 中删除 /Applications/Doubao.app；用户数据位于 ~/Library/Application Support/Doubao，可一并删除'"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash ide/doubao/install-doubao.sh --yes",
+    "check": "[ -d \"/Applications/Doubao.app\" ]",
+    "pre_update": []
+  },
+
+  "post_install": [
+    {"description": "显示首次使用提示", "command": "echo -e '\\n首次打开豆包后，使用手机号或豆包 App 扫码登录即可使用'" }
+  ],
+
+  "post_uninstall": [
+    {"description": "提示数据目录", "command": "echo '如需彻底清理，可删除 ~/Library/Application Support/Doubao 与 ~/Library/Caches/com.bot.pc.doubao'" }
+  ],
+
+  "config": {
+    "path": "$HOME/Library/Application Support/Doubao/",
+    "operations": {
+      "view": "ls -la \"$HOME/Library/Application Support/Doubao/\" 2>/dev/null | head -20 || echo '数据目录不存在'",
+      "edit": "open -a Doubao",
+      "reset": [
+        "cp -R \"$HOME/Library/Application Support/Doubao\" \"$HOME/Library/Application Support/Doubao.backup.$(date +%Y%m%d_%H%M%S)\" 2>/dev/null || true",
+        "echo '已备份数据目录；如需重置登录状态，请手动删除 ~/Library/Application Support/Doubao 后重新打开豆包'"
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "open -a Doubao",
+    "version": "defaults read /Applications/Doubao.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo '未安装'",
+    "latest": "bash ide/doubao/install-doubao.sh --print-url",
+    "open_data_dir": "open \"$HOME/Library/Application Support/Doubao\" 2>/dev/null || echo '数据目录不存在'"
+  },
+
+  "process_check": "Doubao",
+
+  "status_check": [
+    {"name": "检查应用", "command": "[ -d \"/Applications/Doubao.app\" ] && echo '已安装' || echo '未安装'"},
+    {"name": "检查版本", "command": "defaults read /Applications/Doubao.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null || echo '未安装'"},
+    {"name": "检查数据目录", "command": "ls -la \"$HOME/Library/Application Support/Doubao/\" 2>/dev/null | head -5 || echo '数据目录不存在'"}
+  ],
+
+  "mcp_servers": {},
+
+  "skills": {},
+
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+
+  "notes": "macOS 自动下载安装：脚本通过豆包官网设置接口解析最新版 DMG，按架构（arm64/x64/universal）下载并安装到 /Applications/Doubao.app，支持断点复用与镜像校验。更新前会先退出旧实例再原子替换。Windows 暂不支持自动安装，请前往 https://www.doubao.com/download/desktop 手动下载。"
+}

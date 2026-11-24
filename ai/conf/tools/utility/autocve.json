@@ -1,0 +1,68 @@
+{
+  "id": "autocve",
+  "name": "AutoCVE 源码审计平台",
+  "description": "面向授权源码项目的 Agent 驱动 CVE 发现、验证和报告平台；通过 Docker Compose 本地运行。",
+  "category": "ai-utility",
+  "tags": [
+    "安全",
+    "源码审计",
+    "CVE",
+    "Agent",
+    "Docker"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Docker Compose 本地安装",
+        "type": "bash",
+        "command": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" install",
+        "check": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" status",
+        "uninstall": [
+          "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" uninstall --yes"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" update",
+    "check": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" status"
+  },
+  "commands": {
+    "status": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" status",
+    "start": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" start",
+    "stop": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" stop",
+    "logs": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" logs"
+  },
+  "process_check": "",
+  "status_check": [
+    {
+      "name": "检查 AutoCVE Compose 状态",
+      "command": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" status"
+    }
+  ],
+  "setup_guide": {
+    "manual": "安装后编辑 ~/.local/share/autocve/.env 配置模型，再确认 Docker socket 风险并执行 start --ack-authorized；前端默认 http://127.0.0.1:3000。",
+    "workflows": [
+      {
+        "name": "源码审计",
+        "example": "仅导入自有或已获书面授权的源码项目，先执行只读审计，再人工复核漏洞证据。"
+      },
+      {
+        "name": "清理",
+        "example": "uninstall --yes 保留数据卷；确认无需保留数据库后再使用 purge --yes。"
+      }
+    ]
+  },
+  "notes": "AutoCVE 不是公网 Web 扫描器。上游 Compose 会运行 Agent Worker 并挂载宿主 Docker socket，可能获得较高本机权限；本条目默认不启动、不导入源码、不执行 PoC、不提交漏洞。",
+  "homepage": "https://github.com/larlarua/AutoCVE",
+  "repository": "https://github.com/larlarua/AutoCVE",
+  "scenarios": [
+    "security",
+    "code-review",
+    "qa-testing"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true
+}

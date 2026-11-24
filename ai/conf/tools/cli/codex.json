@@ -1,0 +1,74 @@
+{
+  "id": "codex",
+  "name": "OpenAI Codex CLI",
+  "description": "OpenAI 编程助手，安装后自动安装 cc-connect 并显示钉钉等消息平台接入指南",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @openai/codex --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g @openai/codex"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @openai/codex --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.codex/config.toml",
+    "operations": {
+      "view": "cat $HOME/.codex/config.toml 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.codex/config.toml",
+      "reset": [
+        "cp $HOME/.codex/config.toml $HOME/.codex/config.toml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.codex/config.toml"
+      ]
+    }
+  },
+  "commands": {
+    "start": "codex",
+    "version": "codex --version",
+    "cc-connect-install": "bash \"$AI_HUB_SCRIPT_DIR/scripts/install-cc-connect.sh\" install",
+    "cc-connect-status": "bash \"$AI_HUB_SCRIPT_DIR/scripts/install-cc-connect.sh\" status",
+    "cc-connect-guide": "bash \"$AI_HUB_SCRIPT_DIR/scripts/install-cc-connect.sh\" guide"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "codex --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.codex/config.toml 2>/dev/null || echo \"配置目录不存在\""
+    },
+    {
+      "name": "检查消息桥接",
+      "command": "bash \"$AI_HUB_SCRIPT_DIR/scripts/install-cc-connect.sh\" status"
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "cc-connect 安装在用户目录，项目执行目录由 work_dir 独立指定。首次安装后按指南配置独立机器人、本人白名单和登录自启动；不自动创建凭据或启动服务，卸载 Codex 时保留 cc-connect。",
+  "post_install": [
+    {
+      "description": "安装 cc-connect 并显示消息平台配置指南",
+      "command": "bash \"$AI_HUB_SCRIPT_DIR/scripts/install-cc-connect.sh\" install"
+    }
+  ],
+  "post_uninstall": []
+}

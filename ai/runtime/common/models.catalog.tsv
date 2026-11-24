@@ -1,0 +1,30 @@
+alias	model	max_len	estimated_memory_gb	use_case	note	speculative_config
+qwen3.6-27b	Qwen/Qwen3.6-27B	65536	54	编码+文档主力-首选	Dense 27B, Agentic Coding, SWE-bench 77.2%, M4 Max 128G + vllm-metal 实测 64K 可用	
+qwen3.6-35b-a3b	Qwen/Qwen3.6-35B-A3B	32768	70	高速编码/快速响应	MoE 35B/3B active, 推理速度 3-4x, 适合高吞吐场景	
+qwen3-coder-30b-a3b	Qwen/Qwen3-Coder-30B-A3B-Instruct	32768	64	编码-MoE 备选	MoE Coder 模型，已被 Qwen3.6-27B 超越，可作为备选	
+qwen2.5-coder-32b	Qwen/Qwen2.5-Coder-32B-Instruct	32768	64	编码主力-稳妥备选	成熟 Coder 32B，适合复杂代码补全、修复、解释	
+deepseek-r1-distill-qwen-32b	deepseek-ai/DeepSeek-R1-Distill-Qwen-32B	32768	64	复杂推理/代码审查	DeepSeek R1 蒸馏版，适合方案评审、bug 推理、架构取舍	
+qwen3-30b-a3b	Qwen/Qwen3-30B-A3B	32768	60	PRD/方案文档/结构化输出	通用 MoE，适合 PRD、业务流程、架构说明、Mermaid/Draw.io 文本生成	{"method":"ngram","num_speculative_tokens":5,"prompt_lookup_min":3,"prompt_lookup_max":5}
+glm-4.6	zai-org/GLM-4.6	32768	64	中文方案/Agent 任务	中文、代码、工具调用场景可选	
+gemma3-27b	google/gemma-3-27b-it	32768	54	多模态/文档理解	多模态和通用任务，适合资料理解与文档辅助	
+phi-4	microsoft/phi-4	16384	32	轻量推理备选	中型模型，逻辑推理强，适合低内存常驻	
+qwen3-14b	Qwen/Qwen3-14B	32768	32	轻量常驻	MPS/CUDA 都更稳的中等模型	
+qwen3-8b	Qwen/Qwen3-8B	32768	18	轻量常驻	启动快，适合后台常驻和简单问答	
+qwen2.5-32b	Qwen/Qwen2.5-32B-Instruct	32768	64	通用中文/文档	成熟稳定的 32B 指令模型	
+qwen2.5-14b	Qwen/Qwen2.5-14B-Instruct	32768	28	通用轻量	稳定中型中文/代码模型	
+qwen2.5-7b	Qwen/Qwen2.5-7B-Instruct	32768	14	通用轻量	轻量、启动快	
+qwen2.5-72b	Qwen/Qwen2.5-72B-Instruct	32768	140	中文/英文大模型	72B 大模型, bfloat16; 128GB 建议量化或用 vllm-metal MLX 4bit 版 (~42GB)	
+deepseek-v4-flash	deepseek-ai/DeepSeek-V4-Flash	16384	96	长上下文实验/DS4 对照	vLLM 可尝试，但 M4 Max 128GB 建议先 16K/32K，不要直接 1M	
+deepseek-v4-pro	deepseek-ai/DeepSeek-V4-Pro	32768	512	不推荐本机	超大模型，128GB 不推荐；需要多 GPU/大内存服务器	
+deepseek-v3.1	deepseek-ai/DeepSeek-V3.1	32768	160	服务器/多卡	vLLM 支持 DeepSeek-V3 架构；建议多卡或量化环境	
+deepseek-v3	deepseek-ai/DeepSeek-V3	32768	160	服务器/多卡	超大 MoE；本机仅建议实验	
+deepseek-r1	deepseek-ai/DeepSeek-R1	32768	160	服务器/多卡	完整推理模型；建议多卡/服务器部署	
+deepseek-r1-distill-qwen-14b	deepseek-ai/DeepSeek-R1-Distill-Qwen-14B	32768	28	轻量推理	轻量 DeepSeek 推理替代	
+llama3.3-70b	meta-llama/Llama-3.3-70B-Instruct	16384	140	英文/通用大模型	需授权；128GB 建议使用量化版	
+llama3.1-70b	meta-llama/Llama-3.1-70B-Instruct	32768	140	英文/通用大模型	需授权；128GB 需量化或降低上下文	
+llama3.1-8b	meta-llama/Llama-3.1-8B-Instruct	32768	16	英文轻量常驻	英文/通用轻量常驻	
+llama4-scout	meta-llama/Llama-4-Scout-17B-16E	32768	80	长上下文实验	MoE 长上下文，需授权	
+llama4-maverick	meta-llama/Llama-4-Maverick-17B-128E	32768	110	大模型实验	MoE 大模型，128GB 边缘可尝试	
+mistral-small	mistralai/Mistral-Small-24B-Instruct-2501	32768	48	英文/代码备选	Apache 2.0，英文/代码表现均衡	
+mixtral-8x7b	mistralai/Mixtral-8x7B-Instruct-v0.1	32768	96	MoE 实验	经典 MoE，内存占用较高	
+yi-34b	01-ai/Yi-1.5-34B-Chat	32768	68	中文/英文备选	中文/英文通用备选	

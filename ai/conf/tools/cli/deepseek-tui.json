@@ -1,0 +1,128 @@
+{
+  "id": "deepseek-tui",
+  "name": "DeepSeek TUI Agent",
+  "description": "DeepSeek V4 终端编程代理，支持 1M Token 上下文、Auto Mode 智能选择模型、实时推理思考流、LSP 诊断、MCP 服务器",
+  "category": "ai-coding",
+  "sort_key": "DeepSeek 20 TUI Agent",
+  "tags": [
+    "ai",
+    "coding",
+    "deepseek",
+    "agent",
+    "tui",
+    "rust",
+    "open-source"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "npm 安装 (推荐)",
+        "type": "npm",
+        "command": "npm install -g deepseek-tui",
+        "check": "npm list -g deepseek-tui --depth=0",
+        "uninstall": ["npm uninstall -g deepseek-tui deepseek-tui-cli"]
+      },
+      {
+        "name": "Cargo 安装",
+        "type": "cargo",
+        "command": "cargo install deepseek-tui-cli --locked && cargo install deepseek-tui --locked",
+        "check": "deepseek --version"
+      },
+      {
+        "name": "Homebrew 安装 (macOS)",
+        "type": "brew",
+        "command": "brew install deepseek-tui",
+        "check": "deepseek --version"
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g deepseek-tui",
+    "check": "npm list -g deepseek-tui --depth=0"
+  },
+  "post_install": [
+    {
+      "description": "显示使用提示",
+      "command": "echo '' && echo '========================================' && echo 'DeepSeek TUI 安装完成！' && echo '========================================' && echo '' && echo '快速开始:' && echo '  deepseek --version     # 检查版本' && echo '  deepseek auth set       # 设置 API Key' && echo '  deepseek --model auto  # Auto 模式 (推荐)' && echo '' && echo '首次使用需要配置 DeepSeek API Key:' && echo '  deepseek auth set --provider deepseek' && echo '' && echo '获取 API Key: https://platform.deepseek.com/api_keys' && echo '' && echo '更多信息: https://github.com/Hmbown/DeepSeek-TUI' && echo '========================================' && echo ''"
+    }
+  ],
+  "post_uninstall": [
+    "echo '正在清理 DeepSeek TUI...'",
+    "npm uninstall -g deepseek-tui deepseek-tui-cli 2>/dev/null && echo 'npm 包已卸载' || true",
+    "cargo uninstall deepseek-tui deepseek-tui-cli 2>/dev/null && echo 'Cargo 包已卸载' || true",
+    "rm -rf ~/.deepseek 2>/dev/null && echo '删除配置目录 ~/.deepseek' || echo '配置目录不存在'",
+    "echo 'DeepSeek TUI 清理完成'"
+  ],
+  "config": {
+    "path": "$HOME/.deepseek/config.toml",
+    "operations": {
+      "view": "cat $HOME/.deepseek/config.toml 2>/dev/null || echo '配置文件不存在'",
+      "edit": "vim $HOME/.deepseek/config.toml",
+      "reset": [
+        "cp $HOME/.deepseek/config.toml $HOME/.deepseek/config.toml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.deepseek/config.toml"
+      ]
+    }
+  },
+  "commands": {
+    "start": "deepseek",
+    "version": "deepseek --version",
+    "auth": "deepseek auth",
+    "doctor": "deepseek doctor",
+    "update": "npm install -g deepseek-tui",
+    "auto": "deepseek --model auto",
+    "chat": "deepseek --mode chat",
+    "serve": "deepseek serve --http"
+  },
+  "status_check": [
+    {
+      "name": "检查 Rust 环境",
+      "command": "rustc --version 2>/dev/null || echo 'Rust 未安装'"
+    },
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查 DeepSeek 版本",
+      "command": "deepseek --version 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查配置文件",
+      "command": "ls -la $HOME/.deepseek/ 2>/dev/null || echo '配置目录不存在'"
+    },
+    {
+      "name": "检查 API Key",
+      "command": "grep -i 'api_key' $HOME/.deepseek/config.toml 2>/dev/null && echo 'API Key 已配置' || echo 'API Key 未配置'"
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {
+    "deepseek-skill": {
+      "name": "内置 Skills",
+      "description": "DeepSeek TUI 内置技能系统",
+      "prompts": {
+        "list": "查看所有可用的 skills",
+        "install": "安装新的 skill",
+        "create": "创建自定义 skill"
+      },
+      "dependencies": {
+        "system_commands": ["deepseek"]
+      },
+      "tips": "内置 Skills: skill-creator, mcp-builder, plugin-creator, v4-best-practices, documents, presentations, spreadsheets, pdf, feishu 等"
+    }
+  },
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "需要 DeepSeek API Key。Auto Mode 可智能选择模型和思考级别。支持 MCP 服务器、Sub-agents 并发执行、LSP 诊断、OS 级沙箱隔离。",
+  "required_tools": ["node", "rustc"],
+  "homepage": "https://github.com/Hmbown/DeepSeek-TUI",
+  "links": {
+    "docs": "https://github.com/Hmbown/DeepSeek-TUI#readme",
+    "api_key": "https://platform.deepseek.com/api_keys",
+    "features": "https://github.com/Hmbown/DeepSeek-TUI#key-features"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "id": "iflow",
+  "name": "iFlow CLI",
+  "description": "",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @iflow-ai/iflow-cli --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g @iflow-ai/iflow-cli"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @iflow-ai/iflow-cli --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.iflow/settings.json",
+    "operations": {
+      "view": "cat $HOME/.iflow/settings.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.iflow/settings.json",
+      "reset": [
+        "cp $HOME/.iflow/settings.json $HOME/.iflow/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.iflow/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "iflow",
+    "version": "iflow --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "iflow --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.iflow/settings.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

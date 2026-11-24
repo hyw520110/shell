@@ -1,0 +1,71 @@
+{
+  "id": "code-review-graph",
+  "name": "Code Review Graph",
+  "description": "基于 Tree-sitter 的代码库智能映射工具。通过增量索引和影响半径分析，大幅减少 CR 时的 Token 消耗。支持 30+ 种语言。",
+  "category": "ai-utility",
+  "tags": [
+    "代码审查",
+    "图谱",
+    "性能优化",
+    "Token节省",
+    "Tree-sitter"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Pip 安装",
+        "type": "pip",
+        "command": "pip install code-review-graph",
+        "check": "code-review-graph --version",
+        "uninstall": [
+          "pip uninstall -y code-review-graph"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "pip install --upgrade code-review-graph",
+    "check": "code-review-graph --version"
+  },
+  "post_install": [
+    {
+      "description": "配置 IDE 集成",
+      "command": "echo -e '\\n[建议] 运行 \"code-review-graph install\" 自动为 Cursor/Claude Code 配置 MCP 接口。'"
+    }
+  ],
+  "config": {
+    "path": "$HOME/.code_review_graph/config.json",
+    "operations": {
+      "view": "cat $HOME/.code_review_graph/config.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "vi $HOME/.code_review_graph/config.json"
+    }
+  },
+  "commands": {
+    "build": "code-review-graph build",
+    "watch": "code-review-graph watch",
+    "visualize": "code-review-graph visualize",
+    "version": "code-review-graph --version"
+  },
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "code-review-graph --version 2>/dev/null || echo 'Code Review Graph 未安装'"
+    }
+  ],
+  "prompts": {
+    "build-graph": "为当前项目构建代码审查图谱：code-review-graph build",
+    "review-impact": "分析最近变更的影响半径并生成 CR 建议",
+    "visualize-arch": "生成项目的交互式架构拓扑图"
+  },
+  "notes": "Code Review Graph 是 CodeGraph 与 OCR 的完美结合。它通过 SHA-256 增量索引，能实现秒级的代码理解。建议配合 uv 使用以获得最佳安装体验。",
+  "homepage": "https://github.com/tirth8205/code-review-graph",
+  "repository": "https://github.com/tirth8205/code-review-graph",
+  "scenarios": [
+    "productivity",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false
+}

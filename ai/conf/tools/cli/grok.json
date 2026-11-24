@@ -1,0 +1,62 @@
+{
+  "id": "grok",
+  "name": "Grok CLI",
+  "description": "",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @vibe-kit/grok-cli --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g @vibe-kit/grok-cli"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @vibe-kit/grok-cli --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.grok/settings.json",
+    "operations": {
+      "view": "cat $HOME/.grok/settings.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.grok/settings.json",
+      "reset": [
+        "cp $HOME/.grok/settings.json $HOME/.grok/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.grok/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "grok",
+    "version": "grok --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "grok --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.grok/settings.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

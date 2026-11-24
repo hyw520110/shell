@@ -11,9 +11,20 @@
 .DS_Store
 **/.DS_Store/**
 **/*.orig
-<<<<<<< HEAD
-=======
-
+**/*.bak
+**/*.bak.*
+**/*.backup.*
+# git mergetool 冲突备份文件
+**/*_BACKUP_[0-9]*
+**/*_BASE_[0-9]*
+**/*_LOCAL_[0-9]*
+**/*_REMOTE_[0-9]*
+**/*.tmp
+**/*.temp
+.ai-cli-cache
+.playwright-mcp/
+**/ai-cli-cmd.*
+**/ai-cli-error.*
 # Added by Illuminated Cloud
 .sf/
 .sfdx/
@@ -24,4 +35,38 @@ node_modules/
 /.illuminatedCloud/
 **/tsconfig*.json
 **/*.tsbuildinfo
->>>>>>> 2a074d7d352bba425d41adc650ce7d08825287a4
+
+# Python虚拟环境
+**/venv/
+**/env/
+**/.venv/
+**/.env/
+**/__pycache__/
+.aider*
+network/duck.sh
+
+# 敏感配置、证书和密钥（仅提交 *.example / *.sample / *.template 模板）
+**/.env
+**/*.env
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.keystore
+**/config/certs/
+!**/.env.example
+!**/.env.sample
+!**/.env.template
+
+# 本地工具配置、索引和缓存
+**/.qwen/
+**/.zvec-grep/
+.grok/
+.neovate/
+.claude/settings.local.json
+.codegraph/
+.ruff_cache/
+.token-savior-cache.json
+**/.report_cache.json
+# Added by code-review-graph
+.code-review-graph/

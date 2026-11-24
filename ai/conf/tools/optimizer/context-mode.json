@@ -1,0 +1,59 @@
+{
+  "id": "context-mode",
+  "name": "Context Mode",
+  "description": "上下文窗口优化工具与 MCP Server，提供沙箱执行、知识库索引、意图筛选和多平台 hooks 适配。",
+  "category": "ai-optimizer",
+  "sort_order": 200,
+  "sort_key": "Context Mode",
+  "tags": [
+    "上下文优化",
+    "Token优化",
+    "MCP",
+    "沙箱执行",
+    "知识库"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "NPM 全局安装",
+        "type": "npm",
+        "command": "npm install -g context-mode --registry {{npm_registry}}",
+        "check": "command -v context-mode",
+        "uninstall": [
+          "npm uninstall -g context-mode"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g context-mode --registry {{npm_registry}} --force",
+    "check": "command -v context-mode"
+  },
+  "commands": {
+    "start": "context-mode",
+    "version": "context-mode --version",
+    "statusline": "context-mode statusline"
+  },
+  "status_check": [
+    {
+      "name": "检查 Context Mode",
+      "command": "context-mode --version 2>/dev/null || echo 'Context Mode 未安装'"
+    },
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    }
+  ],
+  "references": {
+    "homepage": "https://context-mode.com/",
+    "github": "https://github.com/mksglu/context-mode",
+    "shared_mcp_servers": [
+      "context-mode"
+    ],
+    "shared_skills": [
+      "context-mode"
+    ]
+  },
+  "notes": "工具安装只安装 CLI/MCP Server，不自动改写各 Agent hooks。若要启用 hooks，请按官方文档单独配置。"
+}

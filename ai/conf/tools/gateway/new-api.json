@@ -1,0 +1,38 @@
+{
+  "id": "new-api",
+  "name": "New API",
+  "description": "One API 的高性能分支，具备更现代的 UI 和更快的响应速度，支持多模型负载均衡",
+  "category": "ai-gateway",
+  "tags": ["gateway", "docker", "management", "high-performance"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "Docker 部署",
+        "type": "bash",
+        "command": "docker run -d --name new-api --restart always -p 3001:3000 -v ~/.new-api:/data calciumion/new-api",
+        "check": "docker ps --format '{{.Names}}' | grep -q 'new-api'",
+        "uninstall": ["docker rm -f new-api"]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "status_check": [
+    {"name": "容器状态", "command": "docker ps --filter 'name=new-api' --format '{{.Status}}'"},
+    {"name": "服务可用性", "command": "curl -fsS http://localhost:3001 >/dev/null 2>&1 && echo '服务正常' || echo '服务未响应'"}
+  ],
+
+  "commands": {
+    "start": "open http://localhost:3001",
+    "logs": "docker logs -f new-api",
+    "restart": "docker restart new-api"
+  },
+
+  "prompts": {
+    "load_balance": "如何在 New API 中配置多渠道负载均衡",
+    "monitor": "检查 New API 的运行负载和状态"
+  },
+
+  "notes": "New API 默认访问地址为 http://localhost:3001，是 One API 的优秀替代方案。"
+}

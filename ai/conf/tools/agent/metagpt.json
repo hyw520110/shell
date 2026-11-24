@@ -1,0 +1,77 @@
+{
+  "id": "metagpt",
+  "name": "MetaGPT",
+  "description": "多智能体协作框架，模拟软件公司开发流程",
+  "category": "ai-agent",
+  "tags": ["ai", "agents", "pip", "python"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "pip 安装（推荐）",
+        "type": "pip",
+        "command": "pip3 install --upgrade pip setuptools wheel && pip3 install \"opentelemetry-api>=1.29.0,<1.33.0\" \"Deprecated>=1.2.6,<1.2.19\" && pip3 install metagpt",
+        "check": "pip3 show metagpt",
+        "uninstall": ["pip3 uninstall -y metagpt"]
+      },
+      {
+        "name": "pip 快速安装（旧版解析器）",
+        "type": "pip",
+        "command": "pip3 install metagpt --use-deprecated=legacy-resolver",
+        "check": "pip3 show metagpt",
+        "uninstall": ["pip3 uninstall -y metagpt"]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "pip3 install --upgrade metagpt",
+    "check": "pip3 show metagpt"
+  },
+
+  "post_install": [
+    {"description": "初始化 MetaGPT 配置", "command": "metagpt --init-config 2>/dev/null || echo '配置初始化失败，请手动运行 metagpt --init-config'"},
+    {"description": "显示配置提示", "command": "echo -e '\\n请编辑 ~/.metagpt/config2.yaml 配置 API Key 和模型信息'"}
+  ],
+
+  "post_uninstall": [
+    {"description": "清理配置目录", "command": "rm -rf ~/.metagpt 2>/dev/null || true"}
+  ],
+
+  "config": {
+    "path": "$HOME/.metagpt/config2.yaml",
+    "operations": {
+      "view": "cat $HOME/.metagpt/config2.yaml 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.metagpt/config2.yaml",
+      "reset": [
+        "cp $HOME/.metagpt/config2.yaml $HOME/.metagpt/config2.yaml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.metagpt/config2.yaml",
+        "metagpt --init-config 2>/dev/null || true"
+      ]
+    }
+  },
+
+  "commands": {
+    "start": "metagpt",
+    "version": "metagpt --version",
+    "init": "metagpt --init-config"
+  },
+
+  "status_check": [
+    {"name": "检查进程", "command": "ps aux | grep metagpt | grep -v grep"},
+    {"name": "检查版本", "command": "metagpt --version 2>/dev/null || echo '未安装'"},
+    {"name": "检查配置", "command": "ls -la $HOME/.metagpt/ 2>/dev/null || echo '配置目录不存在'"}
+  ],
+
+  "mcp_servers": {},
+
+  "skills": {},
+
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": ["git"]
+  },
+
+  "notes": "需要配置 API Key 和模型信息"
+}

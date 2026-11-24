@@ -1,0 +1,62 @@
+{
+  "id": "opencli",
+  "name": "OpenCLI",
+  "description": "将网站、Electron应用和CLI工具统一转化为命令行接口，支持66+平台适配器，AI Agent原生支持",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @jackwener/opencli --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g @jackwener/opencli"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @jackwener/opencli --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.opencli/config.json",
+    "operations": {
+      "view": "cat $HOME/.opencli/config.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.opencli/config.json",
+      "reset": [
+        "cp $HOME/.opencli/config.json $HOME/.opencli/config.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.opencli/config.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "opencli",
+    "version": "opencli --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "opencli --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.opencli/config.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

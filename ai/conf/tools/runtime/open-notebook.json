@@ -1,0 +1,31 @@
+{
+  "id": "open-notebook",
+  "name": "Open Notebook",
+  "description": "An open source, privacy-focused alternative to Google's Notebook LM",
+  "category": "ai-runtime",
+  "tags": [
+    "ai",
+    "notebook",
+    "knowledge",
+    "research"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Docker",
+        "type": "bash",
+        "command": "echo '请参考官方文档使用 Docker 部署: https://github.com/lfnovo/open-notebook'",
+        "check": true
+      }
+    ],
+    "default_method": 0
+  },
+  "status_check": [
+    {
+      "name": "检查 Docker 服务",
+      "command": "docker ps | grep open-notebook >/dev/null 2>&1 && echo '运行中' || echo '未运行或未安装'"
+    }
+  ],
+  "homepage": "https://github.com/lfnovo/open-notebook",
+  "repository": "https://github.com/lfnovo/open-notebook"
+}

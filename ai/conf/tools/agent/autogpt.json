@@ -1,0 +1,55 @@
+{
+  "id": "autogpt",
+  "name": "AutoGPT",
+  "description": "可构建、部署和运行持续型 AI Agent 的开源平台，支持可视化构建器、计划任务和触发器",
+  "category": "ai-agent",
+  "tags": ["ai", "agents", "autonomous", "platform", "docker", "workflow"],
+  "install": {
+    "methods": [
+      {
+        "name": "源码准备（Docker 自托管）",
+        "type": "custom",
+        "command": "base=\"$HOME/.local/share/ai-hub/AutoGPT\"; mkdir -p \"$(dirname \"$base\")\"; if [ -d \"$base/.git\" ]; then git -C \"$base\" pull --ff-only; else git clone https://github.com/Significant-Gravitas/AutoGPT.git \"$base\"; fi; if [ -f \"$base/autogpt_platform/.env.default\" ] && [ ! -f \"$base/autogpt_platform/.env\" ]; then cp \"$base/autogpt_platform/.env.default\" \"$base/autogpt_platform/.env\"; fi; echo '源码已准备；请配置 autogpt_platform/.env 后执行 ai-hub.sh 操作 -> start'",
+        "check": "test -d \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform\"",
+        "uninstall": ["cd \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform\" 2>/dev/null && docker compose down 2>/dev/null || true", "rm -rf \"$HOME/.local/share/ai-hub/AutoGPT\""]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "git -C \"$HOME/.local/share/ai-hub/AutoGPT\" pull --ff-only",
+    "check": "test -d \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform\""
+  },
+  "process_check": "",
+  "config": {
+    "path": "$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform/.env",
+    "operations": {
+      "view": "sed -n '1,160p' \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform/.env\" 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vi} \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform/.env\"",
+      "reset": ["cp \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform/.env.default\" \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform/.env\""]
+    }
+  },
+  "commands": {
+    "start": "cd \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform\" && docker compose up -d --build",
+    "stop": "cd \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform\" && docker compose down",
+    "logs": "cd \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform\" && docker compose logs -f",
+    "version": "git -C \"$HOME/.local/share/ai-hub/AutoGPT\" describe --tags --always 2>/dev/null || echo '已安装'",
+    "open": "if command -v open >/dev/null 2>&1; then open https://platform.agpt.co; elif command -v xdg-open >/dev/null 2>&1; then xdg-open https://platform.agpt.co >/dev/null 2>&1 & else echo 'https://platform.agpt.co'; fi"
+  },
+  "status_check": [
+    {
+      "name": "检查源码",
+      "command": "test -d \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform\" && echo '源码已准备' || echo '未安装'"
+    },
+    {
+      "name": "检查容器",
+      "command": "cd \"$HOME/.local/share/ai-hub/AutoGPT/autogpt_platform\" 2>/dev/null && docker compose ps --format '{{.Name}} {{.State}}' 2>/dev/null | head -n 5 || echo '服务未运行'"
+    }
+  ],
+  "requirements": {
+    "docker": true
+  },
+  "homepage": "https://agpt.co/",
+  "repository": "https://github.com/Significant-Gravitas/AutoGPT",
+  "notes": "官方提供托管平台和 macOS/Linux 自托管路径；自托管需要 Docker、模型 API Key 和额外磁盘空间。"
+}

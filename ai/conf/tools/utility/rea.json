@@ -1,0 +1,72 @@
+{
+  "id": "rea",
+  "name": "REA",
+  "description": "Reverse Engineer Anything：以 Agent 方式逆向应用行为直到原生二进制，支持 JavaScript/Electron、.NET、APK、固件、网站与运行时抓包，输出带证据的结论。",
+  "category": "ai-utility",
+  "tags": [
+    "逆向工程",
+    "二进制分析",
+    "反编译",
+    "MCP",
+    "Evidence"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "NPM 全局安装",
+        "type": "npm",
+        "command": "npm install -g rea-agents",
+        "check": "rea --version",
+        "uninstall": [
+          "npm uninstall -g rea-agents"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g rea-agents@latest",
+    "check": "rea --version"
+  },
+  "commands": {
+    "start": "rea --help",
+    "setup": "rea setup",
+    "doctor": "rea doctor --json",
+    "mcp": "rea mcp",
+    "providers": "rea providers --json",
+    "analyze-js": "rea analyze-javascript-application <path> --json",
+    "help": "rea --help",
+    "version": "rea --version"
+  },
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "rea --version 2>/dev/null || echo 'REA 未安装'"
+    },
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    },
+    {
+      "name": "检查安装",
+      "command": "npm list -g rea-agents --depth=0 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "prompts": {
+    "javascript-electron": "用 REA 逆向分析该 JavaScript/Electron 应用的结构与 IPC 关系：rea analyze-javascript-application <path> --json",
+    "native-binary": "用 REA 分析该原生二进制（需先配置 Hopper/Ghidra/IDA）：rea analyze <path> --provider ghidra --json",
+    "managed-dotnet": "用 REA 静态检查该 .NET 程序集：rea inspect-managed-members <assembly.dll> --json"
+  },
+  "notes": "REA 需要 Node.js 22.19+/24.11+/26+。原生二进制分析需另行配置 Hopper/Ghidra/IDA；静态 JavaScript/Electron、.NET、APK、Flutter 与包/资源分析无需原生引擎。安装后可在 conf/shared/mcp-servers/rea.json 注册 MCP，或直接运行 rea setup 让 REA 自行注册各客户端。仅用于对你有权分析的软件。",
+  "homepage": "https://rea.tools/",
+  "repository": "https://github.com/morluto/rea",
+  "scenarios": [
+    "security",
+    "research"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "recommended_scenarios": "逆向应用行为、二进制/固件/APK 分析、Electron 与网页抓包取证。",
+  "unsuitable_scenarios": "未授权的软件分析、生产环境主动利用、绕过商业逆向工具的许可限制。"
+}

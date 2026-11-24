@@ -1,9 +1,80 @@
 #!/bin/bash
 
+# 显示帮助信息
+show_help() {
+    cat << EOF
+Docker Compose环境备份脚本
+
+备份Docker Compose环境，包括镜像、数据卷、网络配置和容器。
+
+用法: ./backup.sh [选项] [目标目录]
+
+参数:
+    目标目录              备份文件保存目录 (默认: /opt/backup)
+
+选项:
+    -h, --help            显示此帮助信息
+    -d, --dir <目录>      指定备份目录 (默认: /opt/backup)
+    -s, --source <目录>   指定docker-compose.yml所在目录 (默认: 当前目录)
+    -t, --transfer <主机> 传输备份到指定主机 (格式: user@host)
+
+说明:
+    - 脚本会自动检测当前目录下的docker-compose.yml文件
+    - 如果存在docker-compose.yml，会自动备份所有相关镜像、数据卷和网络
+    - 如果不存在，会提示用户选择镜像进行备份
+    - 备份文件命名格式: image_仓库名_标签.tar
+    - 支持传输备份文件到远程主机
+
+示例:
+    ./backup.sh                                    # 使用默认设置备份
+    ./backup.sh /backup/docker                     # 指定备份目录
+    ./backup.sh -d /backup -s /opt/app             # 指定源目录和备份目录
+    ./backup.sh -t user@remote-server              # 备份并传输到远程主机
+
+注意事项:
+    - 需要Docker和Docker Compose环境
+    - 备份前会检查磁盘空间，需要至少1GB可用空间
+    - 传输到远程主机需要SSH访问权限
+
+EOF
+}
+
+# 参数解析
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -d|--dir)
+            BACKUP_DIR="$2"
+            shift 2
+            ;;
+        -s|--source)
+            SOURCE_DIR="$2"
+            shift 2
+            ;;
+        -t|--transfer)
+            TARGET_HOST="$2"
+            shift 2
+            ;;
+        *)
+            # 假设是目录参数
+            if [[ -d "$1" ]]; then
+                BACKUP_DIR="$1"
+            else
+                echo "未知参数: $1"
+                show_help
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
 # 默认值
-SOURCE_DIR=$(pwd)
-TARGET_HOST=""
-TARGET_DIR="${1:-${SOURCE_DIR}}"
+SOURCE_DIR="${SOURCE_DIR:-$(pwd)}"
+TARGET_DIR="${TARGET_DIR:-${SOURCE_DIR}}"
 PROJECT_NAME=""
 # 创建备份目录
 BACKUP_DIR="/opt/backup"

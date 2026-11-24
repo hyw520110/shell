@@ -1,0 +1,56 @@
+{
+  "id": "openhuman",
+  "name": "OpenHuman",
+  "description": "开源的、本地优先的个人 AI 超智能代理，具备长期记忆和 118+ 工具集成",
+  "category": "ai-agent",
+  "tags": ["agent", "memory", "automation"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "本地脚本安装 (加速版)",
+        "type": "bash",
+        "command": "bash agent/openhuman/install-openhuman.sh install",
+        "check": "[ -d '/Applications/OpenHuman.app' ] || command -v openhuman",
+        "uninstall": [
+          "bash agent/openhuman/install-openhuman.sh uninstall"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash agent/openhuman/install-openhuman.sh update",
+    "check": "[ -d '/Applications/OpenHuman.app' ] || command -v openhuman"
+  },
+
+  "post_install": [
+    {
+      "description": "完成提示",
+      "command": "echo 'OpenHuman 已成功安装！这是一个具备长期记忆的 AI 代理，建议启动后关联您的 GitHub、Notion 等工具。'"
+    }
+  ],
+
+  "config": {
+    "path": "$HOME/.openhuman/config.json",
+    "operations": {
+      "view": "ls -R $HOME/.openhuman 2>/dev/null || echo '配置目录不存在'",
+      "edit": "open $HOME/.openhuman 2>/dev/null || echo '请手动打开 ~/.openhuman 目录'"
+    }
+  },
+
+  "commands": {
+    "start": "open /Applications/OpenHuman.app",
+    "version": "bash agent/openhuman/install-openhuman.sh version"
+  },
+
+  "status_check": [
+    {
+      "name": "检查应用",
+      "command": "bash agent/openhuman/install-openhuman.sh version"
+    }
+  ],
+
+  "notes": "OpenHuman 是一个桌面级应用，集成了 Tauri 和 Rust。它能够学习您的工作流并提供跨工具的长期记忆。当前使用本地优化脚本进行安装。"
+}

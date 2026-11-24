@@ -1,0 +1,66 @@
+{
+  "id": "pr-agent",
+  "name": "Qodo PR-Agent",
+  "description": "开源的 AI Pull Request 助手。支持自动生成 PR 描述、代码审查、改进建议和交互式问答。支持 GitHub, GitLab, Bitbucket 等主流平台。",
+  "category": "ai-utility",
+  "tags": [
+    "代码审查",
+    "GitHub",
+    "GitLab",
+    "CI/CD",
+    "质量保证"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Pip 安装",
+        "type": "pip",
+        "command": "pip install pr-agent",
+        "check": "pr-agent --version",
+        "uninstall": [
+          "pip uninstall -y pr-agent"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "pip install --upgrade pr-agent",
+    "check": "pr-agent --version"
+  },
+  "config": {
+    "path": "$HOME/.pr_agent.toml",
+    "operations": {
+      "view": "cat $HOME/.pr_agent.toml 2>/dev/null || echo '配置文件不存在'",
+      "edit": "vi $HOME/.pr_agent.toml"
+    }
+  },
+  "commands": {
+    "review": "pr-agent review",
+    "describe": "pr-agent describe",
+    "improve": "pr-agent improve",
+    "ask": "pr-agent ask",
+    "version": "pr-agent --version"
+  },
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "pr-agent --version 2>/dev/null || echo 'PR-Agent 未安装'"
+    }
+  ],
+  "prompts": {
+    "review-pr": "使用 pr-agent review 审查我当前的 Pull Request",
+    "improve-code": "针对当前变更提供改进建议：pr-agent improve",
+    "ask-question": "就代码库中的特定问题向 AI 提问：pr-agent ask 'How does the auth logic work?'"
+  },
+  "notes": "PR-Agent 既可以作为本地 CLI 使用，也可以作为 GitHub Action / GitLab 机器人集成到 CI 中。建议配置 OPENAI_API_KEY 以获得最佳效果。",
+  "homepage": "https://github.com/Codium-ai/pr-agent",
+  "repository": "https://github.com/Codium-ai/pr-agent",
+  "scenarios": [
+    "productivity",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false
+}

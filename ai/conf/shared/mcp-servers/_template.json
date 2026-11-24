@@ -1,0 +1,50 @@
+{
+  "id": "example-mcp",
+  "name": "Example MCP Server",
+  "description": "说明这个 MCP 提供的能力、适用场景和主要工具。",
+  "category": "development",
+  "scenarios": [
+    "coding"
+  ],
+  "tags": [
+    "代码管理"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/example/example-mcp",
+  "repository": "https://github.com/example/example-mcp",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g example-mcp"
+  },
+  "config": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "example-mcp"
+    ],
+    "transportType": "stdio",
+    "env": {}
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "requires_env": [],
+  "status_check": [
+    {
+      "name": "检查安装",
+      "command": "npm list -g example-mcp --depth=0 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "example_tool",
+      "description": "工具用途说明"
+    }
+  ],
+  "notes": "新增 MCP 时必须填写 scenarios/tags/homepage 或 repository。需要 API Key 的 MCP 请设置 optional=true 并声明 requires_env。",
+  "recommended_scenarios": "描述此工具最擅长的业务场景",
+  "unsuitable_scenarios": "描述此工具不擅长或应当避免的场景"
+}

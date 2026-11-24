@@ -1,0 +1,78 @@
+{
+  "id": "gitnexus",
+  "name": "GitNexus",
+  "description": "无服务器代码智能引擎。通过在本地预计算代码关系，为 AI 提供高保真的上下文。支持影响分析、360度符号查看和私有化索引。",
+  "category": "ai-utility",
+  "tags": [
+    "代码智能",
+    "图谱",
+    "隐私保护",
+    "本地索引",
+    "MCP"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "NPM 全局安装",
+        "type": "npm",
+        "command": "npm install -g gitnexus",
+        "check": "gitnexus --version",
+        "uninstall": [
+          "npm uninstall -g gitnexus"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g gitnexus@latest --force",
+    "check": "gitnexus --version"
+  },
+  "post_install": [
+    {
+      "description": "一键配置 MCP",
+      "command": "echo -e '\\n[建议] 运行 \"gitnexus setup\" 自动将 MCP 服务器添加到您的 IDE (Cursor/VS Code/Claude Desktop)。'"
+    }
+  ],
+  "config": {
+    "path": "$HOME/.gitnexus/config.json",
+    "operations": {
+      "view": "gitnexus info",
+      "edit": "vi $HOME/.gitnexus/config.json",
+      "setup": "gitnexus setup"
+    }
+  },
+  "commands": {
+    "analyze": "gitnexus analyze",
+    "mcp": "gitnexus mcp",
+    "serve": "gitnexus serve",
+    "impact": "gitnexus impact",
+    "wiki": "gitnexus wiki",
+    "version": "gitnexus --version"
+  },
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "gitnexus --version 2>/dev/null || echo 'GitNexus 未安装'"
+    },
+    {
+      "name": "检查索引状态",
+      "command": "[ -d .gitnexus ] && echo '已分析当前项目' || echo '尚未分析 (请运行 gitnexus analyze)'"
+    }
+  ],
+  "prompts": {
+    "deep-analyze": "使用 gitnexus analyze 预计算代码库的全量关系图谱",
+    "blast-radius": "分析此符号的影响半径：gitnexus impact {symbol_name}",
+    "generate-wiki": "基于代码智能生成当前项目的 AI 维基：gitnexus wiki"
+  },
+  "notes": "GitNexus 使用 WebAssembly 在本地运行，完全保证代码隐私。它生成的 MCP 服务包含 16+ 个强大的原子工具。",
+  "homepage": "https://github.com/abhigyanpatwari/GitNexus",
+  "repository": "https://github.com/abhigyanpatwari/GitNexus",
+  "scenarios": [
+    "productivity",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false
+}

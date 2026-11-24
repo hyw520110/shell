@@ -1,0 +1,186 @@
+{
+  "id": "claude",
+  "name": "Claude Code",
+  "description": "Anthropic Claude Code - AI 编程助手，支持代码生成、审查、重构",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "coding",
+    "npm",
+    "claude",
+    "desktop",
+    "cc-switch"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "npm 安装",
+        "type": "npm",
+        "command": "npm install -g @anthropic-ai/claude-code --registry {{npm_registry}}",
+        "check": "npm list -g @anthropic-ai/claude-code --depth=0",
+        "uninstall": [
+          "npm uninstall -g @anthropic-ai/claude-code",
+          "find $(npm root -g)/@anthropic-ai -maxdepth 1 -name '.claude-code-*' -type d -exec rm -rf {} + 2>/dev/null || true"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @anthropic-ai/claude-code --registry {{npm_registry}} --force",
+    "check": "npm list -g @anthropic-ai/claude-code --depth=0",
+    "pre_update": [
+      "find $(npm root -g)/@anthropic-ai -maxdepth 1 -name '.claude-code-*' -type d -exec rm -rf {} + 2>/dev/null || true"
+    ]
+  },
+  "post_install": [
+    {
+      "description": "显示使用提示",
+      "command": "echo -e '\\n需要绑定信用卡使用 API，或订阅 Claude Pro'"
+    }
+  ],
+  "post_uninstall": [
+    {
+      "description": "清理 npm 缓存临时目录",
+      "command": "find $(npm root -g)/@anthropic-ai -maxdepth 1 -name '.claude-code-*' -type d -exec rm -rf {} + 2>/dev/null || true"
+    }
+  ],
+  "config": {
+    "path": "$HOME/.claude/settings.json",
+    "operations": {
+      "view": "cat $HOME/.claude/settings.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.claude/settings.json",
+      "reset": [
+        "cp $HOME/.claude/settings.json $HOME/.claude/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.claude/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "claude",
+    "version": "claude --version",
+    "login": "claude /login",
+    "model": "claude /model",
+    "logs": "claude logs 2>/dev/null || echo '日志命令失败'",
+    "desktop-open": "bash -lc 'if [[ \"$(uname -s)\" != \"Darwin\" ]]; then echo \"Claude Desktop 命令当前仅支持 macOS\"; exit 1; fi; if [[ -d \"/Applications/Claude.app\" ]]; then open -a \"Claude\"; elif [[ -d \"$HOME/Applications/Claude.app\" ]]; then open \"$HOME/Applications/Claude.app\"; elif [[ -d \"/Applications/Claude Code.app\" ]]; then open -a \"Claude Code\"; elif [[ -d \"$HOME/Applications/Claude Code.app\" ]]; then open \"$HOME/Applications/Claude Code.app\"; else echo \"未检测到 Claude Desktop/Claude Code Desktop，请先执行 desktop-download 获取官方桌面版。\"; exit 1; fi'",
+    "desktop-status": "bash -lc 'found=0; for app in \"/Applications/Claude.app\" \"$HOME/Applications/Claude.app\" \"/Applications/Claude Code.app\" \"$HOME/Applications/Claude Code.app\"; do if [[ -d \"$app\" ]]; then echo \"已检测到: $app\"; found=1; fi; done; [[ \"$found\" == \"1\" ]] || { echo \"未检测到 Claude Desktop/Claude Code Desktop\"; exit 1; }'",
+    "desktop-download": "bash -lc 'if [[ \"$(uname -s)\" == \"Darwin\" ]]; then open \"https://claude.ai/download\"; else echo \"请访问 https://claude.ai/download 获取官方桌面版\"; fi'",
+    "desktop-config": "bash -lc 'mkdir -p \"$HOME/.claude\"; if [[ \"$(uname -s)\" == \"Darwin\" ]]; then open \"$HOME/.claude\"; else ls -la \"$HOME/.claude\"; fi'",
+    "cc-switch-open": "bash scripts/install-cc-switch.sh open",
+    "cc-switch-status": "bash scripts/install-cc-switch.sh status",
+    "cc-switch-install": "bash scripts/install-cc-switch.sh install",
+    "cc-switch-config": "bash scripts/install-cc-switch.sh config"
+  },
+  "status_check": [
+    {
+      "name": "检查进程",
+      "command": "ps aux | grep claude | grep -v grep"
+    },
+    {
+      "name": "检查版本",
+      "command": "claude --version 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.claude/ 2>/dev/null || echo '配置目录不存在'"
+    },
+    {
+      "name": "检查 Claude Desktop",
+      "command": "bash -lc 'for app in \"/Applications/Claude.app\" \"$HOME/Applications/Claude.app\" \"/Applications/Claude Code.app\" \"$HOME/Applications/Claude Code.app\"; do [[ -d \"$app\" ]] && { echo \"已检测到: $app\"; exit 0; }; done; echo \"未检测到 Claude Desktop/Claude Code Desktop\"'"
+    },
+    {
+      "name": "检查 CC-Switch",
+      "command": "bash scripts/install-cc-switch.sh status"
+    }
+  ],
+  "mcp_servers": {
+    "claude-github": {
+      "name": "GitHub MCP",
+      "type": "npm",
+      "install_command": "npm install -g @modelcontextprotocol/server-github",
+      "config": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-github"
+        ],
+        "transportType": "stdio",
+        "env": {
+          "GITHUB_TOKEN": "{{github_token}}"
+        }
+      }
+    },
+    "claude-chrome-devtools": {
+      "name": "Chrome DevTools",
+      "type": "npm",
+      "install_command": "npm install -g chrome-devtools-mcp@latest",
+      "config": {
+        "command": "npx",
+        "args": [
+          "chrome-devtools-mcp@latest",
+          "--executablePath={{chrome_path}}"
+        ],
+        "transportType": "stdio"
+      }
+    }
+  },
+  "skills": {
+    "claude-git": {
+      "name": "Git 增强",
+      "description": "Git操作增强，PR/Issue管理",
+      "prompts": {
+        "review": "审查当前分支的代码变更，提供改进建议",
+        "commit": "根据代码变更生成规范的commit message",
+        "pr": "为当前分支创建Pull Request描述",
+        "changelog": "生成版本变更日志"
+      },
+      "dependencies": {
+        "mcp_servers": [
+          "claude-github"
+        ],
+        "system_commands": [
+          "git",
+          "gh"
+        ]
+      },
+      "install_check": "which git",
+      "tips": "安装 GitHub CLI (gh) 可获得更多 GitHub 操作能力"
+    },
+    "claude-pdf": {
+      "name": "PDF 处理",
+      "description": "PDF文档读取、文本提取",
+      "prompts": {
+        "extract": "提取PDF文件中的文本内容，保持原有结构和格式",
+        "summarize": "阅读并总结PDF文档的核心内容和关键信息"
+      },
+      "dependencies": {
+        "system_commands": [
+          "pdftotext"
+        ]
+      },
+      "install_check": "which pdftotext || which pandoc",
+      "tips": "安装 poppler-utils 可获得 pdftotext 命令用于PDF文本提取"
+    },
+    "claude-accounts": {
+      "name": "多账号管理",
+      "description": "使用 CC-Switch 管理多个 Claude 账号或切换不同地区配置",
+      "prompts": {
+        "switch": "启动 CC-Switch 切换当前账号",
+        "status": "检查当前绑定的账号和配置状态",
+        "install": "安装 CC-Switch 多账号管理工具"
+      },
+      "commands": {
+        "open": "bash scripts/install-cc-switch.sh open",
+        "status": "bash scripts/install-cc-switch.sh status",
+        "config": "bash scripts/install-cc-switch.sh config"
+      }
+    }
+  },
+  "references": {
+    "shared_mcp_servers": [
+      "filesystem"
+    ],
+    "shared_skills": []
+  },
+  "notes": "需要绑定信用卡使用 API，或订阅 Claude Pro"
+}

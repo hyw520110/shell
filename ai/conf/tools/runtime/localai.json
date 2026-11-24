@@ -1,0 +1,66 @@
+{
+  "id": "localai",
+  "name": "LocalAI",
+  "description": "OpenAI 兼容的本地推理服务，支持 CPU/GPU 本地运行",
+  "category": "ai-runtime",
+  "tags": [
+    "ai",
+    "bash"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Homebrew 安装 (推荐)",
+        "type": "brew",
+        "command": "brew install localai",
+        "check": "brew list localai >/dev/null 2>&1 && command -v local-ai >/dev/null 2>&1",
+        "uninstall": [
+          "brew uninstall localai"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "brew upgrade localai || brew install localai",
+    "check": "brew list localai >/dev/null 2>&1 && command -v local-ai >/dev/null 2>&1"
+  },
+  "config": {
+    "path": "$HOME/.localai/config.yaml",
+    "operations": {
+      "view": "cat $HOME/.localai/config.yaml 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.localai/config.yaml",
+      "reset": [
+        "cp $HOME/.localai/config.yaml $HOME/.localai/config.yaml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.localai/config.yaml"
+      ]
+    }
+  },
+  "commands": {
+    "start": "local-ai",
+    "version": "local-ai --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "local-ai --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.localai/config.yaml 2>/dev/null || echo \"配置目录不存在\""
+    },
+    {
+      "name": "检查 Homebrew 包",
+      "command": "brew list localai >/dev/null 2>&1 && brew info localai | head -n 3 || echo \"Homebrew 包未安装\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "推荐通过 Homebrew 安装。CLI 命令为 local-ai，支持 OpenAI 兼容接口。",
+  "post_install": [],
+  "post_uninstall": []
+}

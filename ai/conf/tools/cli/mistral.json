@@ -1,0 +1,62 @@
+{
+  "id": "mistral",
+  "name": "mistral-cli",
+  "description": "",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g mistral-cli --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g mistral-cli"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g mistral-cli --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.mistral/config.json",
+    "operations": {
+      "view": "cat $HOME/.mistral/config.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.mistral/config.json",
+      "reset": [
+        "cp $HOME/.mistral/config.json $HOME/.mistral/config.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.mistral/config.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "mistral",
+    "version": "mistral --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "mistral --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.mistral/config.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

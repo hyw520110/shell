@@ -1,0 +1,29 @@
+# ============================================
+# MySQL 5.7 特有配置
+# ============================================
+
+[mysqld]
+# MySQL 5.7 使用旧版认证插件
+default_authentication_plugin = mysql_native_password
+
+# 跳过域名解析
+skip-name-resolve
+
+# 显式默认时间戳
+explicit_defaults_for_timestamp = 1
+
+# InnoDB 日志配置（MySQL 5.7 支持）
+innodb_log_file_size = 128M
+innodb_log_buffer_size = 32M
+innodb_flush_method = O_DIRECT
+
+# 二进制日志配置（MySQL 5.7 支持）
+log_bin = mysql-bin
+binlog_format = ROW
+max_binlog_size = 100M
+expire_logs_days = 7
+server_id = 1
+
+# GTID 配置（可选，默认关闭）
+# gtid_mode = OFF
+# enforce_gtid_consistency = OFF

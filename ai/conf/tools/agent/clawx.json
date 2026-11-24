@@ -1,0 +1,46 @@
+{
+  "id": "clawx",
+  "name": "ClawX",
+  "description": "OpenClaw 的官方图形化桌面应用，支持多智能体编排、Token 成本分析及全自动化工作流",
+  "category": "ai-agent",
+  "tags": ["gui", "agent", "automation", "management"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "插件安装",
+        "type": "plugin",
+        "plugin": "clawx",
+        "command": "",
+        "check": "[ -d '/Applications/ClawX.app' ] || command -v ClawX",
+        "uninstall": []
+      },
+      {
+        "name": "手动安装",
+        "type": "bash",
+        "plugin": "",
+        "command": "bash agent/clawx/install-clawx.sh",
+        "check": "[ -d '/Applications/ClawX.app' ] || command -v ClawX",
+        "uninstall": [
+          "echo '正在卸载 ClawX...'",
+          "rm -rf /Applications/ClawX.app 2>/dev/null || true",
+          "rm -f /usr/local/bin/ClawX 2>/dev/null || true"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "status_check": [
+    {
+      "name": "应用状态",
+      "command": "[ -d '/Applications/ClawX.app' ] && echo '已安装' || echo '未安装'"
+    }
+  ],
+
+  "commands": {
+    "start": "open -a ClawX"
+  },
+
+  "notes": "ClawX 是 OpenClaw 的 GUI 版本，提供了极其美观的界面来管理您的 AI 智能体和网关。"
+}

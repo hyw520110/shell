@@ -1,6 +1,50 @@
 #!/bin/bash
 # skywalking自动安装、配置
 
+# 提前检查--version参数
+if [ "$1" = "-v" ] || [ "$1" = "--version" ]; then
+    # 检查第二个参数是否存在且不是选项
+    if [[ -n "$2" && ! "$2" =~ ^- ]]; then
+        # 如果有第二个参数，将其作为版本号
+        SPECIFIED_VERSION="$2"
+    else
+        # 没有版本号参数，检测已安装的版本
+        # 定义show_version函数
+        show_version() {
+            # 检测SkyWalking是否已安装
+            local skywalking_dir=""
+            
+            # 尝试多个可能的安装目录
+            for dir in "/opt/skywalking" "$HOME/skywalking"; do
+                if [ -d "$dir" ] && [ -f "$dir/bin/oapService.sh" ]; then
+                    skywalking_dir="$dir"
+                    break
+                fi
+            done
+            
+            if [ -n "$skywalking_dir" ]; then
+                # 从oap-libs目录读取版本（使用core jar文件）
+                VERSION=$(find "$skywalking_dir/oap-libs" -name "skywalking-server-*.jar" 2>/dev/null | head -1 | xargs basename 2>/dev/null | sed 's/skywalking-server-//' | sed 's/\.jar//')
+                if [ -z "$VERSION" ]; then
+                    # 备用方法：从其他jar文件提取版本
+                    VERSION=$(find "$skywalking_dir/oap-libs" -name "skywalking-*receiver-plugin-*.jar" 2>/dev/null | head -1 | xargs basename 2>/dev/null | sed 's/.*receiver-plugin-\([0-9.]*\)\.jar/\1/')
+                fi
+                if [ -n "$VERSION" ]; then
+                    echo "$VERSION"
+                else
+                    echo "已安装"
+                fi
+            elif pgrep -f "skywalking" > /dev/null 2>&1; then
+                echo "运行中"
+            else
+                echo ""
+            fi
+        }
+        show_version
+        exit 0
+    fi
+fi
+
 # 全局变量定义
 
 # 脚本信息
@@ -48,13 +92,24 @@ SPECIFIED_VERSION=""
 # URL配置
 SW_BASE_URL=""
 SW_AGENT_BASE_URL=""
-MIRROR_BASE_URL="https://mirrors.tuna.tsinghua.edu.cn/apache/skywalking"
+MIRROR_BASE_URL="https://downloads.apache.org/skywalking"
+AGENT_MIRROR_BASE_URL="https://archive.apache.org/dist/skywalking/java-agent"
 
 # 备用镜像源列表
 BACKUP_MIRRORS=(
+    "https://downloads.apache.org/skywalking"
     "https://archive.apache.org/dist/skywalking"
-    "https://mirrors.tuna.tsinghua.edu.cn/apache/skywalking"
     "https://mirrors.cloud.tencent.com/apache/skywalking"
+    "https://mirrors.tuna.tsinghua.edu.cn/apache/skywalking"
+)
+
+# Java agent 与服务端发布目录不同；旧 agent 通常只在 archive 中保留
+BACKUP_AGENT_MIRRORS=(
+    "https://archive.apache.org/dist/skywalking/java-agent"
+    "https://downloads.apache.org/skywalking/java-agent"
+    "https://dlcdn.apache.org/skywalking/java-agent"
+    "https://mirrors.cloud.tencent.com/apache/skywalking/java-agent"
+    "https://mirrors.tuna.tsinghua.edu.cn/apache/skywalking/java-agent"
 )
 
 # 文件路径
@@ -69,8 +124,11 @@ SKYWALKING_AGENT_BASE_DIR=""
 
 # 服务端口
 OAP_PORT="${OAP_PORT:-$DEFAULT_OAP_PORT}"
+OAP_HTTP_PORT="${OAP_HTTP_PORT:-$DEFAULT_OAP_HTTP_PORT}"
+PROMQL_PORT="${PROMQL_PORT:-$DEFAULT_PROMQL_PORT}"
 UI_SERVER_PORT=""
 WEB_PORT=""
+WEB_PORT_EXPLICIT=false
 
 # 服务配置
 COLLECTOR_BACKEND_SERVICE="${COLLECTOR_BACKEND_SERVICE:-127.0.0.1:11800}"
@@ -92,6 +150,13 @@ STORAGE_USER=""
 STORAGE_PASSWORD=""
 STORAGE_DATABASE=""
 STORAGE_NAMESPACE=""
+STORAGE_TYPE_EXPLICIT=false
+STORAGE_HOST_EXPLICIT=false
+STORAGE_PORT_EXPLICIT=false
+STORAGE_USER_EXPLICIT=false
+STORAGE_PASSWORD_EXPLICIT=false
+STORAGE_DATABASE_EXPLICIT=false
+STORAGE_NAMESPACE_EXPLICIT=false
 
 # 功能开关
 UNINSTALL=false
@@ -99,6 +164,21 @@ FORCE=false
 KEEP_DATA=false
 KEEP_PACKAGE=true
 AUTO_JAVA_INSTALL=false
+INSTALL_SUCCEEDED=false
+DETECTED_JAVA_HOME=""
+ENABLE_MYSQL_MONITORING=false
+MYSQL_MONITOR_SCRIPT="$SCRIPT_DIR/setup-mysql-monitoring.sh"
+MYSQL_EXPORTER_TARGET="${MYSQL_EXPORTER_TARGET:-127.0.0.1:9104}"
+MYSQL_MONITOR_HOST_NAME="${MYSQL_MONITOR_HOST_NAME:-$(hostname)}"
+MYSQL_MONITOR_SERVICE_NAME="${MYSQL_MONITOR_SERVICE_NAME:-mysql-server}"
+MYSQL_MONITOR_SCRAPE_INTERVAL="${MYSQL_MONITOR_SCRAPE_INTERVAL:-15s}"
+ENABLE_VM_MONITORING=false
+VM_MONITOR_SCRIPT="$SCRIPT_DIR/setup-vm-monitoring.sh"
+NODE_EXPORTER_TARGET="${NODE_EXPORTER_TARGET:-127.0.0.1:9100}"
+VM_MONITOR_HOST_NAME="${VM_MONITOR_HOST_NAME:-$(hostname)}"
+VM_MONITOR_SERVICE_NAME="${VM_MONITOR_SERVICE_NAME:-$VM_MONITOR_HOST_NAME}"
+VM_MONITOR_SCRAPE_INTERVAL="${VM_MONITOR_SCRAPE_INTERVAL:-15s}"
+VM_MONITOR_START_NODE_EXPORTER=false
 
 # 安装模式
 INSTALL_MODE="all"  # all, server, agent
@@ -120,6 +200,8 @@ POSTGRESQL_DRIVER_BASE_URL="https://repo1.maven.org/maven2/org/postgresql/postgr
 
 # 默认端口配置
 DEFAULT_OAP_PORT="11800"
+DEFAULT_OAP_HTTP_PORT="12800"
+DEFAULT_PROMQL_PORT="19090"
 DEFAULT_UI_PORT="8080"
 DEFAULT_MYSQL_PORT="3306"
 DEFAULT_POSTGRESQL_PORT="5432"
@@ -154,6 +236,28 @@ SkyWalking 安装/卸载脚本
     --storage-namespace NS 存储命名空间 (仅Elasticsearch)
     --web-port PORT       Web UI端口 (默认: 8080)
     --mode MODE           安装模式: all(默认), server, agent
+    --enable-mysql-monitoring
+                          启用 MySQL Server 指标接入（需先启动 mysqld_exporter）
+    --mysql-exporter-target HOST:PORT
+                          mysqld_exporter 地址 (默认: 127.0.0.1:9104)
+    --mysql-monitor-host-name NAME
+                          SkyWalking 展示用 MySQL 主机名 (默认: 当前 hostname)
+    --mysql-monitor-service-name NAME
+                          MySQL 指标服务名标签 (默认: mysql-server)
+    --mysql-monitor-scrape-interval DURATION
+                          MySQL 指标抓取间隔 (默认: 15s)
+    --enable-vm-monitoring
+                          启用 Linux 主机指标接入（需先启动 node_exporter）
+    --node-exporter-target HOST:PORT
+                          node_exporter 地址 (默认: 127.0.0.1:9100)
+    --vm-monitor-host-name NAME
+                          SkyWalking 展示用主机名 (默认: 当前 hostname)
+    --vm-monitor-service-name NAME
+                          Linux VM 服务名 (默认: vm-monitor-host-name)
+    --vm-monitor-scrape-interval DURATION
+                          Linux VM 指标抓取间隔 (默认: 15s)
+    --start-node-exporter
+                          启用 VM 监控时，先尝试运行 monitor/prometheus 的 node_exporter 脚本
     -f, --force           强制模式（强制安装/卸载）
 
 卸载选项:
@@ -184,11 +288,17 @@ SkyWalking 安装/卸载脚本
     $0 -s banyandb                        # 使用BanyanDB存储
     $0 -d /opt/skywalking -s mysql        # 安装到指定目录并使用MySQL
     $0 -f -s elasticsearch                # 强制模式安装使用ES存储
+    $0 --enable-mysql-monitoring          # 启用 MySQL Server 指标接入
+    $0 --enable-vm-monitoring --start-node-exporter  # 启用 Linux 主机指标接入
 
 注意：
     - 默认存储类型为 banyandb
     - 指定版本不存在时自动使用最新版本
     - 存储配置可在安装后修改 config/application.yml
+    - MySQL Server 自身指标链路为 mysqld_exporter -> OpenTelemetry Collector -> SkyWalking OAP
+      可先运行 database/mysql/bin/install.sh --enable-exporter 或 monitor/prometheus/bin/start_mysql_exporter.sh
+    - Linux 主机指标链路为 node_exporter -> OpenTelemetry Collector -> SkyWalking OAP
+      可先运行 monitor/prometheus/bin/start_node_exporter.sh，或加 --start-node-exporter
 
 EOF
 }
@@ -216,10 +326,75 @@ log_warn() {
 log_error() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $1" >&2
 }
+
+mask_secret() {
+    local secret="${1:-}"
+    local len=${#secret}
+
+    if [ "$len" -eq 0 ]; then
+        echo "(empty)"
+    elif [ "$len" -le 4 ]; then
+        echo "****"
+    else
+        echo "${secret:0:2}****${secret: -2}"
+    fi
+}
+
 # 工具函数
 # 检查命令是否存在
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+detect_java_home() {
+    local candidates=(
+        "${JAVA_HOME:-}"
+        "$HOME/jdk/current"
+        "$HOME/jdk/jdk-21"
+        "$HOME/jdk/jdk-17"
+        "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+        "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+        "/Library/Java/JavaVirtualMachines/zulu-21.jdk/Contents/Home"
+        "/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home"
+    )
+    local java_home
+
+    for java_home in "${candidates[@]}"; do
+        if [ -n "$java_home" ] && [ -x "$java_home/bin/java" ] && "$java_home/bin/java" -version >/dev/null 2>&1; then
+            echo "$java_home"
+            return 0
+        fi
+    done
+
+    if command_exists /usr/libexec/java_home; then
+        java_home=$(/usr/libexec/java_home -v 21 2>/dev/null || /usr/libexec/java_home -v 17 2>/dev/null || true)
+        if [ -n "$java_home" ] && [ -x "$java_home/bin/java" ]; then
+            echo "$java_home"
+            return 0
+        fi
+    fi
+
+    if command_exists java && java -version >/dev/null 2>&1; then
+        local java_bin
+        java_bin=$(command -v java)
+        java_home="$(cd "$(dirname "$java_bin")/.." >/dev/null 2>&1 && pwd)"
+        if [ -x "$java_home/bin/java" ]; then
+            echo "$java_home"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+configure_java_env() {
+    if DETECTED_JAVA_HOME="$(detect_java_home)"; then
+        export JAVA_HOME="$DETECTED_JAVA_HOME"
+        export PATH="$JAVA_HOME/bin:$PATH"
+        return 0
+    fi
+
+    return 1
 }
 
 # 检查并执行命令（自动处理sudo）
@@ -367,7 +542,30 @@ wait_for_service() {
 
 # 显示版本信息
 show_version() {
-    echo "SkyWalking 安装脚本 v$SCRIPT_VERSION"
+    # 检测SkyWalking是否已安装
+    local skywalking_dir=""
+    
+    # 尝试多个可能的安装目录
+    for dir in "/opt/skywalking" "$HOME/skywalking"; do
+        if [ -d "$dir" ] && [ -f "$dir/bin/oapService.sh" ]; then
+            skywalking_dir="$dir"
+            break
+        fi
+    done
+    
+    if [ -n "$skywalking_dir" ]; then
+        # 从安装目录读取版本
+        VERSION=$(find "$skywalking_dir" -name "skywalking-*.jar" 2>/dev/null | head -1 | xargs basename 2>/dev/null | sed 's/skywalking-//' | sed 's/\.jar//')
+        if [ -n "$VERSION" ]; then
+            echo "$VERSION"
+        else
+            echo "已安装"
+        fi
+    elif pgrep -f "skywalking" > /dev/null 2>&1; then
+        echo "运行中"
+    else
+        echo ""
+    fi
 }
 
 
@@ -572,7 +770,7 @@ set_install_version() {
     
     # 设置URL配置
     SW_BASE_URL="$mirror_url"
-    SW_AGENT_BASE_URL="$mirror_url/java-agent"
+    SW_AGENT_BASE_URL="$AGENT_MIRROR_BASE_URL"
 }
 
 # 验证安装目录
@@ -584,7 +782,7 @@ validate_install_dir() {
     fi
     
     # 检查路径中的非法字符
-    if [[ "$SW_HOME" =~ [^a-zA-Z0-9_\-/\.~] ]]; then
+    if [[ "$SW_HOME" =~ [^a-zA-Z0-9_/\.~-] ]]; then
         log_error "安装目录包含非法字符: $SW_HOME"
         return 1
     fi
@@ -635,6 +833,7 @@ parse_arguments() {
                     exit 1
                 fi
                 STORAGE_TYPE="$2"
+                STORAGE_TYPE_EXPLICIT=true
                 shift 2
                 ;;
             --storage-host)
@@ -643,6 +842,7 @@ parse_arguments() {
                     exit 1
                 fi
                 STORAGE_HOST="$2"
+                STORAGE_HOST_EXPLICIT=true
                 shift 2
                 ;;
             --storage-port)
@@ -651,6 +851,7 @@ parse_arguments() {
                     exit 1
                 fi
                 STORAGE_PORT="$2"
+                STORAGE_PORT_EXPLICIT=true
                 shift 2
                 ;;
             --storage-user)
@@ -659,6 +860,7 @@ parse_arguments() {
                     exit 1
                 fi
                 STORAGE_USER="$2"
+                STORAGE_USER_EXPLICIT=true
                 shift 2
                 ;;
             --storage-pass)
@@ -667,6 +869,7 @@ parse_arguments() {
                     exit 1
                 fi
                 STORAGE_PASSWORD="$2"
+                STORAGE_PASSWORD_EXPLICIT=true
                 shift 2
                 ;;
             --storage-db)
@@ -675,6 +878,7 @@ parse_arguments() {
                     exit 1
                 fi
                 STORAGE_DATABASE="$2"
+                STORAGE_DATABASE_EXPLICIT=true
                 shift 2
                 ;;
             --storage-namespace)
@@ -683,6 +887,7 @@ parse_arguments() {
                     exit 1
                 fi
                 STORAGE_NAMESPACE="$2"
+                STORAGE_NAMESPACE_EXPLICIT=true
                 shift 2
                 ;;
             --web-port)
@@ -691,7 +896,87 @@ parse_arguments() {
                     exit 1
                 fi
                 WEB_PORT="$2"
+                WEB_PORT_EXPLICIT=true
                 shift 2
+                ;;
+            --enable-mysql-monitoring)
+                ENABLE_MYSQL_MONITORING=true
+                shift
+                ;;
+            --mysql-exporter-target)
+                if [ -z "$2" ]; then
+                    log_error "选项 $1 需要指定 mysqld_exporter 地址"
+                    exit 1
+                fi
+                MYSQL_EXPORTER_TARGET="$2"
+                shift 2
+                ;;
+            --mysql-monitor-host-name)
+                if [ -z "$2" ]; then
+                    log_error "选项 $1 需要指定主机名"
+                    exit 1
+                fi
+                MYSQL_MONITOR_HOST_NAME="$2"
+                shift 2
+                ;;
+            --mysql-monitor-service-name)
+                if [ -z "$2" ]; then
+                    log_error "选项 $1 需要指定服务名"
+                    exit 1
+                fi
+                MYSQL_MONITOR_SERVICE_NAME="$2"
+                shift 2
+                ;;
+            --mysql-monitor-scrape-interval)
+                if [ -z "$2" ]; then
+                    log_error "选项 $1 需要指定抓取间隔"
+                    exit 1
+                fi
+                MYSQL_MONITOR_SCRAPE_INTERVAL="$2"
+                shift 2
+                ;;
+            --enable-vm-monitoring)
+                ENABLE_VM_MONITORING=true
+                shift
+                ;;
+            --node-exporter-target)
+                if [ -z "$2" ]; then
+                    log_error "选项 $1 需要指定 node_exporter 地址"
+                    exit 1
+                fi
+                NODE_EXPORTER_TARGET="$2"
+                shift 2
+                ;;
+            --vm-monitor-host-name)
+                if [ -z "$2" ]; then
+                    log_error "选项 $1 需要指定主机名"
+                    exit 1
+                fi
+                VM_MONITOR_HOST_NAME="$2"
+                if [ "$VM_MONITOR_SERVICE_NAME" = "$(hostname)" ]; then
+                    VM_MONITOR_SERVICE_NAME="$2"
+                fi
+                shift 2
+                ;;
+            --vm-monitor-service-name)
+                if [ -z "$2" ]; then
+                    log_error "选项 $1 需要指定服务名"
+                    exit 1
+                fi
+                VM_MONITOR_SERVICE_NAME="$2"
+                shift 2
+                ;;
+            --vm-monitor-scrape-interval)
+                if [ -z "$2" ]; then
+                    log_error "选项 $1 需要指定抓取间隔"
+                    exit 1
+                fi
+                VM_MONITOR_SCRAPE_INTERVAL="$2"
+                shift 2
+                ;;
+            --start-node-exporter)
+                VM_MONITOR_START_NODE_EXPORTER=true
+                shift
                 ;;
             --mode)
                 if [ -z "$2" ]; then
@@ -831,6 +1116,25 @@ auto_sudo() {
     if [ -n "$WEB_PORT" ]; then
         sudo_args+=("--web-port" "$WEB_PORT")
     fi
+
+    if [ "$ENABLE_MYSQL_MONITORING" = true ]; then
+        sudo_args+=("--enable-mysql-monitoring")
+        sudo_args+=("--mysql-exporter-target" "$MYSQL_EXPORTER_TARGET")
+        sudo_args+=("--mysql-monitor-host-name" "$MYSQL_MONITOR_HOST_NAME")
+        sudo_args+=("--mysql-monitor-service-name" "$MYSQL_MONITOR_SERVICE_NAME")
+        sudo_args+=("--mysql-monitor-scrape-interval" "$MYSQL_MONITOR_SCRAPE_INTERVAL")
+    fi
+
+    if [ "$ENABLE_VM_MONITORING" = true ]; then
+        sudo_args+=("--enable-vm-monitoring")
+        sudo_args+=("--node-exporter-target" "$NODE_EXPORTER_TARGET")
+        sudo_args+=("--vm-monitor-host-name" "$VM_MONITOR_HOST_NAME")
+        sudo_args+=("--vm-monitor-service-name" "$VM_MONITOR_SERVICE_NAME")
+        sudo_args+=("--vm-monitor-scrape-interval" "$VM_MONITOR_SCRAPE_INTERVAL")
+        if [ "$VM_MONITOR_START_NODE_EXPORTER" = true ]; then
+            sudo_args+=("--start-node-exporter")
+        fi
+    fi
     
     # 其他参数
     if [ "$FORCE" = true ]; then
@@ -874,6 +1178,10 @@ auto_sudo() {
 
 # 设置路径和URL
 setup_paths_and_urls() {
+    OAP_PORT="${OAP_PORT:-$DEFAULT_OAP_PORT}"
+    OAP_HTTP_PORT="${OAP_HTTP_PORT:-$DEFAULT_OAP_HTTP_PORT}"
+    PROMQL_PORT="${PROMQL_PORT:-$DEFAULT_PROMQL_PORT}"
+
     # 设置安装目录
     if [ -n "$CUSTOM_INSTALL_DIR" ]; then
         INSTALL_DIR=$(eval echo "$CUSTOM_INSTALL_DIR")
@@ -901,8 +1209,15 @@ setup_paths_and_urls() {
     SW_HOME="$INSTALL_DIR"
     SKYWALKING_AGENT_BASE_DIR="$SW_HOME/skywalking-agent"
     
-    # 设置下载URL（阿里云镜像使用-bin.tar.gz格式）
-    #https://mirrors.tuna.tsinghua.edu.cn/apache/skywalking/10.3.0/apache-skywalking-apm-10.3.0-bin.tar.gz
+    # 确保 SW_BASE_URL 不为空（如果 set_install_version 未执行）
+    if [ -z "$SW_BASE_URL" ]; then
+        SW_BASE_URL="$MIRROR_BASE_URL"
+    fi
+    if [ -z "$SW_AGENT_BASE_URL" ]; then
+        SW_AGENT_BASE_URL="$AGENT_MIRROR_BASE_URL"
+    fi
+
+    # 设置下载URL
     SW_URL="$SW_BASE_URL/$SW_VERSION/apache-skywalking-apm-$SW_VERSION-bin.tar.gz"
     # 从SW_URL中提取文件名
     SW_TGZ="$DOWNLOAD_DIR/$(basename "$SW_URL")"
@@ -923,8 +1238,14 @@ init_script() {
         source "$CONFIG_FILE"
     fi
     
-    # 设置安装版本（原init_global_variables功能）
-    set_install_version
+    # 解析命令行参数（提前解析以检查是否是--version模式）
+    parse_arguments "$@"
+    
+    # 如果不是--version模式，才设置安装版本
+    if [ -z "$SPECIFIED_VERSION" ] && [ -z "$SW_VERSION" ]; then
+        # 设置安装版本（原init_global_variables功能）
+        set_install_version
+    fi
     
     # 缓存原始用户信息
     cache_original_user
@@ -932,9 +1253,6 @@ init_script() {
     # 调试日志（原set_user_paths功能）
     log_debug "默认安装目录: $DEFAULT_INSTALL_DIR"
     log_debug "默认下载目录: $DEFAULT_DOWNLOAD_DIR"
-    
-    # 解析命令行参数
-    parse_arguments "$@"
     
     # 设置端口配置（在参数解析后）
     UI_SERVER_PORT="${WEB_PORT:-$DEFAULT_UI_PORT}"
@@ -948,14 +1266,104 @@ init_script() {
     fi
 }
 
+# macOS/Linux 兼容的 sed -i 函数
+sed_i() {
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        sed -i "" "$@"
+    else
+        sed -i "$@"
+    fi
+}
+
+# 检测是否有 TTY（交互式终端）
+has_tty() {
+    [[ -t 0 ]]
+}
+
+read_existing_ui_port() {
+    local ui_config="$SW_HOME/webapp/application.yml"
+    local port=""
+
+    if [ -f "$ui_config" ]; then
+        port=$(awk -F: '/^[[:space:]]*serverPort[[:space:]]*:/ {
+            gsub(/[[:space:]]/, "", $2)
+            print $2
+            exit
+        }' "$ui_config")
+    fi
+
+    if [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1024 ] && [ "$port" -le 65535 ]; then
+        echo "$port"
+        return 0
+    fi
+
+    return 1
+}
+
+reuse_existing_ui_port() {
+    if [ "$WEB_PORT_EXPLICIT" = true ]; then
+        return 0
+    fi
+
+    local existing_port
+    existing_port=$(read_existing_ui_port || true)
+    if [ -n "$existing_port" ]; then
+        UI_SERVER_PORT="$existing_port"
+        WEB_PORT="$existing_port"
+        log_info "复用已有 SkyWalking UI 配置（端口: $UI_SERVER_PORT）"
+    fi
+}
+
+extract_menu_choice() {
+    local input="${1:-}"
+    local min="${2:-1}"
+    local max="${3:-9}"
+    local choice
+
+    choice=$(printf '%s\n' "$input" | tr -cd '0-9' | cut -c1)
+    if [[ "$choice" =~ ^[0-9]$ ]] && [ "$choice" -ge "$min" ] && [ "$choice" -le "$max" ]; then
+        echo "$choice"
+        return 0
+    fi
+
+    return 1
+}
+
+# 交互式存储类型选择
+prompt_storage_type() {
+    echo ""
+    echo "请选择 SkyWalking 存储类型："
+    echo ""
+    echo "  1) banyandb      (默认, 推荐)  - SkyWalking 自研时序数据库，专为 APM 优化，无需额外部署"
+    echo "  2) elasticsearch                 成熟稳定，适合已有 ES 集群的环境"
+    echo "  3) mysql                         适合已有 MySQL 的环境"
+    echo "  4) postgresql                    适合已有 PostgreSQL 的环境"
+    echo ""
+    read -p "请选择 (1-4, 默认 1): " choice
+    choice=$(extract_menu_choice "$choice" 1 4 || echo "1")
+
+    case "${choice:-1}" in
+        1) STORAGE_TYPE="banyandb" ;;
+        2) STORAGE_TYPE="elasticsearch" ;;
+        3) STORAGE_TYPE="mysql" ;;
+        4) STORAGE_TYPE="postgresql" ;;
+        *) STORAGE_TYPE="banyandb" ;;
+    esac
+    echo ""
+    log_info "已选择存储类型: $STORAGE_TYPE"
+}
 
 # 验证存储类型
 validate_storage_type() {
     local valid_types=("mysql" "elasticsearch" "postgresql" "banyandb")
-    
+
     if [ -z "$STORAGE_TYPE" ]; then
-        STORAGE_TYPE="banyandb"
-        log_info "未指定存储类型，使用默认值: $STORAGE_TYPE"
+        if has_tty; then
+            prompt_storage_type
+        else
+            STORAGE_TYPE="banyandb"
+            log_info "未指定存储类型，使用默认值: $STORAGE_TYPE"
+        fi
     fi
     
     # 检查存储类型是否有效
@@ -1011,6 +1419,112 @@ setup_storage_defaults() {
     log_debug "存储配置 - 主机: $STORAGE_HOST, 端口: $STORAGE_PORT"
 }
 
+load_existing_storage_config() {
+    local config_file="$SW_HOME/config/application.yml"
+
+    [ -f "$config_file" ] || return 0
+
+    if command_exists python3; then
+        local parsed
+        parsed=$(python3 - "$config_file" <<'PY' 2>/dev/null || true
+import re
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text()
+
+def emit(key, value):
+    if value is not None and value != "":
+        print(f"{key}={value}")
+
+def yaml_block(source, key, parent_indent=-1):
+    lines = source.splitlines()
+    start = None
+    key_indent = None
+    pattern = re.compile(rf"^(\s*){re.escape(key)}:\s*(?:#.*)?$")
+    for index, line in enumerate(lines):
+        match = pattern.match(line)
+        if match and len(match.group(1).expandtabs(2)) > parent_indent:
+            start = index + 1
+            key_indent = len(match.group(1).expandtabs(2))
+            break
+    if start is None:
+        return ""
+    end = len(lines)
+    for index in range(start, len(lines)):
+        line = lines[index]
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent <= key_indent:
+            end = index
+            break
+    return "\n".join(lines[start:end])
+
+storage = yaml_block(text, "storage")
+m = re.search(r"(?m)^\s*selector:\s*\$\{SW_STORAGE:([^}]+)\}", storage)
+storage_type = m.group(1).strip() if m else None
+emit("type", storage_type)
+
+# 只解析 selector 选中的存储节点，避免 mysql 配置被后面的
+# elasticsearch.clusterNodes（通常是 localhost:9200）覆盖。
+backend = yaml_block(storage, storage_type, -1) if storage_type else ""
+
+if storage_type == "mysql":
+    m = re.search(r'jdbc:mysql://([^:/}"\s]+):([0-9]+)/([^?}"\s]+)', backend)
+    if m:
+        emit("host", m.group(1))
+        emit("port", m.group(2))
+        emit("database", m.group(3))
+
+    m = re.search(r"dataSource\.user:\s*\$\{SW_DATA_SOURCE_USER:([^}]+)\}", backend)
+    emit("user", m.group(1).strip() if m else None)
+
+    m = re.search(r"dataSource\.password:\s*\$\{SW_DATA_SOURCE_PASSWORD:([^}]+)\}", backend)
+    emit("password", m.group(1) if m else None)
+elif storage_type in ("elasticsearch", "elasticsearch7", "banyandb"):
+    m = re.search(r"clusterNodes:\s*\$\{[^:}]+:([^}]+)\}", backend)
+    if m:
+        nodes = m.group(1).strip().split(",", 1)[0]
+        if ":" in nodes:
+            host, port = nodes.rsplit(":", 1)
+            emit("host", host)
+            emit("port", port)
+
+m = re.search(r"namespace:\s*\$\{SW_NAMESPACE:([^}]+)\}", backend)
+emit("namespace", m.group(1).strip() if m else None)
+PY
+)
+        local key value
+        while IFS='=' read -r key value; do
+            case "$key" in
+                type)
+                    if [ "$STORAGE_TYPE_EXPLICIT" != true ] && [ -n "$value" ]; then STORAGE_TYPE="$value"; fi ;;
+                host)
+                    if [ "$STORAGE_HOST_EXPLICIT" != true ] && [ -n "$value" ]; then STORAGE_HOST="$value"; fi ;;
+                port)
+                    if [ "$STORAGE_PORT_EXPLICIT" != true ] && [ -n "$value" ]; then STORAGE_PORT="$value"; fi ;;
+                database)
+                    if [ "$STORAGE_DATABASE_EXPLICIT" != true ] && [ -n "$value" ]; then STORAGE_DATABASE="$value"; fi ;;
+                user)
+                    if [ "$STORAGE_USER_EXPLICIT" != true ] && [ -n "$value" ]; then STORAGE_USER="$value"; fi ;;
+                password)
+                    if [ "$STORAGE_PASSWORD_EXPLICIT" != true ] && [ -n "$value" ]; then STORAGE_PASSWORD="$value"; fi ;;
+                namespace)
+                    if [ "$STORAGE_NAMESPACE_EXPLICIT" != true ] && [ -n "$value" ]; then STORAGE_NAMESPACE="$value"; fi ;;
+            esac
+        done <<< "$parsed"
+    fi
+
+    if [ -n "$STORAGE_TYPE" ]; then
+        if [ "$STORAGE_TYPE" = "mysql" ]; then
+            log_info "读取已有 MySQL 配置: ${STORAGE_USER:-未设置}@${STORAGE_HOST:-未设置}:${STORAGE_PORT:-未设置}/${STORAGE_DATABASE:-未设置}"
+        else
+            log_info "读取已有 SkyWalking 存储配置: type=$STORAGE_TYPE host=${STORAGE_HOST:-未设置} port=${STORAGE_PORT:-未设置}"
+        fi
+    fi
+}
+
 # 生成存储配置
 generate_storage_config() {
     local config_file="$SW_HOME/config/application.yml"
@@ -1027,16 +1541,16 @@ generate_storage_config() {
     
     case "$STORAGE_TYPE" in
         "mysql")
-            configure_mysql_storage "$config_file"
+            configure_mysql_storage "$config_file" || return 1
             ;;
         "elasticsearch")
-            configure_elasticsearch_storage "$config_file"
+            configure_elasticsearch_storage "$config_file" || return 1
             ;;
         "postgresql")
-            configure_postgresql_storage "$config_file"
+            configure_postgresql_storage "$config_file" || return 1
             ;;
         "banyandb")
-            configure_banyandb_storage "$config_file"
+            configure_banyandb_storage "$config_file" || return 1
             ;;
     esac
     
@@ -1052,6 +1566,72 @@ download_mysql_driver() {
     download_driver "MySQL" "$mysql_driver_url" "$driver_file"
 }
 
+rewrite_jdbc_storage_config() {
+    local config_file="$1"
+    local backend="$2"
+    local selector="$3"
+    local jdbc_url="$4"
+    local user="$5"
+    local password="$6"
+    local temp_config="${config_file}.tmp"
+
+    if ! grep -q "^storage:" "$config_file" || ! grep -q "^[[:space:]]*$backend:" "$config_file"; then
+        log_error "配置文件缺少 storage/$backend 小节，无法安全写入存储配置: $config_file"
+        return 1
+    fi
+
+    awk -v backend="$backend" -v selector="$selector" -v jdbc_url="$jdbc_url" -v user="$user" -v password="$password" '
+        function leading_spaces(s) {
+            match(s, /^[ ]*/)
+            return RLENGTH
+        }
+        /^storage:/ {
+            in_storage = 1
+            storage_indent = leading_spaces($0)
+            print
+            next
+        }
+        in_storage && /^[^ ]/ && leading_spaces($0) <= storage_indent {
+            in_storage = 0
+            in_backend = 0
+        }
+        in_storage && $0 ~ /^[ ]*selector:[ ]/ {
+            print "  selector: ${SW_STORAGE:" selector "}"
+            next
+        }
+        in_storage && $0 ~ "^  " backend ":" {
+            in_backend = 1
+            backend_indent = leading_spaces($0)
+            print
+            next
+        }
+        in_backend && $0 ~ /^  [^ ]/ && leading_spaces($0) <= backend_indent {
+            in_backend = 0
+        }
+        in_backend && $0 ~ /^[ ]*jdbcUrl:[ ]/ {
+            print "      jdbcUrl: ${SW_JDBC_URL:\"" jdbc_url "\"}"
+            next
+        }
+        in_backend && $0 ~ /^[ ]*dataSource.user:[ ]/ {
+            print "      dataSource.user: ${SW_DATA_SOURCE_USER:" user "}"
+            next
+        }
+        in_backend && $0 ~ /^[ ]*dataSource.password:[ ]/ {
+            print "      dataSource.password: ${SW_DATA_SOURCE_PASSWORD:" password "}"
+            next
+        }
+        { print }
+    ' "$config_file" > "$temp_config"
+
+    if [ ! -s "$temp_config" ] || ! grep -q "^storage:" "$temp_config"; then
+        rm -f "$temp_config"
+        log_error "生成配置文件失败，已保留原配置: $config_file"
+        return 1
+    fi
+
+    mv "$temp_config" "$config_file"
+}
+
 # 配置 MySQL 存储
 configure_mysql_storage() {
     local config_file="$1"
@@ -1064,38 +1644,10 @@ configure_mysql_storage() {
         return 1
     fi
     
-    # 生成MySQL存储配置片段
-    local mysql_config="storage:
-  selector: \${SW_STORAGE:mysql}
-  mysql:
-    properties:
-      jdbcUrl: \"\${SW_JDBC_URL:jdbc:mysql://$STORAGE_HOST:$STORAGE_PORT/$STORAGE_DATABASE?rewriteBatchedStatements=true&allowMultiQueries=true}\"
-      dataSource.user: \${SW_DATA_SOURCE_USER:$STORAGE_USER}
-      dataSource.password: \${SW_DATA_SOURCE_PASSWORD:$STORAGE_PASSWORD}"
-    
-    # 创建临时配置文件
-    local temp_config="${config_file}.tmp"
-    
-    # 使用awk替换storage配置部分
-    awk -v mysql="$mysql_config" '
-    /^storage:/ {
-        in_storage = 1
-        print mysql
-        # 跳过原有的storage配置直到下一个顶级配置
-        while (getline) {
-            if (/^[^ ]/ && !/^storage/) {
-                in_storage = 0
-                print $0
-                break
-            }
-        }
-        next
-    }
-    !in_storage { print $0 }
-    ' "$config_file" > "$temp_config"
-    
-    # 替换原配置文件
-    mv "$temp_config" "$config_file"
+    local jdbc_url="jdbc:mysql://$STORAGE_HOST:$STORAGE_PORT/$STORAGE_DATABASE?rewriteBatchedStatements=true&allowMultiQueries=true"
+    if ! rewrite_jdbc_storage_config "$config_file" "mysql" "mysql" "$jdbc_url" "$STORAGE_USER" "$STORAGE_PASSWORD"; then
+        return 1
+    fi
     
     log_info "MySQL 存储配置完成"
 }
@@ -1107,23 +1659,23 @@ configure_elasticsearch_storage() {
     log_info "配置 Elasticsearch 存储..."
     
     # 更新存储选择器
-    sed -i "s/selector: \${SW_STORAGE:banyandb}/selector: \${SW_STORAGE:elasticsearch}/" "$config_file"
-    
+    sed_i "s/selector: \${SW_STORAGE:banyandb}/selector: \${SW_STORAGE:elasticsearch}/" "$config_file"
+
     # 更新 Elasticsearch 连接配置
     local cluster_nodes="$STORAGE_HOST:$STORAGE_PORT"
-    
-    sed -i "s/clusterNodes: \${SW_STORAGE_ES_CLUSTER_NODES:.*}/clusterNodes: \${SW_STORAGE_ES_CLUSTER_NODES:$cluster_nodes}/" "$config_file"
-    
+
+    sed_i "s/clusterNodes: \${SW_STORAGE_ES_CLUSTER_NODES:.*}/clusterNodes: \${SW_STORAGE_ES_CLUSTER_NODES:$cluster_nodes}/" "$config_file"
+
     if [ -n "$STORAGE_USER" ]; then
-        sed -i "s/user: \${SW_ES_USER:.*}/user: \${SW_ES_USER:$STORAGE_USER}/" "$config_file"
+        sed_i "s/user: \${SW_ES_USER:.*}/user: \${SW_ES_USER:$STORAGE_USER}/" "$config_file"
     fi
-    
+
     if [ -n "$STORAGE_PASSWORD" ]; then
-        sed -i "s/password: \${SW_ES_PASSWORD:.*}/password: \${SW_ES_PASSWORD:$STORAGE_PASSWORD}/" "$config_file"
+        sed_i "s/password: \${SW_ES_PASSWORD:.*}/password: \${SW_ES_PASSWORD:$STORAGE_PASSWORD}/" "$config_file"
     fi
-    
+
     if [ -n "$STORAGE_NAMESPACE" ]; then
-        sed -i "s/namespace: \${SW_NAMESPACE:.*}/namespace: \${SW_NAMESPACE:$STORAGE_NAMESPACE}/" "$config_file"
+        sed_i "s/namespace: \${SW_NAMESPACE:.*}/namespace: \${SW_NAMESPACE:$STORAGE_NAMESPACE}/" "$config_file"
     fi
     
     log_info "Elasticsearch 存储配置完成"
@@ -1150,38 +1702,9 @@ configure_postgresql_storage() {
         return 1
     fi
     
-    # 生成PostgreSQL存储配置片段
-    local postgresql_config="storage:
-  selector: \${SW_STORAGE:postgresql}
-  postgresql:
-    properties:
-      jdbcUrl: \"\${SW_JDBC_URL:jdbc:postgresql://$STORAGE_HOST:$STORAGE_PORT/$STORAGE_DATABASE}\"
-      dataSource.user: \${SW_DATA_SOURCE_USER:$STORAGE_USER}
-      dataSource.password: \${SW_DATA_SOURCE_PASSWORD:$STORAGE_PASSWORD}"
-    
-    # 创建临时配置文件
-    local temp_config="${config_file}.tmp"
-    
-    # 使用awk替换storage配置部分
-    awk -v postgresql="$postgresql_config" '
-    /^storage:/ {
-        in_storage = 1
-        print postgresql
-        # 跳过原有的storage配置直到下一个顶级配置
-        while (getline) {
-            if (/^[^ ]/ && !/^storage/) {
-                in_storage = 0
-                print $0
-                break
-            }
-        }
-        next
-    }
-    !in_storage { print $0 }
-    ' "$config_file" > "$temp_config"
-    
-    # 替换原配置文件
-    mv "$temp_config" "$config_file"
+    if ! rewrite_jdbc_storage_config "$config_file" "postgresql" "postgresql" "jdbc:postgresql://$STORAGE_HOST:$STORAGE_PORT/$STORAGE_DATABASE" "$STORAGE_USER" "$STORAGE_PASSWORD"; then
+        return 1
+    fi
     
     log_info "PostgreSQL 存储配置完成"
 }
@@ -1193,7 +1716,7 @@ configure_banyandb_storage() {
     log_info "配置 BanyanDB 存储..."
     
     # BanyanDB 是默认配置，只需要确保选择器正确
-    sed -i "s/selector: \${SW_STORAGE:.*}/selector: \${SW_STORAGE:banyandb}/" "$config_file"
+    sed_i "s/selector: \${SW_STORAGE:.*}/selector: \${SW_STORAGE:banyandb}/" "$config_file"
     
     # 检查是否存在 bydb.yaml 配置文件
     local bydb_config="$SW_HOME/config/bydb.yaml"
@@ -1275,19 +1798,222 @@ validate_storage_config() {
     esac
 }
 
+show_mysql_config() {
+    log_info "MySQL 配置: host=$STORAGE_HOST port=$STORAGE_PORT database=$STORAGE_DATABASE user=$STORAGE_USER password=$(mask_secret "$STORAGE_PASSWORD")"
+}
+
+find_mysql_client() {
+    local candidates=(
+        "mysql"
+        "mariadb"
+        "/opt/homebrew/bin/mysql"
+        "/usr/local/bin/mysql"
+        "/opt/homebrew/bin/mariadb"
+        "/usr/local/bin/mariadb"
+    )
+    local cmd
+
+    for cmd in "${candidates[@]}"; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            command -v "$cmd"
+            return 0
+        elif [ -x "$cmd" ]; then
+            echo "$cmd"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+mysql_sql_escape() {
+    printf '%s' "$1" | sed "s/'/''/g"
+}
+
+mysql_database_name_is_safe() {
+    [[ "$1" =~ ^[A-Za-z0-9_]+$ ]]
+}
+
+create_mysql_database() {
+    local mysql_cmd="$1"
+    local database="$2"
+
+    if ! mysql_database_name_is_safe "$database"; then
+        log_error "数据库名包含特殊字符，脚本不会自动创建: $database"
+        return 1
+    fi
+
+    log_info "正在创建 MySQL 数据库: $database"
+    if "$mysql_cmd" -h"$STORAGE_HOST" -P"$STORAGE_PORT" -u"$STORAGE_USER" -p"$STORAGE_PASSWORD" \
+        -e "CREATE DATABASE IF NOT EXISTS \`$database\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" >/dev/null 2>&1; then
+        log_info "MySQL 数据库已创建或已存在: $database"
+        log_info "无需导入 SkyWalking SQL；OAP 首次启动会自动初始化所需表结构"
+        return 0
+    fi
+
+    log_error "创建 MySQL 数据库失败，请确认用户 $STORAGE_USER 具备 CREATE 权限"
+    return 1
+}
+
+validate_mysql_ddl_permission() {
+    local mysql_cmd="$1"
+    local table_name="sw_install_check_$$"
+
+    if "$mysql_cmd" -h"$STORAGE_HOST" -P"$STORAGE_PORT" -u"$STORAGE_USER" -p"$STORAGE_PASSWORD" "$STORAGE_DATABASE" \
+        -e "CREATE TABLE \`$table_name\` (id BIGINT PRIMARY KEY, name VARCHAR(32)); ALTER TABLE \`$table_name\` ADD INDEX idx_name(name); DROP TABLE \`$table_name\`;" >/dev/null 2>&1; then
+        log_info "MySQL DDL 权限验证成功，OAP 可自动创建/更新表结构"
+        return 0
+    fi
+
+    log_error "MySQL DDL 权限验证失败；SkyWalking 不需要手动导入 SQL，但用户 $STORAGE_USER 需要 CREATE/ALTER/INDEX/DROP 等表结构权限"
+    return 1
+}
+
+prompt_mysql_config() {
+    local input=""
+
+    read -r -p "MySQL Host [$STORAGE_HOST]: " input
+    STORAGE_HOST="${input:-$STORAGE_HOST}"
+
+    read -r -p "MySQL Port [$STORAGE_PORT]: " input
+    STORAGE_PORT="${input:-$STORAGE_PORT}"
+
+    read -r -p "MySQL Database [$STORAGE_DATABASE]: " input
+    STORAGE_DATABASE="${input:-$STORAGE_DATABASE}"
+
+    read -r -p "MySQL User [$STORAGE_USER]: " input
+    STORAGE_USER="${input:-$STORAGE_USER}"
+
+    read -r -s -p "MySQL Password [保留当前值直接回车]: " input
+    echo
+    STORAGE_PASSWORD="${input:-$STORAGE_PASSWORD}"
+}
+
 # 验证 MySQL 连接
 validate_mysql_connection() {
     log_info "验证 MySQL 连接..."
-    
-    if command -v mysql >/dev/null 2>&1; then
-        if mysql -h"$STORAGE_HOST" -P"$STORAGE_PORT" -u"$STORAGE_USER" -p"$STORAGE_PASSWORD" -e "USE $STORAGE_DATABASE;" >/dev/null 2>&1; then
-            log_info "MySQL 连接验证成功"
-        else
-            log_warn "MySQL 连接验证失败，请检查配置"
-        fi
-    else
-        log_warn "MySQL 客户端未安装，跳过连接验证"
+    show_mysql_config
+
+    local mysql_cmd
+    if ! mysql_cmd="$(find_mysql_client)"; then
+        log_error "MySQL 客户端未安装，无法在启动前验证连接；请先安装 mysql 客户端，或改用其他存储类型"
+        return 2
     fi
+
+    if ! "$mysql_cmd" -h"$STORAGE_HOST" -P"$STORAGE_PORT" -u"$STORAGE_USER" -p"$STORAGE_PASSWORD" -e "SELECT 1;" >/dev/null 2>&1; then
+        log_warn "MySQL 服务连接或账号认证失败"
+        return 1
+    fi
+
+    local escaped_db exists
+    escaped_db=$(mysql_sql_escape "$STORAGE_DATABASE")
+    exists=$("$mysql_cmd" -h"$STORAGE_HOST" -P"$STORAGE_PORT" -u"$STORAGE_USER" -p"$STORAGE_PASSWORD" -N -B \
+        -e "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '$escaped_db';" 2>/dev/null | head -1 || true)
+
+    if [ -z "$exists" ]; then
+        log_warn "MySQL 连接成功，但数据库不存在: $STORAGE_DATABASE"
+        MYSQL_CLIENT_CMD="$mysql_cmd"
+        return 3
+    fi
+
+    if "$mysql_cmd" -h"$STORAGE_HOST" -P"$STORAGE_PORT" -u"$STORAGE_USER" -p"$STORAGE_PASSWORD" "$STORAGE_DATABASE" -e "SELECT 1;" >/dev/null 2>&1; then
+        log_info "MySQL 连接验证成功"
+        MYSQL_CLIENT_CMD="$mysql_cmd"
+        validate_mysql_ddl_permission "$mysql_cmd"
+        return $?
+    fi
+
+    log_warn "MySQL 数据库存在，但当前用户无法使用: $STORAGE_DATABASE"
+    return 1
+}
+
+ensure_mysql_connection() {
+    local attempts=0
+
+    while true; do
+        validate_mysql_connection
+        local rc=$?
+        if [ "$rc" -eq 0 ]; then
+            return 0
+        fi
+
+        attempts=$((attempts + 1))
+        if [ "$rc" -eq 2 ]; then
+            return 1
+        fi
+
+        if [ "$rc" -eq 3 ]; then
+            if has_tty && confirm_action "是否自动创建数据库 $STORAGE_DATABASE?" true; then
+                if create_mysql_database "$MYSQL_CLIENT_CMD" "$STORAGE_DATABASE"; then
+                    continue
+                fi
+            else
+                log_error "数据库不存在，已终止安装；请先创建数据库或重新输入 MySQL 配置"
+                return 1
+            fi
+        fi
+
+        if ! has_tty; then
+            log_error "MySQL 连接验证失败，非交互模式下终止安装；请通过 --storage-host/--storage-port/--storage-db/--storage-user/--storage-pass 指定正确配置"
+            return 1
+        fi
+
+        if [ "$attempts" -ge 3 ]; then
+            log_error "MySQL 连接连续失败 $attempts 次，终止安装"
+            return 1
+        fi
+
+        log_warn "请重新输入 MySQL 配置"
+        prompt_mysql_config
+        if ! configure_mysql_storage "$SW_HOME/config/application.yml"; then
+            return 1
+        fi
+    done
+}
+
+repair_mysql_ui_templates() {
+    [ "$STORAGE_TYPE" = "mysql" ] || return 0
+
+    local mysql_cmd="${MYSQL_CLIENT_CMD:-}"
+    if [ -z "$mysql_cmd" ]; then
+        mysql_cmd="$(find_mysql_client || true)"
+    fi
+    if [ -z "$mysql_cmd" ]; then
+        log_warn "MySQL 客户端未安装，跳过 SkyWalking UI 模板存储自愈"
+        return 0
+    fi
+
+    local table_exists
+    table_exists=$("$mysql_cmd" -h"$STORAGE_HOST" -P"$STORAGE_PORT" -u"$STORAGE_USER" -p"$STORAGE_PASSWORD" -N -B "$STORAGE_DATABASE" \
+        -e "SHOW TABLES LIKE 'ui_template';" 2>/dev/null | head -1 || true)
+    [ "$table_exists" = "ui_template" ] || return 0
+
+    local invalid_expr="configuration IS NULL OR JSON_VALID(configuration) = 0 OR JSON_TYPE(configuration) <> 'OBJECT' OR JSON_EXTRACT(configuration, '$.layer') IS NULL OR JSON_EXTRACT(configuration, '$.entity') IS NULL OR JSON_EXTRACT(configuration, '$.name') IS NULL"
+    local invalid_count
+    invalid_count=$("$mysql_cmd" -h"$STORAGE_HOST" -P"$STORAGE_PORT" -u"$STORAGE_USER" -p"$STORAGE_PASSWORD" -N -B "$STORAGE_DATABASE" \
+        -e "SELECT COUNT(*) FROM ui_template WHERE ${invalid_expr};" 2>/dev/null | head -1 || true)
+
+    if ! [[ "$invalid_count" =~ ^[0-9]+$ ]] || [ "$invalid_count" -eq 0 ]; then
+        return 0
+    fi
+
+    local backup_table="ui_template_invalid_backup_$(date +%Y%m%d_%H%M%S)"
+    log_warn "检测到 $invalid_count 条不兼容的 SkyWalking UI 模板记录，将备份后删除，启动时由 OAP 重新初始化"
+
+    "$mysql_cmd" -h"$STORAGE_HOST" -P"$STORAGE_PORT" -u"$STORAGE_USER" -p"$STORAGE_PASSWORD" "$STORAGE_DATABASE" \
+        2> >(grep -v '^mysql: \[Warning\] Using a password on the command line interface can be insecure\.$' >&2) <<SQL
+CREATE TABLE \`${backup_table}\` LIKE ui_template;
+INSERT INTO \`${backup_table}\` SELECT * FROM ui_template WHERE ${invalid_expr};
+DELETE FROM ui_template WHERE ${invalid_expr};
+SQL
+    local rc=$?
+    if [ "$rc" -eq 0 ]; then
+        log_info "已备份并删除无效 UI 模板记录: $backup_table"
+        return 0
+    fi
+
+    log_error "SkyWalking UI 模板存储自愈失败，请手动检查 MySQL 表 ui_template"
+    return "$rc"
 }
 
 # 验证 Elasticsearch 连接
@@ -1302,11 +2028,14 @@ validate_elasticsearch_connection() {
         
         if curl -s "$es_url" >/dev/null 2>&1; then
             log_info "Elasticsearch 连接验证成功"
+            return 0
         else
             log_warn "Elasticsearch 连接验证失败，请检查配置"
+            return 1
         fi
     else
         log_warn "curl 命令未安装，跳过连接验证"
+        return 0
     fi
 }
 
@@ -1317,11 +2046,14 @@ validate_postgresql_connection() {
     if command -v psql >/dev/null 2>&1; then
         if PGPASSWORD="$STORAGE_PASSWORD" psql -h"$STORAGE_HOST" -p"$STORAGE_PORT" -U"$STORAGE_USER" -d"$STORAGE_DATABASE" -c "SELECT 1;" >/dev/null 2>&1; then
             log_info "PostgreSQL 连接验证成功"
+            return 0
         else
             log_warn "PostgreSQL 连接验证失败，请检查配置"
+            return 1
         fi
     else
         log_warn "PostgreSQL 客户端未安装，跳过连接验证"
+        return 0
     fi
 }
 
@@ -1329,6 +2061,7 @@ validate_postgresql_connection() {
 validate_banyandb_connection() {
     log_info "BanyanDB 连接验证需要手动检查"
     log_info "请确保 BanyanDB 服务正在运行并且可访问"
+    return 0
 }
 
 # 验证配置
@@ -1343,6 +2076,7 @@ validate_config() {
     fi
     
     # 验证存储配置
+    load_existing_storage_config
     validate_storage_type
     setup_storage_defaults
 }
@@ -1358,8 +2092,25 @@ check_network() {
 }
 
 # 检测可用的下载工具
+find_adl() {
+    if command -v adl >/dev/null 2>&1 && adl --help >/dev/null 2>&1; then
+        command -v adl
+        return 0
+    fi
+
+    local repo_adl="$SCRIPT_DIR/../../../network/tools/adl"
+    if [ -x "$repo_adl" ] && "$repo_adl" --help >/dev/null 2>&1; then
+        echo "$repo_adl"
+        return 0
+    fi
+
+    return 1
+}
+
 detect_download_tool() {
-    if command -v aria2c >/dev/null 2>&1; then
+    if find_adl >/dev/null 2>&1; then
+        echo "adl"
+    elif command -v aria2c >/dev/null 2>&1; then
         echo "aria2c"
     elif command -v axel >/dev/null 2>&1; then
         echo "axel"
@@ -1367,6 +2118,31 @@ detect_download_tool() {
         echo "wget"
     else
         echo "curl"
+    fi
+}
+
+# 使用 adl 下载（支持断点续传）
+download_with_adl() {
+    local url="$1"
+    local output="$2"
+
+    log_info "使用 adl 下载..."
+
+    output=$(realpath "$output" 2>/dev/null || echo "$output")
+    local output_dir=$(dirname "$output")
+    local output_file=$(basename "$output")
+
+    mkdir -p "$output_dir"
+
+    local adl_cmd
+    if ! adl_cmd="$(find_adl)"; then
+        return 1
+    fi
+
+    if "$adl_cmd" "$url" "$output_dir" "$output_file"; then
+        return 0
+    else
+        return 1
     fi
 }
 
@@ -1501,6 +2277,11 @@ download_file() {
         log_info "尝试下载 (第 $((retry_count + 1))/$max_retries 次)..."
         
         case "$download_tool" in
+            "adl")
+                if download_with_adl "$url" "$output"; then
+                    return 0
+                fi
+                ;;
             "aria2c")
                 if download_with_aria2c "$url" "$output"; then
                     return 0
@@ -1548,8 +2329,13 @@ try_download_from_mirrors() {
     
     log_warn "主镜像下载失败，尝试备用镜像..."
     
-    # 尝试备用镜像
-    for backup_mirror in "${BACKUP_MIRRORS[@]}"; do
+    # 尝试备用镜像。Java agent 使用独立目录集合。
+    local mirror_candidates=("${BACKUP_MIRRORS[@]}")
+    if [[ "$url_pattern" == *apache-skywalking-java-agent* ]]; then
+        mirror_candidates=("${BACKUP_AGENT_MIRRORS[@]}")
+    fi
+
+    for backup_mirror in "${mirror_candidates[@]}"; do
         local backup_url
         case "$url_pattern" in
             *apache-skywalking-apm*)
@@ -1560,7 +2346,7 @@ try_download_from_mirrors() {
                 fi
                 ;;
             *apache-skywalking-java-agent*)
-                backup_url="$backup_mirror/java-agent/$version/apache-skywalking-java-agent-$version.tgz"
+                backup_url="$backup_mirror/$version/apache-skywalking-java-agent-$version.tgz"
                 ;;
             *)
                 backup_url="$backup_mirror/$version/$(basename "$url_pattern")"
@@ -1574,7 +2360,7 @@ try_download_from_mirrors() {
             # 更新全局URL变量（如果需要）
             if [ "$update_globals" = "true" ]; then
                 SW_BASE_URL="$backup_mirror"
-                SW_AGENT_BASE_URL="$backup_mirror/java-agent"
+                SW_AGENT_BASE_URL="$AGENT_MIRROR_BASE_URL"
             fi
             
             return 0
@@ -1594,6 +2380,7 @@ download_with_mirror_fallback() {
 verify_download() {
     local file="$1"
     local expected_pattern="$2"
+    local quiet="${3:-false}"
     
     if [ ! -f "$file" ]; then
         log_error "下载文件不存在: $file"
@@ -1607,9 +2394,13 @@ verify_download() {
     
     # 对于 tar.gz 文件，尝试解压测试
     if [[ "$file" == *.tar.gz ]] || [[ "$file" == *.tgz ]]; then
-        log_info "验证压缩文件完整性..."
+        if [ "$quiet" = true ]; then
+            log_debug "验证压缩文件完整性: $file"
+        else
+            log_info "验证压缩文件完整性..."
+        fi
         if tar -tzf "$file" >/dev/null 2>&1; then
-            log_info "压缩文件验证通过"
+            [ "$quiet" = true ] || log_info "压缩文件验证通过"
             return 0
         else
             log_error "压缩文件损坏或格式错误"
@@ -1628,10 +2419,132 @@ verify_download() {
     return 0
 }
 
+restore_application_config_from_package() {
+    local config_file="$SW_HOME/config/application.yml"
+
+    if [ -s "$config_file" ] && grep -q "^storage:" "$config_file"; then
+        return 0
+    fi
+
+    if [ ! -f "$SW_TGZ" ]; then
+        log_error "配置文件无效，且安装包不存在，无法恢复: $config_file"
+        return 1
+    fi
+
+    log_warn "检测到 SkyWalking 核心配置为空或缺少 storage，将从安装包恢复: $config_file"
+    mkdir -p "$(dirname "$config_file")"
+    if tar -xOf "$SW_TGZ" "apache-skywalking-apm-bin/config/application.yml" > "$config_file"; then
+        if [ -s "$config_file" ] && grep -q "^storage:" "$config_file"; then
+            log_info "已从安装包恢复核心配置文件"
+            return 0
+        fi
+    fi
+
+    log_error "从安装包恢复核心配置失败: $config_file"
+    return 1
+}
+
+validate_ui_templates() {
+    local template_dir="$SW_HOME/config/ui-initialized-templates"
+
+    [ -d "$template_dir" ] || return 1
+
+    if ! command_exists python3; then
+        log_warn "未安装 python3，跳过 SkyWalking UI 模板结构校验"
+        return 0
+    fi
+
+    python3 - "$template_dir" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+bad = []
+
+checked = 0
+for path in root.rglob("*.json"):
+    # SkyWalking 发布包中的 custom/placeholder.json 只是用于保留目录，
+    # 并非 UI 模板，内容可能为空或不是 JSON。
+    if path.name == "placeholder.json":
+        continue
+    checked += 1
+    try:
+        data = json.loads(path.read_text())
+    except Exception as exc:
+        bad.append(f"{path}: invalid json: {exc}")
+        continue
+
+    if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
+        bad.append(f"{path}: expected a one-element JSON array")
+        continue
+
+    item = data[0]
+    config = item.get("configuration")
+    if not item.get("id") or not isinstance(config, dict):
+        bad.append(f"{path}: missing id/configuration")
+        continue
+
+    missing = [key for key in ("layer", "entity", "name") if not config.get(key)]
+    if missing:
+        bad.append(f"{path}: configuration missing {','.join(missing)}")
+
+if checked == 0:
+    bad.append(f"{root}: no UI template JSON files found")
+
+if bad:
+    print("\n".join(bad))
+    sys.exit(1)
+PY
+}
+
+restore_ui_templates_from_package() {
+    local template_dir="$SW_HOME/config/ui-initialized-templates"
+    local backup_dir="${template_dir}.backup.$(date +%Y%m%d_%H%M%S)"
+
+    if [ ! -f "$SW_TGZ" ]; then
+        log_error "UI 模板无效，且安装包不存在，无法恢复: $template_dir"
+        return 1
+    fi
+
+    if [ -d "$template_dir" ]; then
+        log_warn "检测到 SkyWalking UI 模板缺失或结构异常，将备份并从安装包恢复: $template_dir"
+        mv "$template_dir" "$backup_dir" || {
+            log_error "备份 UI 模板目录失败: $template_dir"
+            return 1
+        }
+        log_info "已备份 UI 模板目录: $backup_dir"
+    else
+        log_warn "检测到 SkyWalking UI 模板目录不存在，将从安装包恢复: $template_dir"
+    fi
+
+    if tar -xzf "$SW_TGZ" -C "$SW_HOME/config" --strip-components=2 "apache-skywalking-apm-bin/config/ui-initialized-templates"; then
+        local validation_details
+        if validation_details=$(validate_ui_templates); then
+            log_info "已从安装包恢复 SkyWalking UI 模板"
+            return 0
+        fi
+        [ -z "$validation_details" ] || log_debug "恢复后的 UI 模板校验详情: $validation_details"
+    fi
+
+    log_error "从安装包恢复 SkyWalking UI 模板失败: $template_dir"
+    return 1
+}
+
+ensure_valid_ui_templates() {
+    local validation_details
+    if validation_details=$(validate_ui_templates); then
+        log_debug "SkyWalking UI 模板校验通过"
+        return 0
+    fi
+
+    log_warn "SkyWalking UI 模板校验失败，将从安装包自动恢复"
+    [ -z "$validation_details" ] || log_debug "UI 模板校验详情: $validation_details"
+    restore_ui_templates_from_package
+}
+
 # 下载 SkyWalking
 function download_sw () {
-    log_info "开始下载 SkyWalking..."
-    
     # 创建下载目录
     if [ ! -d "$DOWNLOAD_DIR" ]; then
         mkdir -p "$DOWNLOAD_DIR" || {
@@ -1642,8 +2555,8 @@ function download_sw () {
     
     # 检查文件是否已存在且完整
     if [ -f "$SW_TGZ" ]; then
-        if verify_download "$SW_TGZ"; then
-            log_info "SkyWalking 压缩包已存在且完整，跳过下载"
+        if verify_download "$SW_TGZ" "" true; then
+            log_info "复用已有 SkyWalking 安装包（完整性校验通过）"
             return 0
         else
             log_warn "现有压缩包损坏，重新下载"
@@ -1652,7 +2565,7 @@ function download_sw () {
     fi
     
     # 下载文件
-    log_info "正在下载 SkyWalking $SW_VERSION..."
+    log_info "下载 SkyWalking $SW_VERSION..."
     
     if ! try_download_from_mirrors "$SW_URL" "$SW_TGZ" "$SW_VERSION" "true"; then
         log_error "下载 SkyWalking 失败"
@@ -1671,8 +2584,6 @@ function download_sw () {
 
 # 解压 SkyWalking
 function extract_sw () {
-    log_info "开始解压 SkyWalking..."
-    
     # 创建安装目录
     if [ ! -d "$SW_HOME" ]; then
         mkdir -p "$SW_HOME" || {
@@ -1683,7 +2594,13 @@ function extract_sw () {
     
     # 检查是否已经解压
     if [ -d "$SW_HOME/bin" ] && [ -f "$SW_HOME/bin/oapService.sh" ]; then
-        log_info "SkyWalking 已解压，跳过解压步骤"
+        log_info "复用已有 SkyWalking 安装目录: $SW_HOME"
+        if ! restore_application_config_from_package; then
+            exit 1
+        fi
+        if ! ensure_valid_ui_templates; then
+            exit 1
+        fi
         return 0
     fi
     
@@ -1713,6 +2630,14 @@ function extract_sw () {
     
     # 设置权限
     chmod +x "$SW_HOME/bin"/*.sh
+
+    if ! restore_application_config_from_package; then
+        exit 1
+    fi
+
+    if ! ensure_valid_ui_templates; then
+        exit 1
+    fi
     
     log_info "SkyWalking 解压完成"
 }
@@ -1723,12 +2648,63 @@ backup_config() {
 }
 
 # 配置 SkyWalking
+configure_agent_collector() {
+    local agent_config="$SKYWALKING_AGENT_BASE_DIR/config/agent.config"
+
+    if [ ! -f "$agent_config" ]; then
+        return 1
+    fi
+
+    backup_config "$agent_config"
+
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        sed -i "" "s/collector.backend_service=.*/collector.backend_service=$COLLECTOR_BACKEND_SERVICE/" "$agent_config"
+    else
+        sed -i "s/collector.backend_service=.*/collector.backend_service=$COLLECTOR_BACKEND_SERVICE/" "$agent_config"
+    fi
+
+    log_info "Agent collector 配置完成: $agent_config"
+}
+
 function configure_sw () {
     log_info "开始配置 SkyWalking..."
-    
+
     # 创建 webapp 目录（如果不存在）
     mkdir -p "$SW_HOME/webapp"
-    
+
+    # 如果选择 BanyanDB，检测并自动安装
+    if [ "$STORAGE_TYPE" = "banyandb" ]; then
+        local banyandb_script="$SCRIPT_DIR/../../../database/banyandb/bin/install.sh"
+        if [ -f "$banyandb_script" ]; then
+            # 检测 banyandb 是否已运行
+            if ! (command -v lsof &>/dev/null && lsof -i :"${STORAGE_PORT:-17912}" &>/dev/null) && \
+               ! (command -v pgrep &>/dev/null && pgrep -f banyandb &>/dev/null) && \
+               ! (docker ps --format '{{.Names}}' 2>/dev/null | grep -q banyandb); then
+                log_info "BanyanDB 未检测到运行中实例"
+                if has_tty; then
+                    read -p "是否安装并启动 BanyanDB? [Y/n]: " install_banyandb
+                    install_banyandb="${install_banyandb:-Y}"
+                else
+                    install_banyandb="Y"
+                    log_info "将自动安装 BanyanDB..."
+                fi
+                if [[ "$install_banyandb" =~ ^[Yy]$ ]]; then
+                    log_info "开始安装 BanyanDB..."
+                    if bash "$banyandb_script" --port "${STORAGE_PORT:-17912}"; then
+                        log_info "BanyanDB 安装完成"
+                    else
+                        log_warn "BanyanDB 安装失败，将继续配置 SkyWalking（请手动安装 BanyanDB）"
+                    fi
+                fi
+            else
+                log_info "检测到 BanyanDB 实例已运行"
+            fi
+        else
+            log_warn "BanyanDB 安装脚本不存在: $banyandb_script"
+            log_info "请手动安装 BanyanDB 或使用其他存储类型"
+        fi
+    fi
+
     # 配置存储类型
     if ! generate_storage_config; then
         log_error "存储配置失败"
@@ -1741,8 +2717,20 @@ function configure_sw () {
         exit 1
     fi
     
-    # 验证存储配置
-    validate_storage_config
+    # 验证存储配置。MySQL 必须在启动 OAP 前确认可连接，否则 OAP 会启动失败。
+    if [ "$STORAGE_TYPE" = "mysql" ]; then
+        if ! ensure_mysql_connection; then
+            log_error "MySQL 存储配置验证失败"
+            exit 1
+        fi
+        if ! repair_mysql_ui_templates; then
+            log_error "MySQL UI 模板自愈失败"
+            exit 1
+        fi
+    elif ! validate_storage_config; then
+        log_error "存储配置验证失败"
+        exit 1
+    fi
     
     # 配置 collector
     collector_config="$SW_HOME/config/application.yml"
@@ -1750,9 +2738,12 @@ function configure_sw () {
         # 使用兼容的sed命令格式
         if [[ "$(uname -s)" == "Darwin" ]]; then
             sed -i "" "s/collector.backend_service:.*/collector.backend_service: $COLLECTOR_BACKEND_SERVICE/" "$collector_config"
+            sed -i "" "s/restPort: \${SW_PROMQL_REST_PORT:.*}/restPort: \${SW_PROMQL_REST_PORT:$PROMQL_PORT}/" "$collector_config"
         else
             sed -i "s/collector.backend_service:.*/collector.backend_service: $COLLECTOR_BACKEND_SERVICE/" "$collector_config"
+            sed -i "s/restPort: \${SW_PROMQL_REST_PORT:.*}/restPort: \${SW_PROMQL_REST_PORT:$PROMQL_PORT}/" "$collector_config"
         fi
+        log_info "PromQL API 端口: $PROMQL_PORT"
     else
         log_warn "collector 配置文件不存在: $collector_config"
     fi
@@ -1771,19 +2762,8 @@ function configure_sw () {
         log_warn "UI 配置文件不存在: $ui_config"
     fi
 
-    # 配置 agent
-    agent_config="$SW_HOME/agent/config/agent.config"
-    if [ -f "$agent_config" ]; then
-        backup_config "$agent_config"
-        
-        if [[ "$(uname -s)" == "Darwin" ]]; then
-            sed -i "" "s/collector.backend_service=.*/collector.backend_service=$COLLECTOR_BACKEND_SERVICE/" "$agent_config"
-        else
-            sed -i "s/collector.backend_service=.*/collector.backend_service=$COLLECTOR_BACKEND_SERVICE/" "$agent_config"
-        fi
-    else
-        log_warn "agent 配置文件不存在: $agent_config"
-    fi
+    # 配置 agent；all 模式下 Agent 可能在后续步骤才安装。
+    configure_agent_collector || log_info "Agent 配置文件暂不存在，后续 Agent 安装完成后会配置: $SKYWALKING_AGENT_BASE_DIR/config/agent.config"
     
     log_info "SkyWalking 配置完成 (存储类型: $STORAGE_TYPE, 地址: $STORAGE_HOST:$STORAGE_PORT)"
 }
@@ -1887,11 +2867,11 @@ check_service_status() {
     
     # 检查进程是否在运行（对于OAP服务）
     if [ "$service_name" = "OAP" ]; then
-        # 检查是否有SkyWalking OAP进程在运行
-        if pgrep -f "oapService.sh" >/dev/null 2>&1 || pgrep -f "OAPServerStartUp" >/dev/null 2>&1; then
-            log_info "$service_name 服务进程已运行"
-            return 0
-        fi
+        wait_for_service "OAP gRPC" "$OAP_PORT" "$max_attempts" || return 1
+        wait_for_service "OAP HTTP/GraphQL" "$OAP_HTTP_PORT" "$max_attempts" || return 1
+        wait_for_service "PromQL API" "$PROMQL_PORT" "$max_attempts" || return 1
+        log_info "$service_name 服务端口检查通过 (gRPC: $OAP_PORT, HTTP: $OAP_HTTP_PORT, PromQL: $PROMQL_PORT)"
+        return 0
     fi
     
     # 使用curl检查HTTP端点（适用于UI服务）
@@ -1907,6 +2887,25 @@ check_service_status() {
 }
 
 # 启动 SkyWalking
+show_log_error_summary() {
+    local title="$1"
+    local file="$2"
+
+    if [ ! -f "$file" ]; then
+        log_error "$title 不存在: $file"
+        return 0
+    fi
+
+    log_error "$title 关键内容:"
+    local summary
+    summary=$(grep -Ei "ERROR|Exception|Caused by|Access denied|Unknown database|Communications link failure|Connection refused|timed out|Address already in use|BindException" "$file" | tail -20 || true)
+    if [ -n "$summary" ]; then
+        echo "$summary" >&2
+    else
+        tail -20 "$file" >&2
+    fi
+}
+
 function start_sw () {
     log_info "开始启动 SkyWalking 服务..."
     
@@ -1933,43 +2932,38 @@ function start_sw () {
         exit 1
     }
     
-    # 检查端口是否已被占用
-    if netstat -tlnp 2>/dev/null | grep -q ":$OAP_PORT "; then
-        log_warn "端口 $OAP_PORT 已被占用，停止现有服务..."
-        "$SCRIPT_DIR/stop.sh"
-        sleep 3
-    fi
+    # 检查 OAP 端口是否已被当前安装目录的旧服务占用
+    local owner_info=""
+    local oap_check_port=""
+    for oap_check_port in "$OAP_PORT" "$OAP_HTTP_PORT"; do
+        if owner_info=$(get_port_owner "$oap_check_port"); then
+            local owner_pid="${owner_info%%$'\t'*}"
+            if is_current_skywalking_server_process "$owner_pid"; then
+                log_warn "OAP 端口已被当前 SkyWalking 实例占用（端口: $oap_check_port），将停止旧实例后重新启动"
+                stop_existing_skywalking_server
+            else
+                log_error "OAP 端口已被其他进程占用（端口: $oap_check_port），无法启动"
+                exit 1
+            fi
+        fi
+    done
     
     # 创建日志目录
     mkdir -p "$SW_HOME/logs"
     
     # 启动 OAP 服务
     log_info "启动 SkyWalking OAP 服务..."
+    SW_CORE_GRPC_PORT="$OAP_PORT" \
+    SW_CORE_REST_PORT="$OAP_HTTP_PORT" \
+    SW_PROMQL_REST_PORT="$PROMQL_PORT" \
     nohup ./oapService.sh > "$SW_HOME/logs/oap-startup.log" 2>&1 &
     OAP_PID=$!
     
     # 等待 OAP 服务启动
     if ! check_service_status "OAP" "$OAP_PORT"; then
         log_error "OAP 服务启动失败"
-        
-        # 检查日志文件是否存在
-        if [ -f "$SW_HOME/logs/oap-startup.log" ]; then
-            log_error "OAP 启动日志内容:"
-            tail -20 "$SW_HOME/logs/oap-startup.log"
-        else
-            log_error "OAP 启动日志文件不存在: $SW_HOME/logs/oap-startup.log"
-        fi
-        
-        # 检查SkyWalking OAP日志
-        if [ -f "$SW_HOME/logs/skywalking-oap-server.log" ]; then
-            log_error "SkyWalking OAP 服务器日志内容:"
-            tail -20 "$SW_HOME/logs/skywalking-oap-server.log"
-        fi
-        
-        # 检查进程
-        log_error "当前Java进程:"
-        ps aux | grep java | grep -v grep || log_error "没有找到Java进程"
-        
+        show_log_error_summary "OAP 启动日志" "$SW_HOME/logs/oap-startup.log"
+        show_log_error_summary "SkyWalking OAP 服务器日志" "$SW_HOME/logs/skywalking-oap-server.log"
         exit 1
     fi
     
@@ -1981,13 +2975,12 @@ function start_sw () {
     # 等待 UI 服务启动
     if ! check_service_status "UI" "$UI_SERVER_PORT"; then
         log_error "UI 服务启动失败"
-        tail -20 "$SW_HOME/logs/webapp-startup.log"
+        show_log_error_summary "UI 启动日志" "$SW_HOME/logs/webapp-startup.log"
+        show_log_error_summary "SkyWalking UI 日志" "$SW_HOME/logs/skywalking-webapp.log"
         exit 1
     fi
     
     log_info "SkyWalking 服务启动成功"
-    log_info "OAP 服务: http://localhost:$OAP_PORT"
-    log_info "UI 服务: http://localhost:$UI_SERVER_PORT"
 }
 
 
@@ -2055,105 +3048,235 @@ check_system_resources() {
 }
 
 # 检查端口占用
-check_port_availability() {
-    local ports=("$OAP_PORT" "$UI_SERVER_PORT")
-    
-    for port in "${ports[@]}"; do
-        local port_in_use=false
-        local pid=""
-        local process_name=""
-        
-        # 使用多种方法检查端口是否被占用
-        if command_exists netstat && netstat -tlnp 2>/dev/null | grep -q ":$port "; then
-            port_in_use=true
-            pid=$(netstat -tlnp 2>/dev/null | grep ":$port " | awk '/LISTEN/ {print $7}' | cut -d'/' -f1)
-        elif command_exists ss && ss -tlnp 2>/dev/null | grep -q ":$port "; then
-            port_in_use=true
-            pid=$(ss -tlnp 2>/dev/null | grep ":$port " | awk '/LISTEN/ {print $7}' | cut -d'/' -f1)
-        elif command_exists lsof && lsof -i ":$port" >/dev/null 2>&1; then
-            port_in_use=true
-            pid=$(lsof -i ":$port" | awk 'NR>1 {print $2}' | head -1)
+get_port_owner() {
+    local port="$1"
+    local pid=""
+    local process_name=""
+
+    if command_exists netstat && netstat -tlnp 2>/dev/null | grep -q ":$port "; then
+        pid=$(netstat -tlnp 2>/dev/null | grep ":$port " | awk '/LISTEN/ {print $7}' | cut -d'/' -f1 | head -1)
+    elif command_exists ss && ss -tlnp 2>/dev/null | grep -q ":$port "; then
+        pid=$(ss -tlnp 2>/dev/null | grep ":$port " | awk '/LISTEN/ {print $7}' | cut -d'/' -f1 | head -1)
+    elif command_exists lsof && lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+        pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN | awk 'NR>1 {print $2}' | head -1)
+    fi
+
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        process_name=$(ps -p "$pid" -o comm= 2>/dev/null || echo "")
+    fi
+
+    if [ -n "$pid" ]; then
+        printf '%s\t%s\n' "$pid" "$process_name"
+        return 0
+    fi
+
+    return 1
+}
+
+is_port_in_use() {
+    get_port_owner "$1" >/dev/null 2>&1
+}
+
+is_skywalking_process() {
+    local pid="$1"
+    local process_name="$2"
+
+    case "$process_name" in
+        *skywalking*|*oap*|*webapp*) return 0 ;;
+    esac
+
+    local process_args
+    process_args=$(ps -p "$pid" -o args= 2>/dev/null || echo "")
+    [[ "$process_args" == *"skywalking"* || "$process_args" == *"oap"* || "$process_args" == *"webapp"* ]]
+}
+
+is_current_skywalking_server_process() {
+    local pid="$1"
+    local process_args
+    process_args=$(ps -p "$pid" -o args= 2>/dev/null || echo "")
+
+    [[ "$process_args" == *"$SW_HOME"* ]] && \
+        [[ "$process_args" == *"OAPServerStartUp"* || "$process_args" == *"ApplicationStartUp"* || "$process_args" == *"skywalking-oap-server"* || "$process_args" == *"skywalking-webapp"* ]]
+}
+
+stop_existing_skywalking_server() {
+    local pids=()
+    local pid
+
+    while read -r pid; do
+        [ -n "$pid" ] || continue
+        if is_current_skywalking_server_process "$pid"; then
+            pids+=("$pid")
         fi
-        
-        if [ "$port_in_use" = true ]; then
-            # 获取进程名称
-            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-                process_name=$(ps -p "$pid" -o comm= 2>/dev/null || echo "")
-            fi
-            
-            # 检查是否是SkyWalking相关进程
-            local is_skywalking=false
-            if [ -n "$process_name" ]; then
-                case "$process_name" in
-                    *skywalking*|*oap*|*webapp*)
-                        is_skywalking=true
-                        ;;
-                    java)
-                        # 对于Java进程，检查命令行参数
-                        local java_cmd=$(ps -p "$pid" -o args= 2>/dev/null || echo "")
-                        if [[ "$java_cmd" == *"skywalking"* ]] || [[ "$java_cmd" == *"oap"* ]] || [[ "$java_cmd" == *"webapp"* ]]; then
-                            is_skywalking=true
-                        fi
-                        ;;
-                esac
-            fi
-            
-            # 特殊处理8080端口
-            if [ "$port" = "$DEFAULT_UI_PORT" ] && [ "$is_skywalking" = false ]; then
-                log_error "端口 $DEFAULT_UI_PORT 已被非SkyWalking进程占用 (PID: $pid, 进程: $process_name)"
-                read -p "请输入新的UI端口 (建议使用8081-8090): " new_port
-                if [[ "$new_port" =~ ^[0-9]+$ ]] && [ "$new_port" -ge 1024 ] && [ "$new_port" -le 65535 ]; then
-                    UI_SERVER_PORT="$new_port"
-                    WEB_PORT="$new_port"
-                    log_info "已将UI端口更改为: $UI_SERVER_PORT"
-                else
-                    log_error "无效的端口号: $new_port 安装已取消"
-                    exit 0
-                fi
-            elif [ "$port_in_use" = true ]; then
-                # 其他端口的处理逻辑
-                if [ "$is_skywalking" = true ]; then
-                    log_warn "端口 $port 已被SkyWalking进程占用 (PID: $pid)"
-                    read -p "是否停止现有SkyWalking进程并重新安装? (y/N): " -n 1 -r
-                    echo
-                    if [[ $REPLY =~ ^[Yy]$ ]]; then
-                        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-                            kill -15 "$pid"
-                            sleep 2
-                            if kill -0 "$pid" 2>/dev/null; then
-                                kill -9 "$pid"
-                            fi
-                            log_info "已停止现有SkyWalking进程"
-                        else
-                            log_warn "无法找到占用端口的进程"
-                        fi
-                    else
-                        log_info "安装已取消"
-                        exit 0
-                    fi
-                else
-                    log_warn "端口 $port 已被占用 (PID: $pid, 进程: $process_name)"
-                    read -p "是否停止占用进程并继续? (y/N): " -n 1 -r
-                    echo
-                    if [[ $REPLY =~ ^[Yy]$ ]]; then
-                        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-                            kill -15 "$pid"
-                            sleep 2
-                            if kill -0 "$pid" 2>/dev/null; then
-                                kill -9 "$pid"
-                            fi
-                            log_info "已停止占用端口的进程"
-                        else
-                            log_warn "无法找到占用端口的进程"
-                        fi
-                    else
-                        log_info "安装已取消"
-                        exit 0
-                    fi
-                fi
-            fi
+    done < <(pgrep -f "$SW_HOME" 2>/dev/null || true)
+
+    if [ "${#pids[@]}" -eq 0 ]; then
+        return 0
+    fi
+
+    local pid_list
+    printf -v pid_list '%s, ' "${pids[@]}"
+    pid_list="${pid_list%, }"
+    log_warn "检测到正在运行的 SkyWalking 服务（PID: $pid_list），将先停止旧进程，再重新启动"
+    for pid in "${pids[@]}"; do
+        kill -15 "$pid" 2>/dev/null || true
+    done
+
+    sleep 3
+
+    for pid in "${pids[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -9 "$pid" 2>/dev/null || true
         fi
     done
+}
+
+find_available_port() {
+    local start_port="${1:-8081}"
+    local end_port="${2:-8090}"
+    local port
+
+    for port in $(seq "$start_port" "$end_port"); do
+        if ! is_port_in_use "$port"; then
+            echo "$port"
+            return 0
+        fi
+    done
+
+    for port in $(seq 8091 8999); do
+        if ! is_port_in_use "$port"; then
+            echo "$port"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+set_ui_port() {
+    local port="$1"
+    UI_SERVER_PORT="$port"
+    WEB_PORT="$port"
+    log_info "SkyWalking UI 端口已设置（端口: $UI_SERVER_PORT）"
+}
+
+choose_available_ui_port() {
+    local default_port
+    default_port=$(find_available_port 8081 8090 || true)
+
+    if [ -z "$default_port" ]; then
+        log_error "未找到可用UI端口，请使用 --web-port 指定可用端口"
+        exit 1
+    fi
+
+    if has_tty; then
+        local new_port=""
+        while true; do
+            read -r -p "请输入新的UI端口 (默认自动使用 $default_port，直接回车确认): " new_port
+            new_port="${new_port:-$default_port}"
+
+            if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -lt 1024 ] || [ "$new_port" -gt 65535 ]; then
+                log_warn "无效的端口号: $new_port，请输入 1024-65535"
+                continue
+            fi
+
+            if is_port_in_use "$new_port"; then
+                local owner_info owner_pid owner_name
+                owner_info=$(get_port_owner "$new_port" || true)
+                owner_pid="${owner_info%%$'\t'*}"
+                owner_name="${owner_info#*$'\t'}"
+                log_warn "端口 $new_port 已被占用 (PID: $owner_pid, 进程: $owner_name)，请换一个端口"
+                continue
+            fi
+
+            set_ui_port "$new_port"
+            return 0
+        done
+    fi
+
+    log_warn "默认 SkyWalking UI 端口已被占用（端口: $UI_SERVER_PORT），自动改用端口: $default_port"
+    set_ui_port "$default_port"
+}
+
+handle_occupied_port() {
+    local port="$1"
+    local owner_info="$2"
+    local pid="${owner_info%%$'\t'*}"
+    local process_name="${owner_info#*$'\t'}"
+
+    if is_skywalking_process "$pid" "$process_name"; then
+        log_warn "端口已被 SkyWalking 进程占用（端口: $port，PID: $pid）"
+        if has_tty; then
+            read -p "是否停止现有SkyWalking进程并重新安装? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                if kill -0 "$pid" 2>/dev/null; then
+                    kill -15 "$pid"
+                    sleep 2
+                    if kill -0 "$pid" 2>/dev/null; then
+                        kill -9 "$pid"
+                    fi
+                    log_info "已停止现有SkyWalking进程"
+                    return 0
+                fi
+            fi
+        fi
+        log_info "安装已取消"
+        exit 0
+    fi
+
+    log_warn "端口 $port 已被占用 (PID: $pid, 进程: $process_name)"
+    if has_tty; then
+        read -p "是否停止占用进程并继续? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            if kill -0 "$pid" 2>/dev/null; then
+                kill -15 "$pid"
+                sleep 2
+                if kill -0 "$pid" 2>/dev/null; then
+                    kill -9 "$pid"
+                fi
+                log_info "已停止占用端口的进程"
+                return 0
+            fi
+        fi
+    fi
+
+    log_info "安装已取消"
+    exit 0
+}
+
+check_port_availability() {
+    local owner_info=""
+
+    if owner_info=$(get_port_owner "$OAP_PORT"); then
+        handle_occupied_port "$OAP_PORT" "$owner_info"
+    fi
+
+    if owner_info=$(get_port_owner "$OAP_HTTP_PORT"); then
+        handle_occupied_port "$OAP_HTTP_PORT" "$owner_info"
+    fi
+
+    if owner_info=$(get_port_owner "$PROMQL_PORT"); then
+        handle_occupied_port "$PROMQL_PORT" "$owner_info"
+    fi
+
+    if owner_info=$(get_port_owner "$UI_SERVER_PORT"); then
+        local pid="${owner_info%%$'\t'*}"
+        local process_name="${owner_info#*$'\t'}"
+        if is_current_skywalking_server_process "$pid"; then
+            log_warn "SkyWalking UI 端口已被当前实例占用（端口: $UI_SERVER_PORT），将停止旧实例并复用该端口"
+            stop_existing_skywalking_server
+            return 0
+        fi
+
+        if [ "$WEB_PORT_EXPLICIT" = true ]; then
+            log_error "指定的 SkyWalking UI 端口已被占用（端口: $UI_SERVER_PORT，PID: $pid，进程: $process_name），请更换 --web-port"
+            exit 1
+        fi
+
+        choose_available_ui_port
+    fi
 }
 
 
@@ -2244,8 +3367,8 @@ check_dependencies() {
         exit 1
     fi
     
-    # 检查 Java
-    if ! command_exists java; then
+    # 检查 Java。macOS 非交互/launchd 环境可能只有 /usr/bin/java 占位符，必须解析真实 JDK。
+    if ! configure_java_env; then
         if [ "$FORCE" = true ]; then
             log_error "强制模式但未找到 Java，SkyWalking 需要 Java 11 或更高版本"
             exit 1
@@ -2266,40 +3389,42 @@ check_dependencies() {
             log_info "sudo $pkg_manager install java-11-openjdk-devel"
             exit 1
         fi
-    else
-        # 检查 Java 版本
-        local java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}' | sed 's/^1\.//' | cut -d'.' -f1)
-        if [ "$java_version" -lt 11 ]; then
-            if [ "$FORCE" = true ]; then
-                log_error "Java 版本过低 ($java_version)，需要 Java 11 或更高版本"
-                exit 1
-            fi
-            
-            log_warn "Java 版本过低 ($java_version)，需要 Java 11 或更高版本"
-            echo
-            if confirm_action "是否升级到 OpenJDK 17?"; then
-                if install_jdk17; then
-                    AUTO_JAVA_INSTALL=true
-                    log_info "Java 升级成功，继续安装 SkyWalking..."
-                else
-                    log_error "Java 升级失败，请手动升级后重试"
-                    exit 1
-                fi
+    fi
+
+    # 检查 Java 版本
+    local java_version
+    java_version=$("$JAVA_HOME/bin/java" -version 2>&1 | awk -F '"' '/version/ {print $2}' | sed 's/^1\.//' | cut -d'.' -f1)
+    if [ -z "$java_version" ] || [ "$java_version" -lt 11 ]; then
+        if [ "$FORCE" = true ]; then
+            log_error "Java 版本过低 (${java_version:-unknown})，需要 Java 11 或更高版本"
+            exit 1
+        fi
+        
+        log_warn "Java 版本过低 (${java_version:-unknown})，需要 Java 11 或更高版本"
+        echo
+        if confirm_action "是否升级到 OpenJDK 17?"; then
+            if install_jdk17 && configure_java_env; then
+                AUTO_JAVA_INSTALL=true
+                log_info "Java 升级成功，继续安装 SkyWalking..."
             else
-                log_error "请升级到 Java 11 或更高版本后重新运行脚本"
+                log_error "Java 升级失败，请手动升级后重试"
                 exit 1
             fi
+        else
+            log_error "请升级到 Java 11 或更高版本后重新运行脚本"
+            exit 1
         fi
     fi
     
-    log_info "Java 版本检查通过: $(java -version 2>&1 | head -1)"
+    log_info "Java 版本检查通过: $("$JAVA_HOME/bin/java" -version 2>&1 | head -1)"
+    log_info "JAVA_HOME: $JAVA_HOME"
 }
 
 # 清理函数
 cleanup() {
     if [ -f "$SW_TGZ" ]; then
         if [ "$KEEP_PACKAGE" = true ]; then
-            log_info "保留安装包: $SW_TGZ"
+            :
         else
             log_info "清理临时文件: $SW_TGZ"
             rm -f "$SW_TGZ"
@@ -2308,7 +3433,7 @@ cleanup() {
     
     if [ -f "$SKYWALKING_AGENT_TGZ" ]; then
         if [ "$KEEP_PACKAGE" = true ]; then
-            log_info "保留安装包: $SKYWALKING_AGENT_TGZ"
+            :
         else
             log_info "清理临时文件: $SKYWALKING_AGENT_TGZ"
             rm -f "$SKYWALKING_AGENT_TGZ"
@@ -2319,15 +3444,32 @@ cleanup() {
 # 生成启动脚本
 generate_startup_scripts() {
     local startup_dir="$SW_HOME/bin"
+    configure_java_env || {
+        log_error "无法生成启动脚本：未找到可用 Java"
+        return 1
+    }
     
     # 生成启动脚本
-    cat > "$startup_dir/start-all.sh" << EOF
+cat > "$startup_dir/start-all.sh" << EOF
 #!/bin/bash
 # SkyWalking 服务启动脚本
 
-SW_HOME="$(cd "$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
+SW_HOME="$SW_HOME"
+export JAVA_HOME="$JAVA_HOME"
+export PATH="\$JAVA_HOME/bin:\$PATH"
 
 echo "启动 SkyWalking 服务..."
+
+while read -r pid; do
+  [ -n "\$pid" ] || continue
+  args=\$(ps -p "\$pid" -o args= 2>/dev/null || true)
+  if [[ "\$args" == *"\$SW_HOME"* ]] && [[ "\$args" == *"OAPServerStartUp"* || "\$args" == *"ApplicationStartUp"* || "\$args" == *"skywalking-oap-server"* || "\$args" == *"skywalking-webapp"* ]]; then
+    echo "停止已有 SkyWalking 进程: \$pid"
+    kill -15 "\$pid" 2>/dev/null || true
+  fi
+done < <(pgrep -f "\$SW_HOME" 2>/dev/null || true)
+
+sleep 3
 
 # 启动 OAP 服务
 cd "\$SW_HOME/bin"
@@ -2335,7 +3477,12 @@ nohup ./oapService.sh > "\$SW_HOME/logs/oap-startup.log" 2>&1 &
 echo "OAP 服务已启动"
 
 # 等待 OAP 服务启动
-sleep 10
+for i in {1..60}; do
+  if lsof -nP -iTCP:$OAP_HTTP_PORT -sTCP:LISTEN >/dev/null 2>&1 && lsof -nP -iTCP:$PROMQL_PORT -sTCP:LISTEN >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
 
 # 启动 UI 服务
 nohup ./webappService.sh > "\$SW_HOME/logs/webapp-startup.log" 2>&1 &
@@ -2353,11 +3500,8 @@ EOF
 
 # 生成 systemd 服务文件（仅限 root 用户）
 generate_systemd_service() {
-    if [ "$EUID" -ne 0 ]; then
-        return 0
-    fi
-    
     local service_file="/etc/systemd/system/skywalking.service"
+    local stop_script="$SCRIPT_DIR/stop.sh"
     
     cat > "$service_file" << EOF
 [Unit]
@@ -2365,12 +3509,12 @@ Description=SkyWalking APM
 After=network.target
 
 [Service]
-Type=forking
+Type=oneshot
+RemainAfterExit=yes
 User=root
 WorkingDirectory=$SW_HOME
-ExecStart=$SW_HOME/bin/oapService.sh
-ExecStartPost=$SW_HOME/bin/webappService.sh
-ExecStop=$SW_HOME/bin/stop.sh
+ExecStart=$SW_HOME/bin/start-all.sh
+ExecStop=$stop_script
 Restart=on-failure
 RestartSec=10
 LimitNOFILE=65536
@@ -2381,7 +3525,205 @@ EOF
 
     systemctl daemon-reload
     log_info "已生成 systemd 服务文件: $service_file"
-    log_info "使用 systemctl enable skywalking 设置开机自启"
+}
+
+generate_launchd_service() {
+    local plist_dir="$HOME/Library/LaunchAgents"
+    local plist_file="$plist_dir/org.apache.skywalking.plist"
+    local stop_script="$SCRIPT_DIR/stop.sh"
+
+    configure_java_env || {
+        log_error "无法生成 launchd 服务：未找到可用 Java"
+        return 1
+    }
+
+    mkdir -p "$plist_dir"
+    cat > "$plist_file" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.apache.skywalking</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$SW_HOME/bin/start-all.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>$SW_HOME</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>JAVA_HOME</key>
+    <string>$JAVA_HOME</string>
+    <key>PATH</key>
+    <string>$JAVA_HOME/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>$SW_HOME/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>$SW_HOME/logs/launchd.err.log</string>
+</dict>
+</plist>
+EOF
+
+    log_info "已生成 launchd 服务文件: $plist_file"
+    log_info "停止脚本: $stop_script"
+}
+
+install_autostart_service() {
+    if [ "$INSTALL_MODE" != "all" ] && [ "$INSTALL_MODE" != "server" ]; then
+        return 0
+    fi
+
+    local os_name
+    os_name="$(uname -s)"
+
+    if [ "$os_name" = "Linux" ] && command_exists systemctl; then
+        if [ "$EUID" -ne 0 ]; then
+            log_info "自启动服务: Linux/systemd 需要 root 权限，可稍后使用 sudo 重新运行或手动配置"
+            return 0
+        fi
+
+        if has_tty; then
+            if confirm_action "是否安装并启用 SkyWalking systemd 自启动服务?"; then
+                generate_systemd_service
+                systemctl enable skywalking
+                log_info "已启用 systemd 自启动服务: skywalking"
+            else
+                log_info "已跳过自启动服务安装；如需启用，可运行: systemctl enable skywalking"
+            fi
+        else
+            log_info "非交互模式跳过自启动服务安装；如需启用，可运行: systemctl enable skywalking"
+        fi
+        return 0
+    fi
+
+    if [ "$os_name" = "Darwin" ] && command_exists launchctl; then
+        if has_tty; then
+            if confirm_action "是否安装 SkyWalking macOS LaunchAgent 自启动服务?"; then
+                generate_launchd_service
+                log_info "已安装 launchd 自启动服务: org.apache.skywalking（下次登录自动启动）"
+                log_info "如需立即重新加载服务，可先停止当前服务后运行: launchctl load -w ~/Library/LaunchAgents/org.apache.skywalking.plist"
+            else
+                log_info "已跳过自启动服务安装；如需启用，可运行: launchctl load -w ~/Library/LaunchAgents/org.apache.skywalking.plist"
+            fi
+        else
+            log_info "非交互模式跳过自启动服务安装；如需启用，可运行: launchctl load -w ~/Library/LaunchAgents/org.apache.skywalking.plist"
+        fi
+        return 0
+    fi
+
+    log_info "当前系统暂未自动配置自启动服务，可使用启动脚本: $SW_HOME/bin/start-all.sh"
+}
+
+configure_mysql_monitoring_if_requested() {
+    if [ "$ENABLE_MYSQL_MONITORING" != true ]; then
+        return 0
+    fi
+
+    if [ "$INSTALL_MODE" = "agent" ]; then
+        log_warn "仅 agent 模式不启动 OAP，跳过 MySQL Server 指标接入"
+        return 0
+    fi
+
+    if [ ! -f "$MYSQL_MONITOR_SCRIPT" ]; then
+        log_warn "MySQL 指标接入脚本不存在，跳过: $MYSQL_MONITOR_SCRIPT"
+        return 0
+    fi
+
+    log_info "开始配置 MySQL Server 指标接入 SkyWalking..."
+    if bash "$MYSQL_MONITOR_SCRIPT" \
+        --mysql-exporter-target "$MYSQL_EXPORTER_TARGET" \
+        --oap-endpoint "127.0.0.1:$OAP_PORT" \
+        --host-name "$MYSQL_MONITOR_HOST_NAME" \
+        --service-name "$MYSQL_MONITOR_SERVICE_NAME" \
+        --scrape-interval "$MYSQL_MONITOR_SCRAPE_INTERVAL" \
+        --force; then
+        log_info "MySQL Server 指标接入配置完成"
+    else
+        log_warn "MySQL Server 指标接入配置失败；请确认 mysqld_exporter 已启动: http://$MYSQL_EXPORTER_TARGET/metrics"
+    fi
+}
+
+configure_vm_monitoring_if_requested() {
+    if [ "$ENABLE_VM_MONITORING" != true ]; then
+        return 0
+    fi
+
+    if [ "$INSTALL_MODE" = "agent" ]; then
+        log_warn "仅 agent 模式不启动 OAP，跳过 Linux 主机指标接入"
+        return 0
+    fi
+
+    if [ ! -f "$VM_MONITOR_SCRIPT" ]; then
+        log_warn "Linux 主机指标接入脚本不存在，跳过: $VM_MONITOR_SCRIPT"
+        return 0
+    fi
+
+    local vm_args=(
+        --node-exporter-target "$NODE_EXPORTER_TARGET"
+        --oap-endpoint "127.0.0.1:$OAP_PORT"
+        --host-name "$VM_MONITOR_HOST_NAME"
+        --service-name "$VM_MONITOR_SERVICE_NAME"
+        --scrape-interval "$VM_MONITOR_SCRAPE_INTERVAL"
+        --force
+    )
+
+    if [ "$VM_MONITOR_START_NODE_EXPORTER" = true ]; then
+        vm_args+=(--start-node-exporter)
+    fi
+
+    log_info "开始配置 Linux 主机指标接入 SkyWalking..."
+    if bash "$VM_MONITOR_SCRIPT" "${vm_args[@]}"; then
+        log_info "Linux 主机指标接入配置完成"
+    else
+        log_warn "Linux 主机指标接入配置失败；请确认 node_exporter 已启动: http://$NODE_EXPORTER_TARGET/metrics"
+    fi
+}
+
+show_install_summary() {
+    echo
+    log_info "SkyWalking 安装完成"
+    log_info "安装目录: $SW_HOME"
+    log_info "安装模式: $INSTALL_MODE"
+
+    if [ "$INSTALL_MODE" = "all" ] || [ "$INSTALL_MODE" = "server" ]; then
+        log_info "OAP gRPC: localhost:$OAP_PORT"
+        log_info "OAP HTTP/GraphQL: http://localhost:$OAP_HTTP_PORT"
+        log_info "PromQL API: http://localhost:$PROMQL_PORT"
+        log_info "UI 访问地址: http://localhost:$UI_SERVER_PORT"
+        log_info "启动脚本: $SW_HOME/bin/start-all.sh"
+        log_info "停止脚本: $SCRIPT_DIR/stop.sh"
+        log_info "日志目录: $SW_HOME/logs"
+        if [ "$ENABLE_MYSQL_MONITORING" = true ]; then
+            log_info "MySQL Server 指标: mysqld_exporter $MYSQL_EXPORTER_TARGET -> OTel Collector -> OAP localhost:$OAP_PORT"
+        else
+            log_info "MySQL Server 指标接入: 可运行 $0 --enable-mysql-monitoring（需先启动 mysqld_exporter）"
+        fi
+        if [ "$ENABLE_VM_MONITORING" = true ]; then
+            log_info "Linux 主机指标: node_exporter $NODE_EXPORTER_TARGET -> OTel Collector -> OAP localhost:$OAP_PORT"
+        else
+            log_info "Linux 主机指标接入: 可运行 $0 --enable-vm-monitoring（需先启动 node_exporter）"
+        fi
+    fi
+
+    if [ "$INSTALL_MODE" = "all" ] || [ "$INSTALL_MODE" = "agent" ]; then
+        log_info "Agent 配置: $SKYWALKING_AGENT_BASE_DIR/config/agent.config"
+    fi
+
+    if [ "$KEEP_PACKAGE" = true ]; then
+        log_info "已保留安装包: $SW_TGZ"
+        if [ -f "$SKYWALKING_AGENT_TGZ" ]; then
+            log_info "已保留 Agent 包: $SKYWALKING_AGENT_TGZ"
+        fi
+    fi
+
+    log_info "卸载命令: $0 -u -d $SW_HOME"
 }
 
 
@@ -2558,6 +3900,8 @@ function main () {
     if [ "$INSTALL_MODE" = "all" ] || [ "$INSTALL_MODE" = "server" ]; then
         validate_config
         check_network
+        reuse_existing_ui_port
+        stop_existing_skywalking_server
         check_port_availability
     fi
     
@@ -2577,63 +3921,19 @@ function main () {
             mkdir -p "$SW_HOME"
         fi
         configure_skywalking_agent
+        configure_agent_collector || log_warn "Agent collector 配置未更新，请检查: $SKYWALKING_AGENT_BASE_DIR/config/agent.config"
     fi
     
     # 根据安装模式执行不同的检查和生成步骤
     if [ "$INSTALL_MODE" = "all" ] || [ "$INSTALL_MODE" = "server" ]; then
+        configure_vm_monitoring_if_requested
+        configure_mysql_monitoring_if_requested
         generate_startup_scripts
-        generate_systemd_service
+        install_autostart_service
     fi
-    
-    log_info "SkyWalking 安装完成！"
-    log_info "安装目录: $SW_HOME"
-    log_info "安装模式: $INSTALL_MODE"
-    
-    if [ "$INSTALL_MODE" = "all" ] || [ "$INSTALL_MODE" = "server" ]; then
-        log_info "访问地址: http://localhost:$UI_SERVER_PORT"
-        log_info "OAP 服务端口: $OAP_PORT"
-        log_info "UI 服务端口: $UI_SERVER_PORT"
-    fi
-    
-    if [ "$INSTALL_MODE" = "all" ] || [ "$INSTALL_MODE" = "agent" ]; then
-        log_info "Agent 配置目录: $SKYWALKING_AGENT_BASE_DIR"
-    fi
-    
-    if [ "$KEEP_PACKAGE" = true ]; then
-        log_info "安装包已保留: $SW_TGZ"
-        if [ -f "$SKYWALKING_AGENT_TGZ" ]; then
-            log_info "Agent包已保留: $SKYWALKING_AGENT_TGZ"
-        fi
-    fi
-    
-    # 显示使用说明
-    echo
-    echo "使用说明:"
-    
-    if [ "$INSTALL_MODE" = "all" ] || [ "$INSTALL_MODE" = "server" ]; then
-        echo "  启动服务: $SW_HOME/bin/start-all.sh"
-        echo "  停止服务: $SCRIPT_DIR/stop.sh"
-        echo "  查看日志: $SW_HOME/logs/"
-    fi
-    
-    if [ "$INSTALL_MODE" = "all" ] || [ "$INSTALL_MODE" = "agent" ]; then
-        echo "  Agent目录: $SKYWALKING_AGENT_BASE_DIR"
-        echo "  Agent配置: $SKYWALKING_AGENT_BASE_DIR/config/agent.config"
-    fi
-    
-    echo "  卸载程序: $0 -u -d $SW_HOME"
-    echo "  强制卸载: $0 -u -d $SW_HOME -f"
-    
-    # 如果是 root 用户，显示 systemd 提示
-    if [ "$EUID" -eq 0 ]; then
-        echo "  设置开机自启: systemctl enable skywalking"
-        echo "  查看服务状态: systemctl status skywalking"
-    fi
-    
-    # 如果是普通用户安装，显示启动提示
-    if [ "$EUID" -ne 0 ]; then
-        log_info "提示：如需开机自启，请手动配置 systemd 服务或添加到启动脚本"
-    fi
+
+    INSTALL_SUCCEEDED=true
+    show_install_summary
 }
 
 # 执行主函数

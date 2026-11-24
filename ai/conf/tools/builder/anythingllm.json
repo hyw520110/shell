@@ -1,0 +1,62 @@
+{
+  "id": "anythingllm",
+  "name": "AnythingLLM",
+  "description": "企业级私人知识库与文档分析工作台，能够将任何文档转为本地 LLM 可理解的上下文。",
+  "category": "ai-builder",
+  "sort_order": 2470,
+  "sort_key": "AnythingLLM",
+  "tags": ["workbench", "rag", "knowledge-base", "docker"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "Docker 部署",
+        "type": "bash",
+        "command": "export STORAGE_LOCATION=\"$HOME/anythingllm_storage\" && mkdir -p \"$STORAGE_LOCATION\" && touch \"$STORAGE_LOCATION/.env\" && docker run -d -p 3001:3001 --name anythingllm --restart always --cap-add SYS_ADMIN -v \"$STORAGE_LOCATION\":/app/server/storage -v \"$STORAGE_LOCATION/.env\":/app/server/.env -e STORAGE_DIR=\"/app/server/storage\" mintplexlabs/anythingllm",
+        "check": "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q '^anythingllm$'",
+        "uninstall": [
+          "docker stop anythingllm && docker rm anythingllm",
+          "rm -rf \"$HOME/anythingllm_storage\""
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "docker stop anythingllm && docker rm anythingllm && docker pull mintplexlabs/anythingllm && export STORAGE_LOCATION=\"$HOME/anythingllm_storage\" && docker run -d -p 3001:3001 --name anythingllm --restart always --cap-add SYS_ADMIN -v \"$STORAGE_LOCATION\":/app/server/storage -v \"$STORAGE_LOCATION/.env\":/app/server/.env -e STORAGE_DIR=\"/app/server/storage\" mintplexlabs/anythingllm",
+    "check": "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q '^anythingllm$'"
+  },
+
+  "config": {
+    "path": "$HOME/anythingllm_storage/.env",
+    "operations": {
+      "view": "cat $HOME/anythingllm_storage/.env 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/anythingllm_storage/.env"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "容器状态",
+      "command": "command -v docker >/dev/null 2>&1 && docker ps --filter 'name=anythingllm' --format '{{.Names}} - {{.Status}}' || echo 'AnythingLLM 未运行'"
+    },
+    {
+      "name": "Web 界面",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:3001 >/dev/null && echo 'Web 界面响应正常 (端口 3001)' || echo 'Web 界面未响应'"
+    }
+  ],
+
+  "commands": {
+    "start": "docker start anythingllm",
+    "stop": "docker stop anythingllm",
+    "logs": "docker logs -f anythingllm"
+  },
+
+  "prompts": {
+    "setup_knowledge_base": "如何在 AnythingLLM 中导入 PDF 和文档并创建一个可以对话的工作区？",
+    "connect_local_llm": "说明如何将 AnythingLLM 连接到本地运行的 Ollama 模型。"
+  },
+
+  "notes": "AnythingLLM 默认运行在 3001 端口。数据持久化存储在 ~/anythingllm_storage 目录中。项目主页: https://github.com/Mintplex-Labs/anything-llm"
+}

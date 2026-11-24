@@ -1,0 +1,65 @@
+{
+  "id": "tencent-copilot",
+  "name": "Tencent Copilot Work",
+  "description": "腾讯出品的 AI 代码助手（企业版）。提供深度的代码生成、解释、修复及语义化提交功能。支持本地文件上下文感知，适配多种开发场景。",
+  "category": "ai-coding",
+  "tags": [
+    "腾讯",
+    "Tencent",
+    "Copilot",
+    "代码助手",
+    "企业级"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "NPM 全局安装",
+        "type": "npm",
+        "command": "npm install -g @tencent/copilot-cli --registry https://registry.npmmirror.com",
+        "check": "tcpcopilot --version",
+        "uninstall": [
+          "npm uninstall -g @tencent/copilot-cli"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @tencent/copilot-cli@latest",
+    "check": "tcpcopilot --version"
+  },
+  "config": {
+    "path": "$HOME/.copilotrc",
+    "operations": {
+      "login": "tcpcopilot login",
+      "init": "tcpcopilot init",
+      "view": "cat $HOME/.copilotrc 2>/dev/null"
+    }
+  },
+  "commands": {
+    "chat": "tcpcopilot chat",
+    "commit": "tcpcopilot commit",
+    "fix": "tcpcopilot fix",
+    "version": "tcpcopilot --version"
+  },
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "tcpcopilot --version 2>/dev/null || echo 'Tencent Copilot 未安装'"
+    }
+  ],
+  "prompts": {
+    "start-chat": "启动 tcpcopilot chat 进入交互式对话模式",
+    "auto-commit": "使用 tcpcopilot commit 自动生成并提交 Git 变更",
+    "code-fix": "针对当前项目运行 tcpcopilot fix 扫描逻辑漏洞"
+  },
+  "notes": "安装后请先运行 'tcpcopilot login' 完成腾讯账号授权。对于企业内网环境，请确保已配置正确的代理或 NPM 镜像源。",
+  "homepage": "https://copilot.tencent.com/work/",
+  "scenarios": [
+    "productivity",
+    "coding"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false
+}

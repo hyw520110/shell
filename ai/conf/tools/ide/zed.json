@@ -1,0 +1,30 @@
+{
+  "id": "zed",
+  "name": "Zed IDE",
+  "description": "高性能 Rust 编写的编辑器，内置极速 AI 协作能力，支持多人实时协作",
+  "category": "ai-ide",
+  "tags": ["ide", "rust", "high-performance"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "macOS curl 安装",
+        "type": "bash",
+        "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-zed.XXXXXX\") && curl https://zed.dev/install.sh -o \"$tmp\" && sh \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
+        "check": "command -v zed || [ -d '/Applications/Zed.app' ]",
+        "uninstall": ["echo '请手动在 /Applications 中删除 Zed.app'"]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "status_check": [
+    {"name": "检查应用", "command": "[ -d '/Applications/Zed.app' ] && echo '已安装' || echo '未安装'"}
+  ],
+
+  "commands": {
+    "start": "open -a Zed"
+  },
+
+  "notes": "Zed 以极速启动和极低延迟著称，其 AI 助手集成度非常高，适合追求极致开发体验的用户。"
+}

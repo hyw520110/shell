@@ -1,0 +1,71 @@
+{
+  "id": "opencut",
+  "name": "OpenCut",
+  "description": "开源的 CapCut 替代视频编辑器，提供 Web、桌面和移动端方向的统一代码库。当前主仓库处于重写阶段，适合体验和开发验证。",
+  "category": "ai-workbench",
+  "sort_order": 2530,
+  "sort_key": "OpenCut",
+  "tags": ["workbench", "video-editor", "open-source", "bun", "rust", "experimental"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "源码安装（proto + Bun）",
+        "type": "bash",
+        "command": "bash workbench/opencut/startup.sh install",
+        "check": "test -d $HOME/.local/share/ai-hub/opencut/.git && test -d $HOME/.local/share/ai-hub/opencut/apps/web/node_modules && test -d $HOME/.local/share/ai-hub/opencut/apps/api/node_modules",
+        "uninstall": [
+          "bash workbench/opencut/startup.sh uninstall"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash workbench/opencut/startup.sh update",
+    "check": "test -d $HOME/.local/share/ai-hub/opencut/.git && test -d $HOME/.local/share/ai-hub/opencut/apps/web/node_modules && test -d $HOME/.local/share/ai-hub/opencut/apps/api/node_modules"
+  },
+
+  "config": {
+    "path": "$HOME/.local/share/ai-hub/opencut/.env.local",
+    "operations": {
+      "view": "cat $HOME/.local/share/ai-hub/opencut/.env.local 2>/dev/null || echo '配置文件不存在；安装 OpenCut 后会从 .env.example 创建'",
+      "edit": "${EDITOR:-vim} $HOME/.local/share/ai-hub/opencut/.env.local"
+    }
+  },
+
+  "commands": {
+    "start": "bash workbench/opencut/startup.sh start",
+    "stop": "bash workbench/opencut/startup.sh stop",
+    "status": "bash workbench/opencut/startup.sh status",
+    "logs": "bash workbench/opencut/startup.sh logs",
+    "doctor": "bash workbench/opencut/startup.sh doctor",
+    "dev-desktop": "bash workbench/opencut/startup.sh desktop"
+  },
+
+  "status_check": [
+    {
+      "name": "检查源码与依赖",
+      "command": "bash workbench/opencut/startup.sh status"
+    },
+    {
+      "name": "检查 Web 服务",
+      "command": "curl -sS --connect-timeout 2 --max-time 5 http://localhost:5173 >/dev/null && echo 'Web 服务正常 (端口 5173)' || echo 'Web 服务未响应'"
+    },
+    {
+      "name": "检查 API 服务",
+      "command": "curl -sS --connect-timeout 2 --max-time 5 http://localhost:8787 >/dev/null && echo 'API 服务正常 (端口 8787)' || echo 'API 服务未响应'"
+    }
+  ],
+
+  "references": {
+    "homepage": "https://opencut.app",
+    "repository": "https://github.com/OpenCut-app/OpenCut"
+  },
+  "scenarios": ["design-prototype", "productivity"],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": true,
+  "notes": "当前版本按官方开发流程使用 proto 管理 moon、Bun 和 Rust；安装需要预先安装 proto。主仓库正在重写，桌面端目前仍处于早期阶段。Web 默认端口 5173，API 默认端口 8787。"
+}

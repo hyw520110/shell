@@ -1,0 +1,79 @@
+{
+  "id": "headroom",
+  "name": "Headroom",
+  "description": "AI Agent 上下文压缩层，支持 60-95% Token 节省。MCP/Library/Proxy 三种模式，支持 Claude/Codex/Cursor 等多种 Agent。",
+  "category": "ai",
+  "scenarios": [
+    "productivity",
+    "coding",
+    "context-optimizer"
+  ],
+  "view_group": "上下文/Token",
+  "tags": [
+    "上下文优化",
+    "Token优化",
+    "MCP",
+    "压缩",
+    "本地优先"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://headroom-docs.vercel.app/",
+  "repository": "https://github.com/chopratejas/headroom",
+  "install": {
+    "type": "bash",
+    "command": "bash \"${SCRIPT_DIR}/scripts/install_python_mcp.sh\" \"headroom-ai[all]\" \"--with\" \"opencv-python<=4.10.0.84\"",
+    "prerequisites": [
+      {
+        "name": "Python >= 3.10",
+        "check": "python3 -c 'import sys; exit(0 if sys.version_info >= (3, 10) else 1)'",
+        "install_hint": "brew install python@3.11 或 uv python install 3.11"
+      }
+    ]
+  },
+  "config": {
+    "command": "sh",
+    "args": [
+      "-lc",
+      "headroom mcp serve"
+    ],
+    "transportType": "stdio",
+    "env": {}
+  },
+  "required_tools": [
+    "python3",
+    "headroom"
+  ],
+  "status_check": [
+    {
+      "name": "检查 Headroom CLI",
+      "command": "headroom --version >/dev/null 2>&1 && echo '已安装' || echo '未安装'"
+    },
+    {
+      "name": "检查 MCP 模块",
+      "command": "headroom mcp --help >/dev/null 2>&1 && echo 'MCP 可用' || echo 'MCP 不可用'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "headroom_compress",
+      "description": "压缩上下文消息，减少 Token 消耗"
+    },
+    {
+      "name": "headroom_retrieve",
+      "description": "按需检索原始压缩内容"
+    },
+    {
+      "name": "headroom_stats",
+      "description": "查看压缩统计信息"
+    },
+    {
+      "name": "headroom_learn",
+      "description": "从失败会话中学习并写入 CLAUDE.md/AGENTS.md"
+    }
+  ],
+  "notes": "Headroom 支持三种模式：Library（内联）、Proxy（代理）、MCP（工具）。默认配置为 MCP 模式，可通过 headroom wrap claude 包装其他 Agent。",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

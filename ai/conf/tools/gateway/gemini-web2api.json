@@ -1,0 +1,56 @@
+{
+  "id": "gemini-web2api",
+  "name": "Gemini Web2API",
+  "description": "将 Google Gemini Web 转换为 OpenAI/Gemini CLI 兼容的本地 API 服务",
+  "category": "ai-gateway",
+  "tags": ["gateway", "gemini", "openai-compatible", "local-api"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "自动部署",
+        "type": "bash",
+        "command": "cd gateway/gemini-web2api && bash startup.sh install",
+        "check": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:8081/v1/models >/dev/null 2>&1",
+        "uninstall": [
+          "cd gateway/gemini-web2api && bash startup.sh uninstall"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "cd gateway/gemini-web2api && bash startup.sh restart",
+    "check": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:8081/v1/models >/dev/null 2>&1"
+  },
+
+  "commands": {
+    "start": "cd gateway/gemini-web2api && bash startup.sh start",
+    "stop": "cd gateway/gemini-web2api && bash startup.sh stop",
+    "status": "cd gateway/gemini-web2api && bash startup.sh status",
+    "guide": "cd gateway/gemini-web2api && bash startup.sh guide",
+    "models": "curl -s --connect-timeout 2 --max-time 5 http://localhost:8081/v1/models"
+  },
+
+  "config": {
+    "path": "$HOME/gemini-web2api/config.json",
+    "operations": {
+      "view": "cat $HOME/gemini-web2api/config.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/gemini-web2api/config.json"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "服务状态",
+      "command": "cd gateway/gemini-web2api && bash startup.sh status"
+    },
+    {
+      "name": "模型接口",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:8081/v1/models >/dev/null && echo 'API 可用' || echo 'API 不可用'"
+    }
+  ],
+
+  "notes": "默认端口 8081。安装后会向用户 shell rc 写入 gemini-web 函数，用于 Gemini CLI 走本地代理。"
+}

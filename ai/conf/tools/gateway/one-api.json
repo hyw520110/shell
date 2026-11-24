@@ -1,0 +1,39 @@
+{
+  "id": "one-api",
+  "name": "One API",
+  "description": "开源多模型分发网关，支持 OpenAI, Anthropic, Gemini, DeepSeek 等几乎所有 AI 接口",
+  "category": "ai-gateway",
+  "tags": ["gateway", "docker", "management"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "Docker 部署",
+        "type": "bash",
+        "command": "docker run -d --name one-api --restart always -p 3000:3000 -e TZ=Asia/Shanghai -v ~/.one-api:/data justsong/one-api",
+        "check": "docker ps --format '{{.Names}}' | grep -q 'one-api'",
+        "uninstall": ["docker rm -f one-api"]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "status_check": [
+    {"name": "容器状态", "command": "docker ps --filter 'name=one-api' --format '{{.Status}}'"},
+    {"name": "服务可用性", "command": "curl -fsS http://localhost:3000 >/dev/null 2>&1 && echo '服务正常' || echo '服务未响应'"}
+  ],
+
+  "commands": {
+    "start": "open http://localhost:3000",
+    "logs": "docker logs -f one-api",
+    "restart": "docker restart one-api"
+  },
+
+  "prompts": {
+    "add_channel": "引导我如何在 One API 中添加一个新的 DeepSeek 渠道",
+    "generate_key": "引导我如何生成一个新的令牌 (API Key)",
+    "monitor": "检查 One API 的运行状态和日志"
+  },
+
+  "notes": "One API 是目前功能最全的模型网关，默认访问地址为 http://localhost:3000，默认账号密码为 root/123456。"
+}

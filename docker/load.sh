@@ -1,5 +1,56 @@
 #!/bin/bash
 
+# 显示帮助信息
+show_help() {
+    cat << EOF
+Docker镜像恢复脚本
+
+从备份目录加载Docker镜像到本地。
+
+用法: ./load.sh [选项]
+
+选项:
+    -h, --help            显示此帮助信息
+    -d, --dir <目录>      指定备份目录 (默认: /opt/backup)
+
+说明:
+    - 自动列出备份目录中的所有镜像文件
+    - 支持交互式选择镜像进行恢复
+    - 恢复后镜像可直接用于容器启动
+    - 跳过container_*开头的文件（这些是容器导出文件）
+
+示例:
+    ./load.sh                                    # 使用默认备份目录
+    ./load.sh -d /backup/docker                  # 指定备份目录
+
+注意事项:
+    - 需要Docker环境
+    - 确保备份目录存在且包含有效的镜像文件
+    - 恢复过程中可能需要较长时间，取决于镜像大小
+
+EOF
+}
+
+# 参数解析
+BACKUP_DIR="/opt/backup"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -d|--dir)
+            BACKUP_DIR="$2"
+            shift 2
+            ;;
+        *)
+            echo "未知参数: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
 # 备份目录
 read -p "请输入备份目录路径: " BACKUP_DIR
 BACKUP_DIR=${BACKUP_DIR:-/opt/backup}

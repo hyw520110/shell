@@ -1,0 +1,72 @@
+{
+  "id": "coding-helper",
+  "name": "Coding Tool Helper (智谱官方)",
+  "description": "智谱AI官方一键安装助手，支持GLM编码套餐配置、Claude Code/OpenCode/Crush等编码工具安装、MCP服务器管理",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @z_ai/coding-helper --registry {{npm_registry}}",
+        "check": "command -v coding-helper",
+        "uninstall": [
+          "npm uninstall -g @z_ai/coding-helper"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @z_ai/coding-helper --registry {{npm_registry}}",
+    "check": "command -v coding-helper"
+  },
+  "config": {
+    "path": "$HOME/.coding-helper/config.json",
+    "operations": {
+      "view": "cat $HOME/.coding-helper/config.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.coding-helper/config.json",
+      "reset": [
+        "cp $HOME/.coding-helper/config.json $HOME/.coding-helper/config.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.coding-helper/config.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "coding-helper",
+    "version": "coding-helper --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "coding-helper --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.coding-helper/config.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [
+    {
+      "description": "显示安装完成提示",
+      "command": "echo \"安装完成！\""
+    }
+  ],
+  "post_uninstall": [
+    {
+      "description": "清理残留文件",
+      "command": "echo \"卸载完成！\""
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "id": "neovate",
+  "name": "Neovate CLI",
+  "description": "",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g @neovate/code --registry {{npm_registry}}",
+        "check": true,
+        "uninstall": [
+          "npm uninstall -g @neovate/code"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @neovate/code --registry {{npm_registry}}",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.neovate/settings.json",
+    "operations": {
+      "view": "cat $HOME/.neovate/settings.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.neovate/settings.json",
+      "reset": [
+        "cp $HOME/.neovate/settings.json $HOME/.neovate/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.neovate/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "neovate",
+    "version": "neovate --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "neovate --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.neovate/settings.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

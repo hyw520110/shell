@@ -1,5 +1,84 @@
 #!/bin/bash
 
+# 显示帮助信息
+show_help() {
+    cat << EOF
+Docker代理配置脚本
+
+为Docker服务配置HTTP/HTTPS代理，加速镜像拉取。
+
+用法: ./setup-docker-proxy.sh [选项]
+
+选项:
+    -h, --help            显示此帮助信息
+    --http-proxy <地址>   HTTP代理地址
+    --https-proxy <地址>  HTTPS代理地址
+    --no-proxy <列表>     不使用代理的地址列表
+    --port <端口>         代理端口 (默认: 7898)
+    --remove              移除代理配置
+
+说明:
+    - 自动检测系统类型（Linux/macOS）
+    - 配置Docker服务使用代理
+    - 支持systemd服务的配置
+    - 可以配置NO_PROXY列表
+    - 支持移除已配置的代理
+
+示例:
+    sudo ./setup-docker-proxy.sh                     # 交互式配置
+    sudo ./setup-docker-proxy.sh --http-proxy http://proxy:7898
+    sudo ./setup-docker-proxy.sh --remove            # 移除配置
+
+注意事项:
+    - 需要root权限运行
+    - 配置后需要重启Docker服务
+    - 代理服务器需要提前启动
+    - 配置NO_PROXY避免内网地址走代理
+
+EOF
+}
+
+# 参数解析
+HTTP_PROXY=""
+HTTPS_PROXY=""
+NO_PROXY=""
+DEFAULT_PORT=7898
+REMOVE_PROXY=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        --http-proxy)
+            HTTP_PROXY="$2"
+            shift 2
+            ;;
+        --https-proxy)
+            HTTPS_PROXY="$2"
+            shift 2
+            ;;
+        --no-proxy)
+            NO_PROXY="$2"
+            shift 2
+            ;;
+        --port)
+            DEFAULT_PORT="$2"
+            shift 2
+            ;;
+        --remove)
+            REMOVE_PROXY=true
+            shift
+            ;;
+        *)
+            echo "未知参数: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
 # 定义路径
 SYSTEMD_SYSTEM_DIRS=("/etc/systemd/system" "/usr/lib/systemd/system")
 DOCKER_SERVICE_FILE="docker.service"

@@ -1,0 +1,72 @@
+{
+  "id": "copaw",
+  "name": "CoPaw",
+  "description": "个人 AI 助手，支持钉钉、飞书、QQ 等多平台，支持本地模型",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "bash"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "bash",
+        "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-copaw.XXXXXX\") && curl -LsSf -o \"$tmp\" 'https://copaw.agentscope.io/install.sh' && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
+        "check": true,
+        "uninstall": [
+          "rm -f ~/.local/bin/copaw 2>/dev/copaw || true"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-copaw.XXXXXX\") && curl -LsSf -o \"$tmp\" 'https://copaw.agentscope.io/install.sh' && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.copaw/config.yaml",
+    "operations": {
+      "view": "cat $HOME/.copaw/config.yaml 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.copaw/config.yaml",
+      "reset": [
+        "cp $HOME/.copaw/config.yaml $HOME/.copaw/config.yaml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.copaw/config.yaml"
+      ]
+    }
+  },
+  "commands": {
+    "start": "copaw",
+    "version": "copaw --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "copaw --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.copaw/config.yaml 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [
+    {
+      "description": "显示安装完成提示",
+      "command": "echo \"安装完成！\""
+    }
+  ],
+  "post_uninstall": [
+    {
+      "description": "清理残留文件",
+      "command": "echo \"卸载完成！\""
+    }
+  ]
+}

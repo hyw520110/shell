@@ -1,0 +1,64 @@
+{
+  "id": "openclaw",
+  "name": "OpenClaw CLI (国际版)",
+  "description": "",
+  "category": "ai-coding",
+  "group": "openclaw",
+  "sort_key": "OpenClaw CLI 10 International",
+  "tags": [
+    "ai",
+    "npm"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g openclaw --registry {{npm_registry}}",
+        "check": "npm list -g openclaw --depth=0",
+        "uninstall": [
+          "npm uninstall -g openclaw"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g openclaw --registry {{npm_registry}}",
+    "check": "npm list -g openclaw --depth=0"
+  },
+  "config": {
+    "path": "$HOME/.openclaw/settings.json",
+    "operations": {
+      "view": "cat $HOME/.openclaw/settings.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.openclaw/settings.json",
+      "reset": [
+        "cp $HOME/.openclaw/settings.json $HOME/.openclaw/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.openclaw/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "openclaw",
+    "version": "openclaw --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "openclaw --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.openclaw/settings.json 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "",
+  "post_install": [],
+  "post_uninstall": []
+}

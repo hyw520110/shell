@@ -462,8 +462,21 @@ download_mq() {
         
         log_info "尝试从镜像下载: $mirror_url"
         
-        # 如果aria2c可用，使用多线程下载
-        if command -v aria2c &> /dev/null; then
+        if command -v adl &> /dev/null && adl --help >/dev/null 2>&1; then
+            log_info "使用 adl 下载..."
+            if execute_command "adl \"$mirror_url\" \"$DOWNLOAD_DIR\" \"$MQ_FILE_NAME\""; then
+                if tar -tzf "$DOWNLOAD_DIR/$MQ_FILE_NAME" > /dev/null 2>&1; then
+                    log_info "从镜像下载成功: $mirror_url"
+                    download_success=true
+                    break
+                else
+                    log_warn "下载的文件仍然损坏，尝试下一个镜像..."
+                    execute_command "rm -f \"$DOWNLOAD_DIR/$MQ_FILE_NAME\"" "删除损坏的文件"
+                fi
+            else
+                log_warn "使用 adl 下载失败: $mirror_url"
+            fi
+        elif command -v aria2c &> /dev/null; then
             log_info "使用aria2c多线程下载..."
             if execute_command "aria2c -x 4 -s 4 --continue=true --allow-overwrite=true --auto-file-renaming=false \"$mirror_url\" -d \"$DOWNLOAD_DIR\" -o \"$MQ_FILE_NAME\""; then
                 # 下载完成后再次验证文件完整性
@@ -484,30 +497,30 @@ download_mq() {
             # 使用wget进行断点续传下载
             if execute_command "wget -c \"$mirror_url\" -O \"$DOWNLOAD_DIR/$MQ_FILE_NAME\""; then
                 # 下载完成后再次验证文件完整性
-                if tar -tzf "$MQ_FILE_NAME" > /dev/null 2>&1; then
+                if tar -tzf "$DOWNLOAD_DIR/$MQ_FILE_NAME" > /dev/null 2>&1; then
                     log_info "从镜像下载成功: $mirror_url"
                     download_success=true
                     break
                 else
                     log_warn "下载的文件仍然损坏，尝试下一个镜像..."
-                    execute_command "rm -f \"$MQ_FILE_NAME\"" "删除损坏的文件"
+                    execute_command "rm -f \"$DOWNLOAD_DIR/$MQ_FILE_NAME\"" "删除损坏的文件"
                 fi
             else
                 log_warn "从镜像下载失败: $mirror_url"
                 # 清理可能部分下载的文件
-                execute_command "rm -f \"$MQ_FILE_NAME\"" "清理部分下载的文件"
+                execute_command "rm -f \"$DOWNLOAD_DIR/$MQ_FILE_NAME\"" "清理部分下载的文件"
             fi
         elif command -v curl &> /dev/null; then
             # 使用curl进行断点续传下载
             if execute_command "curl -L -C - \"$mirror_url\" -o \"$DOWNLOAD_DIR/$MQ_FILE_NAME\""; then
                 # 下载完成后再次验证文件完整性
-                if tar -tzf "$MQ_FILE_NAME" > /dev/null 2>&1; then
+                if tar -tzf "$DOWNLOAD_DIR/$MQ_FILE_NAME" > /dev/null 2>&1; then
                     log_info "从镜像下载成功: $mirror_url"
                     download_success=true
                     break
                 else
                     log_warn "下载的文件仍然损坏，尝试下一个镜像..."
-                    execute_command "rm -f \"$MQ_FILE_NAME\"" "删除损坏的文件"
+                    execute_command "rm -f \"$DOWNLOAD_DIR/$MQ_FILE_NAME\"" "删除损坏的文件"
                 fi
             else
                 log_warn "从镜像下载失败: $mirror_url"

@@ -1,0 +1,73 @@
+{
+  "id": "graphify",
+  "name": "Graphify",
+  "description": "多模态 AI 知识图谱构建工具。将代码（27+ 语言）、SQL、PDF、图像和视频映射为可查询的图谱，帮助 Agent 理解复杂的跨模块架构。",
+  "category": "ai-utility",
+  "tags": [
+    "代码智能",
+    "图谱",
+    "架构分析",
+    "多模态",
+    "知识库"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Pip 安装",
+        "type": "pip",
+        "command": "pip install graphifyy",
+        "check": "graphify --version",
+        "uninstall": [
+          "pip uninstall -y graphifyy"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "pip install --upgrade graphifyy",
+    "check": "graphify --version"
+  },
+  "post_install": [
+    {
+      "description": "配置 IDE 接口",
+      "command": "echo -e '\\n[建议] 运行 \"graphify install\" 将技能注入到您的 Claude Code / Cursor。'"
+    }
+  ],
+  "config": {
+    "path": "$HOME/.graphify/config.yaml",
+    "operations": {
+      "view": "cat $HOME/.graphify/config.yaml 2>/dev/null || echo '配置文件不存在'",
+      "edit": "vi $HOME/.graphify/config.yaml"
+    }
+  },
+  "commands": {
+    "build": "graphify .",
+    "query": "graphify query",
+    "export": "graphify export callflow-html",
+    "visualize": "open graph.html",
+    "version": "graphify --version"
+  },
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "graphify --version 2>/dev/null || echo 'Graphify 未安装'"
+    }
+  ],
+  "prompts": {
+    "index-project": "使用 /graphify . 构建当前项目的多模态知识图谱",
+    "query-architecture": "询问架构问题：/graphify query 'Auth 模块与数据库是如何交互的？'",
+    "generate-report": "生成架构亮点报告并导出可视化图表"
+  },
+  "notes": "Graphify 的 PyPI 包名为 'graphifyy'。它支持跨语言和跨媒体索引，是理解大型遗留系统的利器。",
+  "homepage": "https://github.com/safishamsi/graphify",
+  "repository": "https://github.com/safishamsi/graphify",
+  "scenarios": [
+    "productivity",
+    "coding",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false
+}

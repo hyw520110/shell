@@ -1,0 +1,76 @@
+{
+  "id": "ollama",
+  "name": "Ollama",
+  "description": "本地大语言模型运行时，支持本地模型拉取、推理与 OpenAI 兼容 API 服务",
+  "category": "ai-runtime",
+  "tags": [
+    "ai",
+    "local",
+    "runtime",
+    "ollama",
+    "openai-compatible"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Homebrew 安装 (推荐)",
+        "type": "brew",
+        "command": "brew install ollama",
+        "check": "command -v ollama >/dev/null 2>&1",
+        "uninstall": [
+          "bash runtime/ollama/uninstall_ollama.sh --all --force"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "brew upgrade ollama || brew install ollama",
+    "check": "command -v ollama >/dev/null 2>&1"
+  },
+  "config": {
+    "path": "$HOME/.ollama",
+    "operations": {
+      "view": "ls -la $HOME/.ollama 2>/dev/null || echo \"配置目录不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.ollama/config.json",
+      "reset": [
+        "cp $HOME/.ollama/config.json $HOME/.ollama/config.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.ollama/config.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "bash runtime/ollama/startup.sh",
+    "stop": "bash runtime/ollama/stop.sh",
+    "cli": "bash runtime/ollama/ollama_cli.sh --help",
+    "version": "ollama --version"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "ollama --version 2>/dev/null || echo \"未安装\""
+    },
+    {
+      "name": "检查服务端口",
+      "command": "lsof -nP -iTCP:11434 -sTCP:LISTEN 2>/dev/null || echo \"11434 未监听\""
+    },
+    {
+      "name": "检查模型目录",
+      "command": "ls -la $HOME/.ollama 2>/dev/null || echo \"配置目录不存在\""
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "内置本地模型管理与 OpenAI 兼容接口。配套脚本位于 ai/runtime/ollama。",
+  "post_install": [
+    {
+      "description": "显示启动提示",
+      "command": "echo '' && echo 'Ollama 安装完成。可执行以下命令启动：' && echo '  bash runtime/ollama/startup.sh' && echo ''"
+    }
+  ],
+  "post_uninstall": []
+}

@@ -1,0 +1,82 @@
+{
+  "id": "tolaria",
+  "name": "Tolaria - AI 原生知识库 MCP Server",
+  "description": "开源 AI 原生知识管理工具（Markdown + Git 驱动桌面应用）。内置 MCP Server，让 Claude Code/Codex CLI 等 AI Agent 直接查询你的本地知识库。数据完全本地化，不内置 AI 模型，通过标准 MCP 协议与外部 AI 交互。",
+  "category": "ai",
+  "scenarios": [
+    "research",
+    "productivity"
+  ],
+  "view_group": "研究/知识",
+  "tags": [
+    "知识库",
+    "知识管理",
+    "Markdown",
+    "MCP",
+    "本地知识"
+  ],
+  "default_enabled": false,
+  "optional": true,
+  "experimental": false,
+  "homepage": "https://github.com/refactoringhq/tolaria",
+  "repository": "https://github.com/refactoringhq/tolaria",
+  "install": {
+    "type": "npm",
+    "command": "npm install -g github:scharf-black/tolaria-mcp"
+  },
+  "config": {
+    "command": "tolaria-mcp",
+    "args": [],
+    "transportType": "stdio",
+    "env": {
+      "TOLARIA_WORK_PATH": "${TOLARIA_WORK_PATH:-$HOME/Documents/Tolaria}"
+    }
+  },
+  "required_tools": [
+    "node",
+    "npm"
+  ],
+  "requires_env": [
+    {
+      "name": "TOLARIA_VAULT_PATH",
+      "description": "Tolaria 知识库 (Vault) 路径",
+      "required": false,
+      "default": "$HOME/Documents/Tolaria"
+    }
+  ],
+  "status_check": [
+    {
+      "name": "检查 Tolaria 安装",
+      "command": "command -v tolaria 2>/dev/null || ls /Applications/Tolaria.app 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "tools": [
+    {
+      "name": "search_vault",
+      "description": "搜索知识库中的笔记"
+    },
+    {
+      "name": "read_note",
+      "description": "读取指定笔记内容"
+    },
+    {
+      "name": "list_notes",
+      "description": "列出知识库中的笔记"
+    },
+    {
+      "name": "query_graph",
+      "description": "查询知识图谱关系"
+    }
+  ],
+  "features": {
+    "mcp_server": "内置 MCP Server，AI Agent 可直接查询知识库",
+    "agents_md": "提供 AGENTS.md 让 AI Agent 理解 Vault 结构",
+    "local_first": "数据完全本地化，Markdown + Git 存储",
+    "multi_agent": "原生支持 Claude Code、Codex CLI、Gemini CLI",
+    "open_source": "AGPL 3.0 协议，完全开源免费"
+  },
+  "notes": "Tolaria 是独立桌面应用，需先安装。安装后启动 Tolaria 并创建 Vault，然后 MCP Server 会自动可用。适合需要让 AI Agent 查询本地知识库的场景。建议与 research 场景搭配使用。",
+  "license": "AGPL-3.0",
+  "recommended_scenarios": "根据该工具特性适用的最佳场景（待补充）",
+  "unsuitable_scenarios": "不推荐使用该工具的场景或局限性（待补充）"
+}

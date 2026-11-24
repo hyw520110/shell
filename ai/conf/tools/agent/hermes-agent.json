@@ -1,0 +1,239 @@
+{
+  "id": "hermes-agent",
+  "name": "Hermes Agent",
+  "description": "Nous Research 开源的自进化 AI Agent，支持技能学习记忆持久化多平台集成",
+  "category": "ai-agent",
+  "tags": [
+    "ai",
+    "agent",
+    "nous",
+    "learning",
+    "mcp"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "官方安装脚本（含 MCP 支持）",
+        "type": "bash",
+        "command": "UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-hermes.XXXXXX\") && curl -fsSL -o \"$tmp\" https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh && UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; [ $rc -eq 0 ] && cd ~/.hermes/hermes-agent && ([ -x venv/bin/python ] || UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ uv venv venv) && (venv/bin/python -c 'import mcp' 2>/dev/null || UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ uv pip install --python venv/bin/python -e \".[mcp]\")",
+        "check": true
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "hermes update",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.hermes/config.yaml",
+    "operations": {
+      "view": "cat $HOME/.hermes/config.yaml 2>/dev/null || echo '配置文件不存在，请先运行 hermes setup'",
+      "edit": "${EDITOR:-vim} $HOME/.hermes/config.yaml",
+      "reset": [
+        "cp $HOME/.hermes/config.yaml $HOME/.hermes/config.yaml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.hermes/config.yaml && hermes setup"
+      ]
+    }
+  },
+  "commands": {
+    "start": "hermes",
+    "tui": "hermes --tui",
+    "dashboard": "hermes dashboard",
+    "version": "hermes --version 2>/dev/null",
+    "setup": "hermes setup",
+    "model": "hermes model",
+    "tools": "hermes tools",
+    "gateway": "hermes gateway",
+    "doctor": "hermes doctor",
+    "mcp-install": "cd ~/.hermes/hermes-agent && ([ -x venv/bin/python ] || UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ uv venv venv) && (venv/bin/python -c 'import mcp' 2>/dev/null || UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ uv pip install --python venv/bin/python -e \".[mcp]\")",
+    "mcp-config": "cat $HOME/.hermes/config.yaml 2>/dev/null || echo '配置文件不存在，请先运行 hermes setup'",
+    "mcp-edit": "${EDITOR:-vim} $HOME/.hermes/config.yaml",
+    "webui-install-docker": "docker pull ghcr.io/open-webui/open-webui:main",
+    "webui-install-pip": "pip install open-webui",
+    "webui-start-docker": "docker start open-webui 2>/dev/null || docker run -d -p 3000:8080 -v open-webui:/app/backend/data --name open-webui ghcr.io/open-webui/open-webui:main",
+    "webui-stop-docker": "docker stop open-webui",
+    "webui-start-pip": "open-webui serve",
+    "webui-status": "docker ps | grep open-webui 2>/dev/null || pgrep -f 'open-webui serve' > /dev/null && echo 'Open WebUI 运行中' || echo 'Open WebUI 未运行'",
+    "hermes-webui-clone": "git clone https://github.com/nesquena/hermes-webui.git $HOME/.hermes/hermes-webui || (cd $HOME/.hermes/hermes-webui && git pull)",
+    "hermes-webui-bootstrap": "cd $HOME/.hermes/hermes-webui && python3 bootstrap.py --no-browser",
+    "hermes-webui-start": "cd $HOME/.hermes/hermes-webui && ./start.sh",
+    "hermes-webui-start-ctl": "cd $HOME/.hermes/hermes-webui && ./ctl.sh start",
+    "hermes-webui-stop-ctl": "cd $HOME/.hermes/hermes-webui && ./ctl.sh stop",
+    "hermes-webui-status-ctl": "cd $HOME/.hermes/hermes-webui && ./ctl.sh status",
+    "hermes-webui-logs": "cd $HOME/.hermes/hermes-webui && ./ctl.sh logs --lines 100",
+    "hermes-webui-status": "([ -f $HOME/.hermes/webui.pid ] && pgrep -F $HOME/.hermes/webui.pid 2>/dev/null && echo 'Hermes WebUI 运行中 (http://localhost:8787)') || echo 'Hermes WebUI 未运行'",
+    "hermes-webui-open": "open http://localhost:8787 2>/dev/null || echo '请访问 http://localhost:8787'",
+    "desktop-install-winget": "winget install NousResearch.HermesDesktop",
+    "desktop-install-brew": "brew install --cask hermes-desktop || true",
+    "desktop-install-github": "echo '请访问 https://github.com/fathah/hermes-desktop/releases 下载安装包'",
+    "desktop-open": "open -a Hermes\\ Desktop 2>/dev/null || echo '请先安装 Hermes Desktop'",
+    "desktop-status": "pgrep -x Hermes\\ Desktop > /dev/null && echo 'Hermes Desktop 运行中' || echo 'Hermes Desktop 未运行'"
+  },
+  "status_check": [
+    {
+      "name": "检查 hermes 命令",
+      "command": "which hermes 2>/dev/null && echo 'hermes 已安装: '$(which hermes) || echo 'hermes 未安装'"
+    },
+    {
+      "name": "检查版本",
+      "command": "hermes --version 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查配置目录",
+      "command": "ls -la $HOME/.hermes/ 2>/dev/null || echo '配置目录不存在'"
+    },
+    {
+      "name": "检查网关状态",
+      "command": "pgrep -f 'hermes gateway' > /dev/null && echo '网关运行中' || echo '网关未运行'"
+    }
+  ],
+  "setup_guide": {
+    "manual": "运行 'hermes setup' 进行交互式配置",
+    "env_auto": "支持环境变量配置 API keys",
+    "workflows": [
+      {
+        "name": "快速开始",
+        "command": "hermes setup && hermes",
+        "note": "配置完成后启动交互式 CLI"
+      },
+      {
+        "name": "选择模型",
+        "command": "hermes model",
+        "note": "配置 LLM provider 和模型"
+      },
+      {
+        "name": "配置工具",
+        "command": "hermes tools",
+        "note": "启用/禁用工具"
+      },
+      {
+        "name": "配置 MCP 服务器",
+        "command": "cat $HOME/.hermes/config.yaml",
+        "note": "在 config.yaml 中添加 mcp_servers 配置"
+      },
+      {
+        "name": "启动网关",
+        "command": "hermes gateway setup && hermes gateway start",
+        "note": "配置 Telegram/Discord/Slack 等集成"
+      },
+      {
+        "name": "安装 Open WebUI (Docker)",
+        "command": "hermes webui-install-docker",
+        "note": "官方推荐的 Web UI，需要 Docker"
+      },
+      {
+        "name": "安装 Open WebUI (pip)",
+        "command": "hermes webui-install-pip",
+        "note": "使用 pip 安装 Open WebUI"
+      },
+      {
+        "name": "启动 Open WebUI (Docker)",
+        "command": "hermes webui-start-docker",
+        "note": "启动 Docker 容器，访问 http://localhost:3000"
+      },
+      {
+        "name": "启动 Open WebUI (pip)",
+        "command": "hermes webui-start-pip",
+        "note": "启动 pip 服务，访问 http://localhost:8080"
+      },
+      {
+        "name": "安装 Hermes Desktop (Windows)",
+        "command": "hermes desktop-install-winget",
+        "note": "使用 winget 安装 Hermes Desktop"
+      },
+      {
+        "name": "安装 Hermes Desktop (macOS)",
+        "command": "hermes desktop-install-brew",
+        "note": "使用 Homebrew Cask 安装或访问 GitHub 下载"
+      },
+      {
+        "name": "打开 Hermes Desktop",
+        "command": "hermes desktop-open",
+        "note": "启动 Hermes Desktop 图形界面"
+      },
+      {
+        "name": "检查 Hermes Desktop 状态",
+        "command": "hermes desktop-status",
+        "note": "查看 Hermes Desktop 是否正在运行"
+      },
+      {
+        "name": "克隆 Hermes WebUI",
+        "command": "hermes hermes-webui-clone",
+        "note": "克隆 nesquena/hermes-webui 项目"
+      },
+      {
+        "name": "安装 Hermes WebUI",
+        "command": "hermes hermes-webui-bootstrap",
+        "note": "运行 bootstrap.py 安装依赖"
+      },
+      {
+        "name": "启动 Hermes WebUI",
+        "command": "hermes hermes-webui-start",
+        "note": "启动 Hermes WebUI (http://localhost:8787)"
+      },
+      {
+        "name": "启动 Hermes WebUI (ctl.sh)",
+        "command": "hermes hermes-webui-start-ctl",
+        "note": "后台启动，使用 ctl.sh 管理"
+      },
+      {
+        "name": "停止 Hermes WebUI (ctl.sh)",
+        "command": "hermes hermes-webui-stop-ctl",
+        "note": "停止后台运行的 WebUI"
+      },
+      {
+        "name": "Hermes WebUI 状态",
+        "command": "hermes hermes-webui-status-ctl",
+        "note": "查看 WebUI 运行状态"
+      },
+      {
+        "name": "查看 Hermes WebUI 日志",
+        "command": "hermes hermes-webui-logs",
+        "note": "查看 WebUI 日志"
+      },
+      {
+        "name": "打开 Hermes WebUI",
+        "command": "hermes hermes-webui-open",
+        "note": "在浏览器中打开 http://localhost:8787"
+      }
+    ],
+    "mcp_examples": {
+      "filesystem": {
+        "description": "文件系统访问 MCP 服务器",
+        "config": "mcp_servers:\n  filesystem:\n    command: \"npx\"\n    args: [\"-y\", \"@modelcontextprotocol/server-filesystem\", \"/path/to/projects\"]"
+      },
+      "github": {
+        "description": "GitHub MCP 服务器",
+        "config": "mcp_servers:\n  github:\n    command: \"npx\"\n    args: [\"-y\", \"@modelcontextprotocol/server-github\"]\n    env:\n      GITHUB_TOKEN: \"your_github_token\""
+      },
+      "http": {
+        "description": "HTTP MCP 服务器示例",
+        "config": "mcp_servers:\n  my_server:\n    url: \"http://localhost:3000/sse\"\n    transport: \"sse\""
+      }
+    }
+  },
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "支持 200+ 模型 (OpenRouter, Nous Portal, GLM, Kimi, OpenAI 等)。内置学习循环、技能创建、记忆持久化。支持 MCP 集成扩展能力。可从 OpenClaw 迁移数据。",
+  "post_install": [
+    {
+      "description": "显示配置指引",
+      "command": "echo '\n========================================' && echo 'Hermes Agent 安装完成！' && echo '========================================' && echo '' && echo '请先重新加载 shell 配置:' && echo '  source ~/.bashrc   # 或 source ~/.zshrc' && echo '' && echo '然后运行配置向导:' && echo '  hermes setup' && echo '' && echo '常用命令:' && echo '  hermes              # 启动交互式 CLI' && echo '  hermes --tui         # 启动终端 UI' && echo '  hermes dashboard     # 启动 Web Dashboard (http://127.0.0.1:9119)' && echo '  hermes model        # 选择模型' && echo '  hermes tools        # 配置工具' && echo '  hermes gateway      # 启动消息网关' && echo '  hermes claw migrate # 从 OpenClaw 迁移' && echo '' && echo 'Open WebUI (官方推荐):' && echo '  hermes webui-install-docker  # Docker 安装' && echo '  hermes webui-install-pip     # pip 安装' && echo '  hermes webui-start-docker    # Docker 启动 (http://localhost:3000)' && echo '  hermes webui-start-pip       # pip 启动 (http://localhost:8080)' && echo '' && echo 'Hermes WebUI (社区推荐):' && echo '  hermes hermes-webui-clone    # 克隆 nesquena/hermes-webui' && echo '  hermes hermes-webui-bootstrap # 安装依赖' && echo '  hermes hermes-webui-start    # 启动 (http://localhost:8787)' && echo '  hermes hermes-webui-start-ctl # 后台启动 (ctl.sh)' && echo '  hermes hermes-webui-status-ctl # 查看状态' && echo '  hermes hermes-webui-logs     # 查看日志' && echo '' && echo 'Hermes Desktop (图形界面):' && echo '  hermes desktop-install-winget  # Windows winget 安装' && echo '  hermes desktop-install-brew    # macOS Homebrew 安装' && echo '  hermes desktop-open            # 启动 Hermes Desktop' && echo '' && echo 'MCP 支持:' && echo '  已安装 MCP 支持，可在 ~/.hermes/config.yaml 中配置 MCP 服务器' && echo '  文档: https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp' && echo '' && echo '文档: https://hermes-agent.nousresearch.com/docs' && echo '========================================\n'"
+    }
+  ],
+  "post_uninstall": [
+    "echo '正在卸载 Hermes Agent...'",
+    "echo '配置文件保留在 ~/.hermes，如需彻底清理请选择[彻底卸载]'"
+  ],
+  "uninstall_extended": [
+    {
+      "description": "彻底清理 Hermes Agent 所有文件",
+      "command": "echo '=== 开始彻底清理 Hermes Agent ===' && pkill -f 'hermes gateway' 2>/dev/null; if rm -rf $HOME/.hermes 2>/dev/null; then echo '✓ 删除配置目录 ~/.hermes'; else echo '✗ 配置目录不存在'; fi; if rm -rf $HOME/.local/share/hermes 2>/dev/null; then echo '✓ 删除数据目录'; else echo '✗ 数据目录不存在'; fi; if rm -f $HOME/.bashrc.d/hermes* $HOME/.zshrc.d/hermes* 2>/dev/null; then echo '✓ 删除 shell 配置'; else echo '✗ shell 配置不存在'; fi; echo '=== Hermes Agent 彻底清理完成 ==='"
+    }
+  ]
+}

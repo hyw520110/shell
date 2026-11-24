@@ -23,6 +23,7 @@ readonly PYPI_ORG_MIRROR="https://pypi.org/simple/"
 # === 全局变量 ===
 UV_DIR="$DEFAULT_UV_DIR"
 INSTALL_PYTHON_VERSION=""
+USE_PYTHON_VERSION=""
 DRY_RUN=false
 FORCE_REINSTALL=false
 SETUP_SHELL_CONFIG=true
@@ -43,6 +44,7 @@ show_usage() {
     --force                     即使已安装也重新安装 uv
     --no-shell-config           跳过 shell 配置
     --install-python VERSION    安装和配置特定的 Python 版本
+    --use-python VERSION        设置指定版本为默认 python/python3
     --uninstall                 卸载 uv（删除二进制文件和 shell 配置）
 
 示例:
@@ -50,6 +52,9 @@ show_usage() {
     $0 --mirror $ALIYUN_PYPI_MIRROR    # 使用阿里云镜像
     $0 --dir /opt/uv --force           # 在 /opt/uv 中强制重新安装
     $0 --dry-run --mirror $PYPI_ORG_MIRROR  # 使用 PyPI.org 进行试运行
+    $0 --install-python 3.12           # 安装 Python 3.12
+    $0 --use-python 3.12               # 设置 Python 3.12 为默认版本
+    $0 --install-python 3.12 --use-python 3.12  # 安装并设为默认
     $0 --uninstall                     # 卸载 uv
 
 使用指南
@@ -410,6 +415,10 @@ parse_arguments() {
                 INSTALL_PYTHON_VERSION="$2"
                 shift 2
                 ;;
+            --use-python)
+                USE_PYTHON_VERSION="$2"
+                shift 2
+                ;;
             --uninstall)
                 UNINSTALL_MODE=true
                 shift
@@ -486,16 +495,307 @@ main() {
         fi
     fi
 
+    # 处理默认 Python 版本设置
+    if [ -n "$USE_PYTHON_VERSION" ]; then
+        # 用户明确指定了版本
+        set_default_python "$USE_PYTHON_VERSION"
+    else
+        # 未指定版本，检查是否有多版本并交互式选择
+        interactive_select_python
+    fi
+
     print_header "安装完成!"
     print_success "uv 现已安装和配置"
+
+    # 显示版本检测信息
+    show_version_info
 
     if [ "$SETUP_SHELL_CONFIG" = true ]; then
         print_info "要在新终端会话中使用 uv，请打开新终端或运行:"
         print_info "  source $shell_config"
     fi
 
-    print_info "当前会话 uv 版本: $(uv --version)"
+    # 显示常用命令提示
+    show_quick_start_guide
 
+}
+
+# 显示版本检测信息
+show_version_info() {
+    echo ""
+    echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}${BOLD}  版本检测${NC}"
+    echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # uv 版本
+    if command -v uv >/dev/null 2>&1; then
+        local uv_version=$(uv --version 2>/dev/null || echo "未知")
+        print_success "uv: $uv_version"
+    else
+        print_error "uv: 未找到"
+    fi
+
+    # Python 版本 (通过 uv)
+    if command -v uv >/dev/null 2>&1; then
+        local uv_python_list=$(uv python list 2>/dev/null | head -5)
+        if [ -n "$uv_python_list" ]; then
+            print_info "已安装的 Python 版本:"
+            echo "$uv_python_list" | while read -r line; do
+                echo -e "  ${GREEN}•${NC} $line"
+            done
+        else
+            print_info "尚未通过 uv 安装 Python"
+            print_info "提示: 运行 'uv python install 3.12' 安装 Python 3.12"
+        fi
+    fi
+
+    # 系统 Python 版本
+    if command -v python3 >/dev/null 2>&1; then
+        local sys_python=$(python3 --version 2>/dev/null || echo "未知")
+        print_info "系统 Python: $sys_python"
+    fi
+
+    echo ""
+}
+
+# 交互式选择 Python 版本
+interactive_select_python() {
+    if [ "$DRY_RUN" = true ]; then
+        return 0
+    fi
+
+    # 获取已安装的 Python 版本列表（排除 "download available" 的）
+    local installed_pythons=()
+    while IFS= read -r line; do
+        # 跳过包含 "download available" 的行（未安装的）
+        [[ "$line" == *"download available"* ]] && continue
+        # 提取版本号和路径
+        local version=$(echo "$line" | awk '{print $1}')
+        if [ -n "$version" ]; then
+            installed_pythons+=("$line")
+        fi
+    done < <(uv python list 2>/dev/null | grep -v "download available" || true)
+
+    local count=${#installed_pythons[@]}
+
+    # 如果没有安装任何版本，提示安装
+    if [ "$count" -eq 0 ]; then
+        echo ""
+        print_info "尚未通过 uv 安装任何 Python 版本"
+        read -p "是否现在安装 Python? (y/N): " install_now
+        if [[ "$install_now" =~ ^[Yy]$ ]]; then
+            read -p "请输入要安装的版本 (例如: 3.12): " py_version
+            if [ -n "$py_version" ]; then
+                uv python install "$py_version"
+                set_default_python "$py_version"
+            fi
+        fi
+        return 0
+    fi
+
+    # 如果只安装了一个版本，直接询问是否设为默认
+    if [ "$count" -eq 1 ]; then
+        local version=$(echo "${installed_pythons[0]}" | awk '{print $1}')
+        echo ""
+        print_info "检测到已安装的 Python 版本:"
+        echo "  ${GREEN}•${NC} ${installed_pythons[0]}"
+        echo ""
+        read -p "是否将 Python $version 设为默认? (Y/n): " set_default
+        if [[ ! "$set_default" =~ ^[Nn]$ ]]; then
+            set_default_python "$version"
+        else
+            print_info "已跳过设置默认 Python"
+        fi
+        return 0
+    fi
+
+    # 多个版本，显示列表让用户选择
+    echo ""
+    print_info "检测到多个已安装的 Python 版本:"
+    echo ""
+
+    # 推荐版本逻辑
+    local recommended_idx=0
+    local recommended_ver=""
+
+    local i=1
+    for py in "${installed_pythons[@]}"; do
+        local version=$(echo "$py" | awk '{print $1}')
+        local path=$(echo "$py" | awk '{print $2}')
+
+        # 推荐 3.12 版本（稳定且兼容性好）
+        if [[ "$version" == *"3.12"* ]] && [ "$recommended_idx" -eq 0 ]; then
+            recommended_idx=$i
+            recommended_ver="$version"
+            printf "  ${CYAN}%2d.${NC} ${GREEN}%-20s${NC} %s ${YELLOW}(推荐)${NC}\n" "$i" "$version" "$path"
+        else
+            printf "  ${CYAN}%2d.${NC} ${GREEN}%-20s${NC} %s\n" "$i" "$version" "$path"
+        fi
+        ((i++))
+    done
+
+    # 显示推荐说明
+    if [ "$recommended_idx" -gt 0 ]; then
+        echo ""
+        print_info "推荐说明:"
+        echo "  • Python 3.12 是目前最稳定的版本，兼容性最佳"
+        echo "  • Python 3.13 是最新版本，可能部分包尚未完全支持"
+        echo "  • Python 3.11 是较旧版本，新特性较少"
+    fi
+
+    echo ""
+    printf "  ${YELLOW}0.${NC} 跳过设置（保持当前默认）\n"
+    printf "  ${YELLOW}s.${NC} 安装其他版本\n"
+    echo ""
+
+    read -p "请选择要设为默认的 Python 版本 [0-$count]: " choice
+
+    case "$choice" in
+        0|"")
+            print_info "已跳过设置默认 Python"
+            ;;
+        [Ss])
+            read -p "请输入要安装的版本 (例如: 3.13): " py_version
+            if [ -n "$py_version" ]; then
+                uv python install "$py_version"
+                set_default_python "$py_version"
+            fi
+            ;;
+        [1-9]|[1-9][0-9])
+            if [ "$choice" -ge 1 ] && [ "$choice" -le "$count" ]; then
+                local selected="${installed_pythons[$((choice-1))]}"
+                local version=$(echo "$selected" | awk '{print $1}')
+                set_default_python "$version"
+            else
+                print_error "无效的选择"
+            fi
+            ;;
+        *)
+            print_error "无效的选择"
+            ;;
+    esac
+}
+
+# 设置默认 Python 版本
+set_default_python() {
+    local version="$1"
+    
+    print_info "设置 Python $version 为默认版本..."
+    
+    if [ "$DRY_RUN" = true ]; then
+        print_info "试运行: 将设置 Python $version 为默认版本"
+        return 0
+    fi
+
+    # 检查是否已安装该版本
+    local uv_python_path=""
+    uv_python_path=$(uv python find "${version}" 2>/dev/null || true)
+    
+    if [[ -z "$uv_python_path" ]] || [[ ! -x "$uv_python_path" ]]; then
+        print_warning "Python ${version} 未安装，正在安装..."
+        uv python install "${version}"
+        uv_python_path=$(uv python find "${version}" 2>/dev/null || true)
+    fi
+
+    if [[ -z "$uv_python_path" ]] || [[ ! -x "$uv_python_path" ]]; then
+        print_error "无法找到 Python ${version} 的可执行文件"
+        return 1
+    fi
+
+    print_success "找到 Python ${version}: $uv_python_path"
+
+    # 创建符号链接
+    local bin_dir="$HOME/.local/bin"
+    mkdir -p "$bin_dir"
+
+    # 备份现有的链接
+    local backup_suffix=".backup.$(date +%Y%m%d%H%M%S)"
+    
+    if [[ -L "$bin_dir/python" ]]; then
+        mv "$bin_dir/python" "$bin_dir/python${backup_suffix}" 2>/dev/null || true
+        print_info "已备份原有的 python 链接"
+    fi
+    
+    if [[ -L "$bin_dir/python3" ]]; then
+        mv "$bin_dir/python3" "$bin_dir/python3${backup_suffix}" 2>/dev/null || true
+        print_info "已备份原有的 python3 链接"
+    fi
+
+    # 创建新的符号链接
+    ln -sf "$uv_python_path" "$bin_dir/python"
+    ln -sf "$uv_python_path" "$bin_dir/python3"
+    
+    print_success "已创建符号链接:"
+    print_info "  $bin_dir/python -> $uv_python_path"
+    print_info "  $bin_dir/python3 -> $uv_python_path"
+
+    # 确保 PATH 配置正确
+    local shell_rc=$(get_shell_config_file)
+    
+    if ! grep -q 'export PATH="$HOME/.local/bin:$PATH"' "$shell_rc" 2>/dev/null; then
+        print_info "添加 PATH 配置到 $shell_rc"
+        {
+            echo ""
+            echo "# uv Python 路径配置"
+            echo 'export PATH="$HOME/.local/bin:$PATH"'
+        } >> "$shell_rc"
+    fi
+
+    # 验证
+    echo ""
+    print_success "验证:"
+    local new_version=$("$bin_dir/python3" --version 2>&1)
+    print_success "Python 版本: $new_version"
+    
+    echo ""
+    print_info "提示:"
+    print_info "1. 当前终端请运行: hash -r"
+    print_info "2. 新终端将自动使用 Python $version"
+}
+
+# 显示快速开始指南
+show_quick_start_guide() {
+    echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}${BOLD}  快速开始指南${NC}"
+    echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    echo -e "${BOLD}📦 Python 管理:${NC}"
+    echo -e "  ${YELLOW}uv python install 3.12${NC}          安装 Python 3.12"
+    echo -e "  ${YELLOW}uv python list${NC}                  列出已安装的 Python"
+    echo -e "  ${YELLOW}uv python install 3.11 3.12 3.13${NC}  安装多个版本"
+    echo -e "  ${YELLOW}uv python pin 3.12${NC}              当前目录固定 Python 版本"
+    echo -e "  ${YELLOW}./install-uv.sh --use-python 3.12${NC} 设置全局默认 Python 版本"
+    echo ""
+
+    echo -e "${BOLD}🚀 项目管理:${NC}"
+    echo -e "  ${YELLOW}uv init my_project${NC}              初始化新项目"
+    echo -e "  ${YELLOW}uv add requests${NC}                 添加依赖"
+    echo -e "  ${YELLOW}uv add pytest --dev${NC}             添加开发依赖"
+    echo -e "  ${YELLOW}uv sync${NC}                         同步依赖"
+    echo -e "  ${YELLOW}uv run python script.py${NC}         运行脚本"
+    echo ""
+
+    echo -e "${BOLD}🔧 虚拟环境:${NC}"
+    echo -e "  ${YELLOW}uv venv${NC}                         创建虚拟环境"
+    echo -e "  ${YELLOW}uv venv --python 3.12${NC}           指定 Python 版本"
+    echo -e "  ${YELLOW}source .venv/bin/activate${NC}       激活虚拟环境"
+    echo ""
+
+    echo -e "${BOLD}🛠️ 工具安装:${NC}"
+    echo -e "  ${YELLOW}uv tool install ruff${NC}            安装全局工具"
+    echo -e "  ${YELLOW}uv tool list${NC}                    列出已安装工具"
+    echo ""
+
+    echo -e "${BOLD}📋 其他常用:${NC}"
+    echo -e "  ${YELLOW}uv pip list${NC}                     查看已安装包"
+    echo -e "  ${YELLOW}uv cache clean${NC}                  清理缓存"
+    echo -e "  ${YELLOW}uv --help${NC}                       查看帮助"
+    echo ""
+
+    echo -e "${CYAN}更多详情: https://docs.astral.sh/uv/${NC}"
+    echo ""
 }
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"

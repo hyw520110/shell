@@ -17,7 +17,9 @@ LINUX_DOWNLOAD_URL="https://www.scootersoftware.com/files/bcompare-${BCOMPARE_VE
 MACOS_DOWNLOAD_URL="https://www.scootersoftware.com/files/BCompareOSX-${BCOMPARE_VERSION}.zip"
 LINUX_FILE_NAME="bcompare-${BCOMPARE_VERSION}_amd64.deb"
 MACOS_FILE_NAME="BCompareOSX-${BCOMPARE_VERSION}.zip"
-DOWNLOAD_DIR="$HOME/Downloads"
+DOWNLOAD_DIR="${DOWNLOAD_DIR:-$HOME/Downloads}"
+# KEEP_PACKAGE=1 时安装成功后保留安装包，默认安装成功即删除
+KEEP_PACKAGE="${KEEP_PACKAGE:-0}"
 BCOMPARE_EXE="BCompare"
 
 # 颜色定义
@@ -62,25 +64,153 @@ exec_sudo() {
     fi
 }
 
-# 通用下载函数（支持断点续传）
+# 统一安全删除安装包：只允许删除明确指向安装包的绝对路径。
+# 防止 $VAR 为空时 rm -rf 展开成 rm -rf /Applications/ 之类事故（曾发生过）。
+# 调用方必须传入已确定非空的完整文件路径，禁止裸写 rm -rf "$VAR"。
+safe_rm_file() {
+    local path="$1"
+    [ -z "$path" ] && { echo_warn "safe_rm_file: 路径为空，跳过删除"; return 0; }
+    case "$path" in
+        /*) : ;;
+        *) echo_warn "safe_rm_file: 非绝对路径，跳过: $path"; return 0 ;;
+    esac
+    case "$path" in
+        /|/tmp|/var|/var/folders|/Users|/Applications|/etc|/usr|/bin|/sbin|/System|/Library)
+            echo_warn "safe_rm_file: 拒绝删除受保护目录: $path"; return 0 ;;
+    esac
+    [ -d "$path" ] && [ ! -f "$path" ] && { echo_warn "safe_rm_file: 目标是目录，跳过: $path"; return 0; }
+    if rm -f -- "$path" "$path.url" 2>/dev/null; then
+        echo_info "已删除安装包: $path"
+    else
+        echo_warn "安装包清理失败(可忽略): $path"
+    fi
+}
+
+# Beyond Compare 安装检测：.app 存在且其可执行文件真实可读，避免断裂符号链接造成假阳性
+check_bcompare_installed() {
+    local app="/Applications/Beyond Compare.app"
+    if [ ! -d "$app" ]; then
+        return 1
+    fi
+    local exe
+    exe=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$app/Contents/Info.plist" 2>/dev/null)
+    [ -z "$exe" ] && return 1
+    [ -x "$app/Contents/MacOS/$exe" ]
+}
+
+# macOS 自动安装：解压 zip 内 dmg -> 挂载 -> 拷 .app 到 /Applications
+install_bcompare_macos() {
+    local zip_file="$1"
+    [ -f "$zip_file" ] || { echo_error "未找到安装包: $zip_file"; return 1; }
+
+    echo_step "正在安装 Beyond Compare 4 (macOS) ..."
+    local work
+    work=$(mktemp -d "${TMPDIR:-/tmp}/bcompare.XXXXXX") || { echo_error "无法创建临时目录"; return 1; }
+
+    echo_info "解压: $zip_file"
+    unzip -q -o "$zip_file" -d "$work" || { echo_error "解压失败"; return 1; }
+
+    local dmg app_src volume_path mount_output
+    dmg=$(find "$work" -maxdepth 1 -iname "*.dmg" | head -1)
+
+    # 官方 macOS 包（BCompareOSX-<ver>.zip）直接包含 Beyond Compare.app，无 dmg。
+    # 兼容两种形态：zip 内有 dmg（挂载后取 .app）或 zip 内直接是 .app。
+    if [ -z "$dmg" ] || [ ! -f "$dmg" ]; then
+        app_src=$(find "$work" -maxdepth 1 -iname "*.app" -type d | head -1)
+        if [ -z "$app_src" ] || [ ! -d "$app_src" ]; then
+            echo_error "未在安装包中找到 dmg 或 .app: $zip_file"
+            return 1
+        fi
+        echo_info "安装包为目录形式（.app），直接安装"
+        if ! install_app_to_applications "$app_src"; then
+            echo_error "安装到 /Applications 失败"
+            return 1
+        fi
+        echo_info "Beyond Compare 4 安装完成: /Applications/Beyond Compare.app"
+        return 0
+    fi
+
+    mount_output=$(hdiutil attach "$dmg" -nobrowse -readonly) || { echo_error "挂载 dmg 失败"; return 1; }
+    volume_path=$(printf '%s\n' "$mount_output" | grep -o "/Volumes/.*" | tail -1)
+    if [ -z "$volume_path" ] || [ ! -d "$volume_path" ]; then
+        echo_error "无法找到挂载卷"
+        hdiutil detach "$dmg" 2>/dev/null || true
+        return 1
+    fi
+
+    local app_src
+    app_src=$(find "$volume_path" -maxdepth 1 -iname "BCompare*.app" | head -1)
+    if [ -z "$app_src" ] || [ ! -d "$app_src" ]; then
+        echo_error "挂载卷中未找到 BCompare.app: $volume_path"
+        hdiutil detach "$volume_path" 2>/dev/null || true
+        return 1
+    fi
+
+    echo_info "复制 $(basename "$app_src") -> /Applications ..."
+    if ! install_app_to_applications "$app_src"; then
+        hdiutil detach "$volume_path" 2>/dev/null || true
+        echo_error "安装到 /Applications 失败"
+        return 1
+    fi
+
+    hdiutil detach "$volume_path" 2>/dev/null || true
+    echo_info "Beyond Compare 4 安装完成: /Applications/Beyond Compare.app"
+}
+
+# 把 .app 安全安装进 /Applications：只删精确匹配的 Beyond Compare 包，防止误删其他 app
+install_app_to_applications() {
+    local src="$1"
+    local old="/Applications/Beyond Compare.app"
+    if [ -d "$old" ]; then
+        echo_info "先退出正在运行的 Beyond Compare ..."
+        osascript -e 'tell application "Beyond Compare" to quit' 2>/dev/null || true
+        sleep 1
+        echo_info "替换旧版本: $old"
+        if ! mv "$old" "${TMPDIR:-/tmp}/BeyondCompare.old.$$" 2>/dev/null; then
+            if ! exec_sudo mv "$old" "${TMPDIR:-/tmp}/BeyondCompare.old.$$"; then
+                echo_error "无法移除旧版本: $old"
+                return 1
+            fi
+        fi
+    fi
+    if ! cp -R "$src" /Applications/ 2>/dev/null; then
+        if ! exec_sudo cp -R "$src" /Applications/; then
+            echo_error "复制应用失败: $src"
+            return 1
+        fi
+    fi
+    # 清理旧版本副本
+    rm -rf "${TMPDIR:-/tmp}/BeyondCompare.old.$$" 2>/dev/null || true
+    return 0
+}
+
+# 通用下载函数（支持断点续传；存在 adl 时优先调用，回退 aria2c / wget / curl）
 download_file() {
     local url="$1"
     local dest="$2"
-    
+
     if [ -z "$url" ] || [ -z "$dest" ]; then
         echo_error "下载函数需要URL和目标路径参数"
         return 1
     fi
-    
+
     # 确保下载目录存在
     local download_dir=$(dirname "$dest")
     if [ ! -d "$download_dir" ]; then
         mkdir -p "$download_dir"
     fi
-    
+
     echo_info "正在下载 $url 到 $dest"
-    
-    if command -v aria2c >/dev/null 2>&1; then
+
+    if command -v adl >/dev/null 2>&1 && adl --help >/dev/null 2>&1; then
+        # adl（Aria2 Downloader）：自带代理自动探测与断点续传
+        echo_info "使用 adl 加速下载..."
+        if adl "$url" "$download_dir" "$(basename "$dest")"; then
+            return 0
+        else
+            echo_warn "adl 下载失败，回退到其他下载器"
+        fi
+    elif command -v aria2c >/dev/null 2>&1; then
         # 使用 aria2c 进行多线程下载
         echo_info "使用 aria2c 进行多线程下载..."
         aria2c -x 8 -s 8 -c --file-allocation=none -o "$(basename "$dest")" -d "$download_dir" "$url"
@@ -154,17 +284,17 @@ download_bcompare() {
     fi
     
     if [ "$os_type" = "macos" ]; then
-        # macOS 下载
+        # macOS 下载 + 自动安装
         local download_url="$MACOS_DOWNLOAD_URL"
         local zip_file="$DOWNLOAD_DIR/$MACOS_FILE_NAME"
-        
+
         # 检查文件是否已存在且完整
         if check_file_exists "$zip_file"; then
             echo_info "文件已存在且完整: $zip_file"
         else
             echo_info "下载地址: $download_url"
             echo_info "下载到: $zip_file"
-            
+
             if download_file "$download_url" "$zip_file"; then
                 echo_info "下载完成: $zip_file"
             else
@@ -172,9 +302,17 @@ download_bcompare() {
                 exit 1
             fi
         fi
-        
-        echo_info "下载完成后请手动安装 Beyond Compare 4。"
-        echo_info "通常解压后将 BCompare.app 移动到应用程序文件夹即可。"
+
+        # macOS：自动安装（解压 dmg -> 挂载 -> 拷 .app 到 /Applications）
+        if ! install_bcompare_macos "$zip_file"; then
+            echo_error "Beyond Compare 4 安装失败"
+            exit 1
+        fi
+        # 默认安装成功即删除安装包；KEEP_PACKAGE=1 时保留
+        if [ "$KEEP_PACKAGE" != "1" ]; then
+            safe_rm_file "$zip_file"
+        fi
+        return 0
     else
         # Linux 下载 (默认)
         local download_url="$LINUX_DOWNLOAD_URL"
@@ -209,6 +347,17 @@ download_bcompare() {
 find_bcompare_dir() {
     local dir=""
     
+    # macOS：Beyond Compare.app 内的可执行文件目录
+    local os_type=$(detect_os)
+    if [ "$os_type" = "macos" ] && [ -d "/Applications/Beyond Compare.app" ]; then
+        local bcompare_exe
+        bcompare_exe=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "/Applications/Beyond Compare.app/Contents/Info.plist" 2>/dev/null)
+        if [ -n "$bcompare_exe" ] && [ -f "/Applications/Beyond Compare.app/Contents/MacOS/$bcompare_exe" ]; then
+            echo "/Applications/Beyond Compare.app/Contents/MacOS"
+            return 0
+        fi
+    fi
+
     # 常见安装路径
     local paths=(
         "/usr/lib/beyondcompare"
@@ -322,7 +471,34 @@ main() {
         uninstall_bcompare
         exit 0
     fi
-    
+
+    # 安装状态检测：--check / -c
+    if [ "$1" = "--check" ] || [ "$1" = "-c" ]; then
+        if check_bcompare_installed; then
+            echo_info "Beyond Compare 已安装: /Applications/Beyond Compare.app"
+            exit 0
+        else
+            echo_error "Beyond Compare 未安装（或可执行文件缺失，可能为断裂符号链接）"
+            exit 1
+        fi
+    fi
+
+    # 显式安装：--install / -i，未安装时自动下载并安装
+    if [ "$1" = "--install" ] || [ "$1" = "-i" ] || [ "$1" = "--check-install" ]; then
+        if check_bcompare_installed; then
+            echo_info "Beyond Compare 已安装: /Applications/Beyond Compare.app"
+            # 已安装则无需下载，直接进入破解流程
+        else
+            echo_warn "Beyond Compare 未安装，开始下载并自动安装 ..."
+            download_bcompare
+            if ! check_bcompare_installed; then
+                echo_error "自动安装后仍未检测到 Beyond Compare，请手动检查"
+                exit 1
+            fi
+        fi
+        # 继续进入破解流程（下面原有的步骤1）
+    fi
+
     # 步骤1: 修改BCompare文件
     echo_step "步骤1: 修改BCompare文件"
     
@@ -336,15 +512,7 @@ main() {
     # 查找BCompare文件位置
     dir=""
     if ! dir=$(find_bcompare_dir); then
-        # 如果没找到目录，开始下载
-        local os_type=$(detect_os)
-        if [ "$os_type" = "macos" ]; then
-            echo_info "未找到 Beyond Compare 4，正在下载 (macOS):"
-            echo_info "$MACOS_DOWNLOAD_URL"
-        else
-            echo_info "未找到 Beyond Compare 4，正在下载 (Linux):"
-            echo_info "$LINUX_DOWNLOAD_URL"
-        fi
+        # 如果没找到目录，开始下载并自动安装
         download_bcompare
         # 下载完成后重新查找目录
         if ! dir=$(find_bcompare_dir); then
@@ -353,14 +521,6 @@ main() {
     fi
     
     if [ -z "$dir" ] || [ ! -d "$dir" ]; then
-        local os_type=$(detect_os)
-        if [ "$os_type" = "macos" ]; then
-            echo_info "未找到 Beyond Compare 4，正在下载 (macOS):"
-            echo_info "$MACOS_DOWNLOAD_URL"
-        else
-            echo_info "未找到 Beyond Compare 4，正在下载 (Linux):"
-            echo_info "$LINUX_DOWNLOAD_URL"
-        fi
         download_bcompare
         # 重新查找目录
         if ! dir=$(find_bcompare_dir); then
@@ -444,18 +604,21 @@ show_help() {
     echo "选项:"
     echo "  -h, --help        显示帮助信息"
     echo "  -u, --uninstall   卸载 Beyond Compare"
+    echo "  -i, --install     安装 Beyond Compare（未安装时自动下载并安装；已安装则直接破解）"
+    echo "  -c, --check       检测 Beyond Compare 是否已安装（exit 0=已装, 1=未装）"
     echo ""
     echo "说明:"
-    echo "  此脚本用于移除 Beyond Compare 4 的试用限制"
+    echo "  此脚本用于安装 + 移除 Beyond Compare 4 的试用限制"
     echo "  脚本将按照以下步骤执行："
+    echo "    0. 未安装时自动下载并安装（macOS: 解压 dmg -> 挂载 -> 拷 .app；Linux: dpkg）"
     echo "    1. 修改 BCompare 文件"
     echo "    2. 创建密钥文件 ~/.config/bcompare/BC4Key.txt"
     echo "    3. 复制密钥文件到系统目录 /etc/bcompare/"
     echo ""
     echo "注意:"
     echo "  1. 此脚本可能需要 sudo 权限"
-    echo "  2. 请确保已安装 Beyond Compare 4"
-    echo "  3. 脚本会自动备份原始文件"
+    echo "  2. 安装包默认下载到 ~/Downloads 并在安装成功后删除（设置 KEEP_PACKAGE=1 可保留）"
+    echo "  3. 下载优先使用 adl（存在时），回退 aria2c / wget / curl"
     echo "  4. 完成后需要在软件界面输入密钥"
     echo "  5. 如需卸载软件，使用 --uninstall 选项"
 }
@@ -467,6 +630,12 @@ case "$1" in
         exit 0
         ;;
     -u|--uninstall)
+        main "$1"
+        ;;
+    -c|--check)
+        main "$1"
+        ;;
+    -i|--install)
         main "$1"
         ;;
     "")

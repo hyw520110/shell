@@ -1,0 +1,124 @@
+{
+  "id": "zcode",
+  "name": "ZCode",
+  "description": "智谱AI 推出的 AI 编程助手桌面客户端，集成自研 ZCode Agent 内核，深度适配 GLM-5.2，支持 Anthropic / OpenAI 协议自定义供应商（含 token173 等第三方 API 中转）。支持规划、编码、评审与上线全流程。",
+  "category": "ai-ide",
+  "sort_order": 15,
+  "sort_key": "ZCode",
+  "tags": [
+    "AI编程",
+    "IDE",
+    "Claude",
+    "Codex",
+    "Gemini",
+    "智谱AI",
+    "GLM-5.2",
+    "MCP",
+    "多引擎",
+    "第三方API"
+  ],
+  "scenarios": [
+    "coding",
+    "code-review",
+    "agent-workbench",
+    "productivity"
+  ],
+  "experimental": false,
+  "optional": false,
+  "install": {
+    "methods": [
+      {
+        "name": "单一脚本自动安装 (macOS) — scripts/zcode.sh",
+        "type": "bash",
+        "command": "bash scripts/zcode.sh install",
+        "check": "ls -d /Applications/ZCode*.app &>/dev/null",
+        "uninstall": [
+          "echo '正在卸载 ZCode...'",
+          "bash scripts/zcode.sh uninstall"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "bash scripts/zcode.sh update",
+    "check": "ls -d /Applications/ZCode*.app &>/dev/null"
+  },
+  "config": {
+    "path": "$HOME/Library/Application Support/ZCode/",
+    "operations": {
+      "view": "bash scripts/zcode.sh config view",
+      "edit": "bash scripts/zcode.sh config edit",
+      "reset": "bash scripts/zcode.sh config reset"
+    }
+  },
+  "commands": {
+    "start": "open -a \"$(ls -d /Applications/ZCode*.app | head -1)\"",
+    "version": "bash scripts/zcode.sh version",
+    "settings": "open -a \"$(ls -d /Applications/ZCode*.app | head -1)\" && echo '请在 ZCode → 设置（⌘,）中管理配置'",
+    "check-latest": "bash scripts/zcode.sh latest --json",
+    "status": "bash scripts/zcode.sh status"
+  },
+  "status_check": [
+    {
+      "name": "应用状态",
+      "command": "bash scripts/zcode.sh status"
+    },
+    {
+      "name": "配置目录",
+      "command": "[ -d \"$HOME/Library/Application Support/ZCode/\" ] && echo '已初始化' || echo '未初始化（首次启动后创建）'"
+    }
+  ],
+  "references": {
+    "homepage": "https://zcode.z.ai",
+    "docs": "https://zcode.z.ai/cn/docs/install",
+    "config_docs": "https://zcode.z.ai/cn/docs/configuration",
+    "changelog": "https://zcode.z.ai/changelog",
+    "mcp_docs": "https://zcode.z.ai/newdocs/mcp-services",
+    "version_script": "ai/scripts/zcode.sh",
+    "shared_mcp_servers": [
+      "filesystem",
+      "github",
+      "fetch",
+      "brave-search",
+      "sequential-thinking",
+      "playwright"
+    ],
+    "shared_skills": []
+  },
+  "third_party_api": {
+    "supported": true,
+    "protocols": [
+      "Anthropic",
+      "OpenAI 兼容"
+    ],
+    "providers": [
+      {
+        "name": "token173",
+        "base_url": "https://token173.com/v1",
+        "protocol": "OpenAI",
+        "note": "一个 API Key 调用多模型 (GLM-5.2/Claude/GPT 等)"
+      },
+      {
+        "name": "DeepSeek",
+        "base_url": "https://api.deepseek.com/v1",
+        "protocol": "OpenAI",
+        "note": "DeepSeek 开放平台"
+      },
+      {
+        "name": "OpenRouter",
+        "base_url": "https://openrouter.ai/api",
+        "protocol": "OpenAI",
+        "note": "多模型聚合平台"
+      },
+      {
+        "name": "自定义",
+        "base_url": "任意 Anthropic/OpenAI 兼容地址",
+        "protocol": "通用",
+        "note": "设置 → 模型设置 → 添加供应商"
+      }
+    ],
+    "config_steps": "设置 → 模型设置 → 添加供应商 → 填写名称/Base URL/API Key → 自动加载模型列表 → 启用"
+  },
+  "notes": "ZCode 3.x 是智谱AI 推出的多引擎 AI 编程助手桌面客户端（基于 Electron），深度适配 GLM-5.2。安装/更新/检测最新版本/配置/卸载全部集中在单一脚本 ai/scripts/zcode.sh，zcode.json 仅为薄配置。脚本内置 safe_rm_zcode_app 防护：目标路径非空、basename 非空且不以 / 结尾、父目录必须为 /Applications、basename 必须以 ZCode 开头才允许删除，防止变量为空时 rm -rf 误删 /Applications 下的其他软件。版本检测通过 CDN 探测 (cdn-zcode.z.ai/zcode/electron/releases/<ver>/<platform>/ZCode-<ver>-<arch>.dmg) 自动获取最新版本。支持三种接入方式: 1) BigModel 直连 (智谱开放平台) 2) Z.ai 直连 (海外) 3) 自定义供应商 (兼容 Anthropic/OpenAI 协议，如 token173)。ZCode 通过 GUI 管理 MCP 配置（设置 → MCP 服务器），配置存储在 ~/Library/Application Support/ZCode/。支持 macOS（Apple Silicon + Intel）、Windows、Linux。"
+}

@@ -1,0 +1,124 @@
+{
+  "id": "openharness",
+  "name": "OpenHarness",
+  "description": "开源轻量级 Agent 基础设施，支持工具使用、技能、记忆和多智能体协调",
+  "category": "ai-agent",
+  "tags": [
+    "ai",
+    "agent",
+    "python",
+    "bash"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "官方安装脚本",
+        "type": "bash",
+        "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-openharness.XXXXXX\") && curl -fsSL -o \"$tmp\" https://raw.githubusercontent.com/HKUDS/OpenHarness/main/scripts/install.sh && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
+        "check": true
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-openharness.XXXXXX\") && curl -fsSL -o \"$tmp\" https://raw.githubusercontent.com/HKUDS/OpenHarness/main/scripts/install.sh && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
+    "check": true
+  },
+  "config": {
+    "path": "$HOME/.openharness/settings.json",
+    "oh_command": "$HOME/.openharness-venv/bin/oh",
+    "operations": {
+      "view": "cat $HOME/.openharness/settings.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.openharness/settings.json",
+      "reset": [
+        "cp -r $HOME/.openharness/settings.json $HOME/.openharness/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.openharness/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "oh",
+    "version": "oh --version 2>/dev/null || (jq -r '.config.oh_command // \"oh\"' '${SCRIPT_DIR}/conf/tools/openharness.json' 2>/dev/null | sed 's|$HOME|'$HOME'|g' | xargs -I{} {} --version 2>/dev/null) || echo '未安装'",
+    "mcp_list": "oh mcp list 2>/dev/null || (jq -r '.config.oh_command // \"oh\"' '${SCRIPT_DIR}/conf/tools/openharness.json' 2>/dev/null | sed 's|$HOME|'$HOME'|g' | xargs -I{} {} mcp list 2>/dev/null) || echo '无法获取 MCP 列表'",
+    "mcp_add": "oh mcp add",
+    "mcp_remove": "oh mcp remove"
+  },
+  "status_check": [
+    {
+      "name": "检查 oh 命令路径",
+      "command": "TOOL_FILE='${SCRIPT_DIR}/conf/tools/openharness.json'; OH_CMD=$(jq -r '.config.oh_command // empty' \"$TOOL_FILE\" 2>/dev/null | sed 's|\\$HOME|$HOME|g'); if [[ -n \"$OH_CMD\" && -x \"$OH_CMD\" ]]; then echo \"JSON配置: $OH_CMD\"; elif command -v oh >/dev/null 2>&1; then echo 'PATH中找到: '$(command -v oh); else echo '未找到 oh 命令'; fi"
+    },
+    {
+      "name": "检查版本",
+      "command": "oh --version 2>/dev/null || (jq -r '.config.oh_command // empty' '${SCRIPT_DIR}/conf/tools/openharness.json' 2>/dev/null | sed 's|\\$HOME|$HOME|g' | xargs -I{} {} --version 2>/dev/null) || echo '未安装'"
+    },
+    {
+      "name": "检查配置目录",
+      "command": "ls -la $HOME/.openharness/ 2>/dev/null || echo '配置目录不存在'"
+    },
+    {
+      "name": "检查 Provider 配置",
+      "command": "oh provider list 2>/dev/null || (jq -r '.config.oh_command // empty' '${SCRIPT_DIR}/conf/tools/openharness.json' 2>/dev/null | sed 's|\\$HOME|$HOME|g' | xargs -I{} {} provider list 2>/dev/null) || echo '无法获取 provider 列表'"
+    },
+    {
+      "name": "检查认证状态",
+      "command": "oh auth status 2>/dev/null || (jq -r '.config.oh_command // empty' '${SCRIPT_DIR}/conf/tools/openharness.json' 2>/dev/null | sed 's|\\$HOME|$HOME|g' | xargs -I{} {} auth status 2>/dev/null) || echo '未配置认证'"
+    }
+  ],
+  "setup_guide": {
+    "manual": "运行 'oh setup' 进行交互式配置",
+    "env_auto": "设置环境变量自动配置: ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY",
+    "workflows": [
+      {
+        "name": "Anthropic-Compatible API",
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "example": "export ANTHROPIC_API_KEY=your_key && oh setup"
+      },
+      {
+        "name": "OpenAI-Compatible API",
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "example": "export OPENAI_API_KEY=your_key && oh setup"
+      },
+      {
+        "name": "Kimi (Moonshot)",
+        "env": [
+          "ANTHROPIC_BASE_URL=https://api.moonshot.cn/anthropic",
+          "ANTHROPIC_API_KEY"
+        ],
+        "example": "export ANTHROPIC_BASE_URL=https://api.moonshot.cn/anthropic && export ANTHROPIC_API_KEY=your_key && oh"
+      },
+      {
+        "name": "GitHub Copilot",
+        "command": "oh auth copilot-login",
+        "note": "使用 OAuth 设备流登录，无需 API Key"
+      }
+    ]
+  },
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "需要 Python 3.10+。安装后需运行 'oh setup' 配置 Provider。支持 Claude, OpenAI, Kimi, DeepSeek, GitHub Copilot 等。注意: GLM (智谱) 不支持 Anthropic-compatible 模式，请使用 OpenAI-compatible 模式配置。",
+  "post_install": [
+    {
+      "description": "显示配置指引",
+      "command": "echo '\n========================================' && echo 'OpenHarness 安装完成！' && echo '========================================' && echo '' && echo 'oh 命令路径: ${config.oh_command}' && echo '' && echo '接下来需要配置 LLM Provider:' && echo '' && echo '  1. 交互式配置 (推荐):' && echo '     oh setup' && echo '' && echo '  2. 使用环境变量快速启动:' && echo '     export ANTHROPIC_API_KEY=your_key' && echo '     oh' && echo '' && echo '  3. 查看已配置的 Provider:' && echo '     oh provider list' && echo '' && echo '支持的 Provider: Claude, OpenAI, Kimi, DeepSeek, GitHub Copilot 等' && echo '' && echo '如果 oh 命令不在默认路径，请修改配置文件:' && echo '  ${SCRIPT_DIR}/conf/tools/openharness.json' && echo '  修改 config.oh_command 字段' && echo '========================================\n'"
+    }
+  ],
+  "post_uninstall": [
+    "echo '正在卸载 OpenHarness...'",
+    "echo '注意: 配置文件保留在 ~/.openharness，如需彻底清理请选择[彻底卸载]'"
+  ],
+  "uninstall_extended": [
+    {
+      "description": "彻底清理所有 OpenHarness 文件和配置",
+      "command": "echo '=== 开始彻底清理 OpenHarness ===' && if rm -rf $HOME/.openharness 2>/dev/null; then echo '✓ 删除配置目录 ~/.openharness'; else echo '✗ 配置目录不存在'; fi && if rm -rf $HOME/.openharness-venv 2>/dev/null; then echo '✓ 删除虚拟环境 ~/.openharness-venv'; else echo '✗ 虚拟环境不存在'; fi && if rm -rf $HOME/.ohmo 2>/dev/null; then echo '✓ 删除 ohmo 目录 ~/.ohmo'; else echo '✗ ohmo 目录不存在'; fi && echo '=== OpenHarness 彻底清理完成 ==='"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "id": "example-skill",
+  "name": "Example Skill",
+  "description": "说明这个 Skill 解决什么问题、何时使用、预期输出是什么。",
+  "category": "coding",
+  "scenarios": [
+    "coding"
+  ],
+  "tags": [
+    "代码质量"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false,
+  "homepage": "https://github.com/example/example-skill",
+  "repository": "https://github.com/example/example-skill",
+  "prompts": {
+    "default": "使用该 Skill 完成 {task}，输出可验证的结果。"
+  },
+  "dependencies": {
+    "mcp_servers": [],
+    "system_commands": []
+  },
+  "install_check": "true",
+  "instructions": {
+    "workflow": "描述使用流程、检查点和交付要求。"
+  },
+  "tips": "补充使用建议。",
+  "notes": "新增 Skill 时必须填写 scenarios/tags/homepage 或 repository。依赖 MCP 时写入 dependencies.mcp_servers，ai-hub.sh 会自动合并配置；若依赖 MCP 缺少 requires_env 声明的环境变量，本次会跳过该 MCP 并提示。",
+  "recommended_scenarios": "描述此工具最擅长的业务场景",
+  "unsuitable_scenarios": "描述此工具不擅长或应当避免的场景"
+}

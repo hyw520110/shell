@@ -1,0 +1,60 @@
+{
+  "id": "token-savior",
+  "name": "Token Savior",
+  "description": "代码结构导航、持久记忆和 Bash 输出压缩 MCP/CLI，降低大型代码库任务的活跃上下文成本。",
+  "category": "ai-optimizer",
+  "sort_order": 300,
+  "sort_key": "Token Savior",
+  "tags": [
+    "上下文优化",
+    "Token优化",
+    "代码分析",
+    "MCP",
+    "记忆"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "Pip 安装 MCP 版",
+        "type": "pip",
+        "command": "pip3 install 'token-savior-recall[mcp]'",
+        "check": "command -v token-savior",
+        "uninstall": [
+          "pip3 uninstall -y token-savior-recall"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "pip3 install -U 'token-savior-recall[mcp]'",
+    "check": "command -v token-savior"
+  },
+  "commands": {
+    "start": "token-savior",
+    "init-claude": "ts init --agent claude --dry-run",
+    "init-codex": "ts init --agent codex --dry-run",
+    "dashboard": "token-savior-dashboard"
+  },
+  "status_check": [
+    {
+      "name": "检查 Token Savior",
+      "command": "token-savior --help >/dev/null 2>&1 && echo '已安装' || echo '未安装'"
+    },
+    {
+      "name": "检查 Python",
+      "command": "python3 --version 2>/dev/null || echo 'Python3 未安装'"
+    }
+  ],
+  "references": {
+    "homepage": "https://mibayy.github.io/token-savior/",
+    "github": "https://github.com/Mibayy/token-savior",
+    "shared_mcp_servers": [
+      "token-savior"
+    ],
+    "shared_skills": [
+      "token-savior"
+    ]
+  },
+  "notes": "默认 init 命令使用 --dry-run，避免自动改写 Agent hooks。确认后再手动执行 ts init --agent <agent> --yes。"
+}

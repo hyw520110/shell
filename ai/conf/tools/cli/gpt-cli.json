@@ -1,0 +1,81 @@
+{
+  "id": "gpt-cli",
+  "name": "gpt cli",
+  "description": "gpt-cli - 简洁高效的 OpenAI ChatGPT 命令行客户端",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "npm",
+    "openai",
+    "chatgpt"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "默认安装",
+        "type": "npm",
+        "command": "npm install -g gpt-cli --registry {{npm_registry}}",
+        "check": "npm list -g gpt-cli --depth=0",
+        "uninstall": [
+          "npm uninstall -g gpt-cli"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g gpt-cli --registry {{npm_registry}}",
+    "check": "npm list -g gpt-cli --depth=0"
+  },
+  "post_install": [
+    {
+      "description": "检查 OPEN_AI_KEY 环境变量",
+      "command": "if [ -z \"$OPEN_AI_KEY\" ]; then echo '\\n========================================' && echo '警告: OPEN_AI_KEY 环境变量未设置!' && echo '========================================' && echo '' && echo '请先设置 OpenAI API Key:' && echo '  export OPEN_AI_KEY=\"your-api-key\"' && echo '' && echo '建议添加到 ~/.zshrc 或 ~/.bashrc:' && echo '  echo \"export OPEN_AI_KEY=\\\"your-api-key\\\"\" >> ~/.zshrc' && echo '  source ~/.zshrc' && echo '' && echo '获取 API Key: https://platform.openai.com/api-keys' && echo '========================================\\n'; else echo 'OPEN_AI_KEY 已设置'; fi"
+    }
+  ],
+  "post_uninstall": [
+    "echo 'gpt-cli 已卸载'",
+    "echo '提示: OPEN_AI_KEY 环境变量仍保留在 shell 配置文件中'"
+  ],
+  "config": {
+    "path": "$HOME/.gpt-cli/config.json",
+    "operations": {
+      "view": "cat $HOME/.gpt-cli/config.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.gpt-cli/config.json",
+      "reset": [
+        "cp $HOME/.gpt-cli/config.json $HOME/.gpt-cli/config.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.gpt-cli/config.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "gpt-cli",
+    "version": "gpt-cli --version",
+    "check_key": "echo $OPEN_AI_KEY | head -c 10 && echo '...' || echo 'OPEN_AI_KEY 未设置'"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "gpt-cli --version 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.gpt-cli/config.json 2>/dev/null || echo '配置目录不存在'"
+    },
+    {
+      "name": "检查 OPEN_AI_KEY",
+      "command": "if [ -n \"$OPEN_AI_KEY\" ]; then echo 'OPEN_AI_KEY 已设置'; else echo 'OPEN_AI_KEY 未设置 - 请运行: export OPEN_AI_KEY=\"your-key\"'; fi"
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "需要设置 OPEN_AI_KEY 环境变量。获取 API Key: https://platform.openai.com/api-keys",
+  "required_env": ["OPEN_AI_KEY"],
+  "links": {
+    "api_key": "https://platform.openai.com/api-keys"
+  }
+}

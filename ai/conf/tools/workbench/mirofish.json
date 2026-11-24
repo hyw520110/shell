@@ -1,0 +1,72 @@
+{
+  "id": "mirofish",
+  "name": "MiroFish",
+  "description": "面向预测市场和情景推演的多智能体模拟应用，支持通过多个 AI Agent 对问题进行研究、辩论和概率预测",
+  "category": "ai-workbench",
+  "sort_order": 2450,
+  "sort_key": "MiroFish",
+  "tags": ["agent", "forecasting", "simulation", "docker", "multi-agent"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "自动部署 (Docker Compose 优先，源码兜底)",
+        "type": "bash",
+        "command": "bash workbench/mirofish/startup.sh install",
+        "check": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:3000 >/dev/null 2>&1 || curl -fsS --connect-timeout 2 --max-time 5 http://localhost:5001 >/dev/null 2>&1 || [ -d \"$HOME/MiroFish/.git\" ] || (command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q '^mirofish$')",
+        "uninstall": [
+          "bash workbench/mirofish/startup.sh uninstall"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash workbench/mirofish/startup.sh update",
+    "check": "bash workbench/mirofish/startup.sh status"
+  },
+
+  "config": {
+    "path": "$HOME/.mirofish-aihub/.env",
+    "operations": {
+      "view": "cat $HOME/.mirofish-aihub/.env 2>/dev/null || echo '配置文件不存在；安装或启动后自动生成'",
+      "edit": "${EDITOR:-vim} $HOME/.mirofish-aihub/.env"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "运行状态",
+      "command": "bash workbench/mirofish/startup.sh status"
+    },
+    {
+      "name": "前端服务",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:3000 >/dev/null && echo '前端正常' || echo '前端未响应'"
+    },
+    {
+      "name": "后端服务",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:5001 >/dev/null && echo '后端正常' || echo '后端未响应'"
+    }
+  ],
+
+  "commands": {
+    "start": "bash workbench/mirofish/startup.sh start",
+    "stop": "bash workbench/mirofish/startup.sh stop",
+    "status": "bash workbench/mirofish/startup.sh status",
+    "logs": "bash workbench/mirofish/startup.sh logs",
+    "doctor": "bash workbench/mirofish/startup.sh doctor",
+    "bettafish_start": "bash workbench/bettafish/startup.sh start",
+    "bettafish_status": "bash workbench/bettafish/startup.sh status",
+    "bettafish_reports": "bash workbench/bettafish/startup.sh reports",
+    "bettafish_import_guide": "bash workbench/bettafish/startup.sh mirofish-guide"
+  },
+
+  "prompts": {
+    "configure_models": "引导我为 MiroFish 配置 OpenAI、Anthropic、Gemini 或 DeepSeek 等模型 Provider 的环境变量",
+    "run_forecast": "说明如何在 MiroFish 中创建一个预测问题，并让多智能体完成研究和预测",
+    "debug_service": "检查 MiroFish 的 Docker/源码运行状态、端口占用、日志和模型配置"
+  },
+
+  "notes": "MiroFish 默认前端端口 3000、后端端口 5001。集成脚本优先使用 Docker Compose；Docker 不可用时尝试源码安装，需要 Node.js 18+、Python 3.11-3.12 和 uv。项目主页: https://github.com/666ghj/MiroFish"
+}

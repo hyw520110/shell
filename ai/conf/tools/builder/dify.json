@@ -1,0 +1,62 @@
+{
+  "id": "dify",
+  "name": "Dify",
+  "description": "开源的 LLM 应用开发平台。提供从 Agent 编排到 RAG 检索、可视化的 Prompt 编排工作台。",
+  "category": "ai-builder",
+  "sort_order": 2460,
+  "sort_key": "Dify",
+  "tags": ["workbench", "llm-ops", "rag", "agent", "docker"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "Docker Compose 部署",
+        "type": "bash",
+        "command": "if [ ! -d \"$HOME/dify\" ]; then git clone https://github.com/langgenius/dify.git \"$HOME/dify\"; fi && cd \"$HOME/dify/docker\" && cp -n .env.example .env && docker compose up -d",
+        "check": "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q 'dify-api'",
+        "uninstall": [
+          "cd \"$HOME/dify/docker\" && docker compose down -v",
+          "rm -rf \"$HOME/dify\""
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "cd \"$HOME/dify\" && git pull && cd docker && docker compose pull && docker compose up -d",
+    "check": "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q 'dify-api'"
+  },
+
+  "config": {
+    "path": "$HOME/dify/docker/.env",
+    "operations": {
+      "view": "cat $HOME/dify/docker/.env 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/dify/docker/.env"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "运行状态",
+      "command": "command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep 'dify' || echo 'Dify 未运行'"
+    },
+    {
+      "name": "主应用",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost >/dev/null && echo '前端响应正常 (端口 80)' || echo '前端未响应'"
+    }
+  ],
+
+  "commands": {
+    "start": "cd \"$HOME/dify/docker\" && docker compose up -d",
+    "stop": "cd \"$HOME/dify/docker\" && docker compose down",
+    "logs": "cd \"$HOME/dify/docker\" && docker compose logs -f"
+  },
+
+  "prompts": {
+    "configure_models": "引导我如何在 Dify 中配置 OpenAI、Anthropic、本地 Ollama 等模型提供商",
+    "create_rag_app": "说明如何使用 Dify 创建一个连接本地知识库的问答助手"
+  },
+
+  "notes": "Dify 默认占用本机的 80 (HTTP) 和 443 (HTTPS) 端口。如果与本地现有 Web 服务冲突，请通过 `编辑配置` 修改 `docker/.env` 中的 `EXPOSE_NGINX_PORT` 和 `EXPOSE_NGINX_SSL_PORT`，然后重启。项目主页: https://github.com/langgenius/dify"
+}

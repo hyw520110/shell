@@ -1,0 +1,54 @@
+{
+  "id": "pilotdeck",
+  "name": "PilotDeck",
+  "description": "面向多项目、长任务和可追踪记忆的开源 Agent OS / 工作台，MCP Native，适合作为实验型 Agent 编排平台。",
+  "category": "ai-agent",
+  "sort_order": 400,
+  "sort_key": "PilotDeck",
+  "tags": [
+    "Agent平台",
+    "Agent工作台",
+    "任务编排",
+    "MCP",
+    "实验"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "源码克隆构建",
+        "type": "bash",
+        "command": "base=\"$HOME/.local/share/ai-hub\"; mkdir -p \"$base\"; if [ -d \"$base/PilotDeck/.git\" ]; then git -C \"$base/PilotDeck\" pull --ff-only; else git clone https://github.com/OpenBMB/PilotDeck.git \"$base/PilotDeck\"; fi; cd \"$base/PilotDeck\" && npm install && npm run build && mkdir -p \"$HOME/.local/bin\" && printf '#!/usr/bin/env bash\\nexec node \"%s\" \"$@\"\\n' \"$base/PilotDeck/dist/src/cli/pilotdeck.js\" > \"$HOME/.local/bin/pilotdeck\" && chmod +x \"$HOME/.local/bin/pilotdeck\"",
+        "check": "test -x $HOME/.local/bin/pilotdeck || command -v pilotdeck",
+        "uninstall": [
+          "rm -f $HOME/.local/bin/pilotdeck",
+          "rm -rf $HOME/.local/share/ai-hub/PilotDeck"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "cd \"$HOME/.local/share/ai-hub/PilotDeck\" && git pull --ff-only && npm install && npm run build",
+    "check": "test -x $HOME/.local/bin/pilotdeck || command -v pilotdeck"
+  },
+  "commands": {
+    "start": "pilotdeck server",
+    "version": "pilotdeck --version",
+    "dev": "cd $HOME/.local/share/ai-hub/PilotDeck && npm run dev"
+  },
+  "status_check": [
+    {
+      "name": "检查 PilotDeck 源码",
+      "command": "test -d $HOME/.local/share/ai-hub/PilotDeck && echo '已克隆' || echo '未安装'"
+    },
+    {
+      "name": "检查 Node.js",
+      "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
+    }
+  ],
+  "references": {
+    "homepage": "https://pilotdeck.openbmb.cn",
+    "github": "https://github.com/OpenBMB/PilotDeck"
+  },
+  "notes": "实验型收录。PilotDeck 当前更像源码工作台，安装会克隆仓库并执行 npm install/build；AGPL-3.0，生产使用前请评估许可证和维护成熟度。"
+}

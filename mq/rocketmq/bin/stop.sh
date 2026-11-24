@@ -71,50 +71,34 @@ parse_arguments() {
 # === 服务控制函数 ===
 stop_rocketmq_processes() {
     log_info "停止 NameServer 和 Broker 进程"
-    
-    if [ "$FORCE_STOP" = true ]; then
-        log_info "强制停止模式启用"
-        
-        # 强制终止所有相关进程
-        local namesrv_pids=$(pgrep -f "mqnamesrv")
-        if [ -n "$namesrv_pids" ]; then
-            log_info "强制停止 NameServer 进程: $namesrv_pids"
-            kill -9 $namesrv_pids 2>/dev/null || true
-        else
-            log_info "未找到运行中的 NameServer 进程"
-        fi
-        
-        local broker_pids=$(pgrep -f "mqbroker")
-        if [ -n "$broker_pids" ]; then
-            log_info "强制停止 Broker 进程: $broker_pids"
-            kill -9 $broker_pids 2>/dev/null || true
-        else
-            log_info "未找到运行中的 Broker 进程"
-        fi
+
+    # mqnamesrv/mqbroker 是外层 shell；实际占用内存和端口的是 Java 主类。
+    # 两者都识别，避免只结束父进程后遗留 4G/8G 的 Java 子进程。
+    local pattern='mqnamesrv|mqbroker|org\.apache\.rocketmq\.namesrv\.NamesrvStartup|org\.apache\.rocketmq\.broker\.BrokerStartup'
+    local pids
+    pids=$(pgrep -f "$pattern" || true)
+
+    if [[ -z "$pids" ]]; then
+        log_info "未找到运行中的 RocketMQ 进程"
+    elif [[ "$FORCE_STOP" == true ]]; then
+        log_info "强制停止 RocketMQ 进程: ${pids//$'\n'/ }"
+        kill -9 $pids 2>/dev/null || true
     else
-        # 使用常规停止方法
-        local namesrv_pids=$(pgrep -f "mqnamesrv")
-        if [ -n "$namesrv_pids" ]; then
-            log_info "停止 NameServer 进程: $namesrv_pids"
-            kill $namesrv_pids 2>/dev/null || true
-        else
-            log_info "未找到运行中的 NameServer 进程"
+        log_info "停止 RocketMQ 进程: ${pids//$'\n'/ }"
+        kill $pids 2>/dev/null || true
+
+        local waited=0
+        while (( waited < 15 )); do
+            pids=$(pgrep -f "$pattern" || true)
+            [[ -z "$pids" ]] && break
+            sleep 1
+            ((waited += 1))
+        done
+
+        if [[ -n "$pids" ]]; then
+            log_warn "进程未在 15 秒内退出，将强制终止: ${pids//$'\n'/ }"
+            kill -9 $pids 2>/dev/null || true
         fi
-        
-        local broker_pids=$(pgrep -f "mqbroker")
-        if [ -n "$broker_pids" ]; then
-            log_info "停止 Broker 进程: $broker_pids"
-            kill $broker_pids 2>/dev/null || true
-        else
-            log_info "未找到运行中的 Broker 进程"
-        fi
-        
-        # 等待进程终止
-        sleep 2
-        
-        # 如果仍有进程运行，则强制终止
-        pgrep -f "mqnamesrv" | xargs -r kill -9 2>/dev/null || true
-        pgrep -f "mqbroker" | xargs -r kill -9 2>/dev/null || true
     fi
     
     # 清理PID文件

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE_DIR=`cd $(dirname $0)/..
+BASE_DIR="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 BIN=$BASE_DIR/bin
 CONF=$BASE_DIR/conf/2m-2s-sync
 CLUSTER='10.15.1.18:9876;10.15.1.19:9876'

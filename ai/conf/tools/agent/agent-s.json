@@ -1,0 +1,93 @@
+{
+  "id": "agent-s",
+  "name": "Agent-S",
+  "description": "Simular AI 开源 GUI / Computer-Use Agent 框架，支持像人一样操作电脑界面，适合桌面自动化和 GUI Agent 实验。",
+  "category": "ai-agent",
+  "tags": [
+    "GUI Agent",
+    "Computer Use",
+    "Automation",
+    "Python",
+    "Agent Framework",
+    "Experimental"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "venv 安装（推荐）",
+        "type": "custom",
+        "command": "python3 -m venv \"$HOME/.agent-s-venv\" && \"$HOME/.agent-s-venv/bin/python\" -m pip install -U pip && \"$HOME/.agent-s-venv/bin/pip\" install -U gui-agents && mkdir -p \"$HOME/.local/bin\" \"$HOME/.agent-s\" && ln -sf \"$HOME/.agent-s-venv/bin/agent_s\" \"$HOME/.local/bin/agent_s\" && if command -v brew >/dev/null 2>&1; then brew list tesseract >/dev/null 2>&1 || brew install tesseract; else echo '未检测到 Homebrew，请按系统环境手动安装 Tesseract OCR。'; fi",
+        "check": "$HOME/.agent-s-venv/bin/agent_s --help >/dev/null 2>&1 || agent_s --help >/dev/null 2>&1",
+        "uninstall": [
+          "rm -rf \"$HOME/.agent-s-venv\"",
+          "rm -f \"$HOME/.local/bin/agent_s\""
+        ]
+      },
+      {
+        "name": "pip 用户级安装",
+        "type": "custom",
+        "command": "python3 -m pip install --user -U gui-agents && if command -v brew >/dev/null 2>&1; then brew list tesseract >/dev/null 2>&1 || brew install tesseract; else echo '未检测到 Homebrew，请按系统环境手动安装 Tesseract OCR。'; fi",
+        "check": "agent_s --help >/dev/null 2>&1 || python3 -m pip show gui-agents >/dev/null 2>&1",
+        "uninstall": [
+          "python3 -m pip uninstall -y gui-agents"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "if [ -x \"$HOME/.agent-s-venv/bin/pip\" ]; then \"$HOME/.agent-s-venv/bin/pip\" install -U gui-agents; else python3 -m pip install --user -U gui-agents; fi",
+    "check": "$HOME/.agent-s-venv/bin/agent_s --help >/dev/null 2>&1 || agent_s --help >/dev/null 2>&1"
+  },
+  "post_install": [
+    {
+      "description": "创建 Agent-S 配置模板",
+      "command": "mkdir -p \"$HOME/.agent-s\" && if [ ! -f \"$HOME/.agent-s/agent-s.env\" ]; then printf '%s\\n' '# Agent-S optional environment template' 'export AGENT_S_ENGINE_PARAMS=\"provider=<provider>,model=<model>,base_url=<base_url>,api_key=<api_key>\"' 'export AGENT_S_GROUNDING_PARAMS=\"provider=<provider>,model=<model>,base_url=<base_url>,api_key=<api_key>\"' '# export AGENT_S_ENABLE_LOCAL_CODE_EXECUTION=1  # 高风险：确认隔离环境后再启用' > \"$HOME/.agent-s/agent-s.env\"; fi"
+    },
+    {
+      "description": "显示运行提示",
+      "command": "echo 'Agent-S 已安装。先编辑 ~/.agent-s/agent-s.env 配置主模型和 grounding model。常用入口: agent_s --help。不要在未隔离的生产目录启用本地代码执行。'"
+    }
+  ],
+  "config": {
+    "path": "$HOME/.agent-s/agent-s.env",
+    "operations": {
+      "view": "cat \"$HOME/.agent-s/agent-s.env\" 2>/dev/null || echo '配置模板不存在，请先安装 Agent-S'",
+      "edit": "${EDITOR:-vim} \"$HOME/.agent-s/agent-s.env\"",
+      "reset": [
+        "mkdir -p \"$HOME/.agent-s\"",
+        "cp \"$HOME/.agent-s/agent-s.env\" \"$HOME/.agent-s/agent-s.env.backup.$(date +%Y%m%d_%H%M%S)\" 2>/dev/null || true",
+        "printf '%s\\n' '# Agent-S optional environment template' 'export AGENT_S_ENGINE_PARAMS=\"provider=<provider>,model=<model>,base_url=<base_url>,api_key=<api_key>\"' 'export AGENT_S_GROUNDING_PARAMS=\"provider=<provider>,model=<model>,base_url=<base_url>,api_key=<api_key>\"' '# export AGENT_S_ENABLE_LOCAL_CODE_EXECUTION=1  # 高风险：确认隔离环境后再启用' > \"$HOME/.agent-s/agent-s.env\""
+      ]
+    }
+  },
+  "commands": {
+    "start": "bash -lc 'if [ -f \"$HOME/.agent-s/agent-s.env\" ]; then . \"$HOME/.agent-s/agent-s.env\"; fi; if command -v agent_s >/dev/null 2>&1; then exec agent_s --help; else exec \"$HOME/.agent-s-venv/bin/agent_s\" --help; fi'",
+    "help": "bash -lc 'if command -v agent_s >/dev/null 2>&1; then exec agent_s --help; else exec \"$HOME/.agent-s-venv/bin/agent_s\" --help; fi'",
+    "config": "${EDITOR:-vim} \"$HOME/.agent-s/agent-s.env\"",
+    "version": "if [ -x \"$HOME/.agent-s-venv/bin/python\" ]; then \"$HOME/.agent-s-venv/bin/python\" -m pip show gui-agents 2>/dev/null | sed -n 's/^Version: //p'; else python3 -m pip show gui-agents 2>/dev/null | sed -n 's/^Version: //p' || echo '未安装'; fi"
+  },
+  "status_check": [
+    {
+      "name": "检查 agent_s 命令",
+      "command": "if command -v agent_s >/dev/null 2>&1; then echo \"PATH中找到: $(command -v agent_s)\"; elif [ -x \"$HOME/.agent-s-venv/bin/agent_s\" ]; then echo \"venv中找到: $HOME/.agent-s-venv/bin/agent_s\"; else echo '未安装'; fi"
+    },
+    {
+      "name": "检查 gui-agents 包",
+      "command": "if [ -x \"$HOME/.agent-s-venv/bin/python\" ]; then \"$HOME/.agent-s-venv/bin/python\" -m pip show gui-agents 2>/dev/null | sed -n 's/^Version: /gui-agents /p'; else python3 -m pip show gui-agents 2>/dev/null | sed -n 's/^Version: /gui-agents /p' || echo '未安装'; fi"
+    },
+    {
+      "name": "检查 Tesseract OCR",
+      "command": "command -v tesseract >/dev/null 2>&1 && tesseract --version | head -1 || echo '未安装 Tesseract OCR'"
+    },
+    {
+      "name": "检查配置模板",
+      "command": "[ -f \"$HOME/.agent-s/agent-s.env\" ] && echo '配置模板已创建' || echo '配置模板不存在'"
+    }
+  ],
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "Agent-S 属于 GUI / Computer-Use Agent 框架，不是 IDE、MCP 或上下文优化工具。运行前需要配置主模型和 grounding model。官方支持启用本地代码执行，但该能力会执行 Python/Bash，建议只在隔离目录或虚拟机中手动开启。"
+}

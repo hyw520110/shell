@@ -1,0 +1,64 @@
+{
+  "id": "omniroute",
+  "name": "OmniRoute",
+  "description": "本地 OpenAI-compatible 多模型路由网关，适合把多个 AI Provider 统一到一个本地 API 入口",
+  "category": "ai-gateway",
+  "sort_order": 2300,
+  "sort_key": "OmniRoute",
+  "tags": ["gateway", "router", "openai-compatible", "provider-routing"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "自动部署 (Docker 优先，npm 兜底)",
+        "type": "bash",
+        "command": "bash gateway/omniroute/startup.sh install",
+        "check": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:20128 >/dev/null 2>&1 || command -v omniroute >/dev/null 2>&1 || (command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q '^omniroute$')",
+        "uninstall": [
+          "bash gateway/omniroute/startup.sh uninstall"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "bash gateway/omniroute/startup.sh update",
+    "check": "bash gateway/omniroute/startup.sh status"
+  },
+
+  "config": {
+    "path": "$HOME/.omniroute-aihub/runtime.env",
+    "operations": {
+      "view": "cat $HOME/.omniroute-aihub/runtime.env 2>/dev/null || echo '配置文件不存在；安装或启动后自动生成'",
+      "edit": "${EDITOR:-vim} $HOME/.omniroute-aihub/runtime.env"
+    }
+  },
+
+  "status_check": [
+    {
+      "name": "运行状态",
+      "command": "bash gateway/omniroute/startup.sh status"
+    },
+    {
+      "name": "服务可用性",
+      "command": "curl -fsS --connect-timeout 2 --max-time 5 http://localhost:20128 >/dev/null && echo '服务正常' || echo '服务未响应'"
+    }
+  ],
+
+  "commands": {
+    "start": "bash gateway/omniroute/startup.sh start",
+    "stop": "bash gateway/omniroute/startup.sh stop",
+    "status": "bash gateway/omniroute/startup.sh status",
+    "logs": "bash gateway/omniroute/startup.sh logs",
+    "doctor": "bash gateway/omniroute/startup.sh doctor"
+  },
+
+  "prompts": {
+    "configure_provider": "引导我在 OmniRoute 中添加 OpenAI-compatible Provider，并配置路由策略",
+    "use_with_clients": "说明如何让 Codex、Claude Code、Qwen Code 或 Aider 使用 OmniRoute 的本地 API",
+    "debug_gateway": "检查 OmniRoute 本地网关的运行状态、端口占用和日志"
+  },
+
+  "notes": "OmniRoute 默认访问地址为 http://localhost:20128。集成脚本优先使用 Docker 部署，Docker 不可用时使用 npm 全局安装。项目主页: https://github.com/diegosouzapw/OmniRoute"
+}

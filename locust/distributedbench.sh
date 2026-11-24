@@ -1,394 +1,504 @@
 #!/bin/bash
 
-# 确保脚本运行时的语言环境为中文
-export LANG="zh_CN.UTF-8"
-export LC_ALL="zh_CN.UTF-8"
+# 增强健壮性：遇到错误立即退出、未定义变量报错、管道失败报错
+set -euo pipefail
 
-# 推荐python版本
-PYTHON_VERSION="3.9.7"
-# python最低版本
-MIN_PYTHON_VERSION="3.7.0"
-# 虚拟环境名
-VENV_NAME="locust-env"
-# 默认测试目标
-DEFAULT_HOST="https://www.baidu.com"
-# 默认总用户数
-DEFAULT_USERS=100
-DEFAULT_SPAWN_RATE=100
-# 默认持续时间
-DEFAULT_RUN_TIME="15m"  
-# 默认报告保存目录
-DEFAULT_REPORT_DIR="$(pwd)/report"
-# 分布式测试master
-MASTER_HOST="localhost"
-# 持续迭代步长，默认不迭代
-DEFAULT_STEP=0  
-# 最大平均响应时间 (ms)
-MAX_AVERAGE_RESPONSE_TIME=2000  
- # 最大错误率 (5%)
-MAX_ERROR_RATE=0.05      
+# 获取脚本所在目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 设置颜色变量用于美化输出
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-NC='\033[0m' # No Color
+# 获取当前 shell 进程组 ID，用于清理所有子进程
+MAIN_PID=$$
 
-# 函数用于比较两个 Python 版本号
-python_version_compare() {
-    [[ "$1" == "$(echo -e "$1\n$2" | sort -V | tail -n1)" ]]
-}
- 
-# 检测并安装 pyenv 和 pyenv-virtualenv
-install_pyenv_and_virtualenv() {
-    if ! command -v pyenv &> /dev/null; then
-        echo -e "${RED}未找到pyenv。正在安装...${NC}"
-        curl https://pyenv.run | bash > /dev/null 2>&1
-        export PATH="$HOME/.pyenv/bin:$PATH"
-        eval "$(pyenv init --path)"
-        eval "$(pyenv init -)"
-    fi
+# ==============================================================================
+# 1. 核心安全边界配置 (Global Constants)
+# ==============================================================================
+readonly MIN_USERS=1                # 最少 1 个用户
+readonly MAX_USERS_DEFAULT=50000    # 单机/集群安全上限 5万
+readonly MIN_DURATION=10            # 最短压测 10 秒
+readonly MAX_DURATION=3600          # 最长压测 1 小时
+readonly MIN_RATE=1                 # 最慢爬坡 1/s
+readonly MAX_RATE=500               # 最快爬坡 500/s
+readonly MIN_MULT=1.1               # 最小递进倍率 1.1x
+readonly MAX_MULT=5.0               # 最大递进倍率 5.0x
+readonly MIN_MEM_CRITICAL=50         # 内存低于 50MB 强制退出 (极端情况)
+readonly MIN_MEM_WARN=1024          # 内存低于 1GB 发出警告 (发出建议提示)
 
-    VIRTUAL_ENV_ENABLED=false
-    if [ ! -d "$(pyenv root)/plugins/pyenv-virtualenv" ]; then
-        echo -e "${GREEN}尝试安装pyenv-virtualenv...${NC}"
-        if git clone https://github.com/pyenv/pyenv-virtualenv.git $(pyenv root)/plugins/pyenv-virtualenv > /dev/null 2>&1; then
-            VIRTUAL_ENV_ENABLED=true
-            eval "$(pyenv virtualenv-init -)"
-            echo -e "${GREEN}pyenv-virtualenv安装成功。${NC}"
-        else
-            echo -e "${RED}pyenv-virtualenv安装失败。继续不使用虚拟环境。${NC}"
-        fi
-    else
-        VIRTUAL_ENV_ENABLED=true
-        eval "$(pyenv virtualenv-init -)"
-    fi
-    eval "$(pyenv init -)"
-}
+# ==============================================================================
+# 2. 基础路径与默认值
+# ==============================================================================
+VENV_PATH="$HOME/.locust-env"
+VENV_PYTHON="$VENV_PATH/bin/python3"
+BASE_REPORT_DIR="$HOME/locust_reports"  # 报告目录改到用户主目录
+SESSION_ID=$(date +%Y%m%d_%H%M%S)
+TARGET_HOST="https://www.baidu.com"
+REMOTE_SUBDIR="locust_bench"
 
-# 确保合适的Python版本已安装
-ensure_python_installed() {
-    INSTALLED_VERSIONS=$(pyenv versions --bare)
-    HIGHEST_INSTALLED_VERSION=$(echo "$INSTALLED_VERSIONS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV | head -n 1)
+# Worker 日志目录（分布式模式）
+WORKER_LOG_DIR=""
 
-    if [[ -z "$HIGHEST_INSTALLED_VERSION" ]] || ! python_version_compare "$HIGHEST_INSTALLED_VERSION" "$MIN_PYTHON_VERSION"; then
-        echo -e "${RED}未找到合适版本的Python。正在安装Python $PYTHON_VERSION...${NC}"
-        pyenv install -s $PYTHON_VERSION > /dev/null 2>&1
-        pyenv global $PYTHON_VERSION
-    else
-        echo -e "${GREEN}Python版本: $HIGHEST_INSTALLED_VERSION${NC}"
-        pyenv global $HIGHEST_INSTALLED_VERSION
-    fi
-}
+# 运行控制参数
+USERS=100; MULTIPLIER=1.5; SPAWN_RATE=20; RUN_TIME=60
+MAX_CONCURRENCY=$MAX_USERS_DEFAULT
+ADAPTIVE_MODE="false"               # 默认不开启自适应递进模式
+MODE="standalone"; REMOTE_NODES=()
+SESSION_LABEL=""                    # 测试备注标签（空则自动生成）
+QUIET_MODE="false"                  # 是否开启简洁模式（带进度条）
+DESTRUCTIVE="false"                 # 是否开启破坏性测试模式（默认关闭）
 
-# 创建并激活虚拟环境
-create_and_activate_venv() {
-    if $VIRTUAL_ENV_ENABLED && [ ! -d "$HOME/.pyenv/versions/$VENV_NAME" ]; then
-        echo -e "${GREEN}创建虚拟环境 $VENV_NAME...${NC}"
-        pyenv virtualenv $(pyenv global) $VENV_NAME > /dev/null 2>&1
-    fi
-    pyenv activate $VENV_NAME
-    python -m pip install --upgrade pip > /dev/null 2>&1
-}
-# 安装 Locust 及其依赖
-install_locust() {
+# SLA 阈值与配置 (支持通过环境变量或命令行覆盖)
+export MAX_AVERAGE_RESPONSE_TIME=${MAX_AVERAGE_RESPONSE_TIME:-3000}
+export MAX_FAILURE_RATE=${MAX_FAILURE_RATE:-5}
+export LOCUST_MIN_WAIT=${LOCUST_MIN_WAIT:-1.0}
+export LOCUST_MAX_WAIT=${LOCUST_MAX_WAIT:-2.0}
 
-    # 使用 pip show 检查 Locust 是否已安装
-    if ! pip show locust &>/dev/null; then
-        echo -e "${RED}未找到Locust。正在安装...${NC}"
-        if pip install --quiet locust pandas beautifulsoup4 lxml; then
-            echo -e "${GREEN}Locust安装完成。${NC}"
-        else
-            echo -e "${RED}Locust安装失败。${NC}"
-            return 1
-        fi
-    fi
-}
+# 统计变量
+SESSION_START_TIME=""
+ITERATION_DURATIONS=()
+CONCURRENT_HISTORY=()
 
-# 获取用户输入
-get_user_input() {
-    read -p "输入测试网址 (默认: $DEFAULT_HOST): " HOST
-    HOST=${HOST:-$DEFAULT_HOST}
+# ==============================================================================
+# 3. 辅助函数定义 (置于头部以便全局调用)
+# ==============================================================================
 
-    read -p "输入总用户数 (默认: $DEFAULT_USERS): " USERS
-    USERS=${USERS:-$DEFAULT_USERS}
+log_info() { echo -e "\033[0;32m[信息] $1\033[0m"; }
+log_warn() { echo -e "\033[0;33m[警告] $1\033[0m"; }
+log_err()  { echo -e "\033[0;31m[错误] $1\033[0m"; }
+log_diag() { echo -e "\033[0;36m[诊断] $1\033[0m"; }
+log_time() { echo -e "\033[0;36m[耗时] $1\033[0m"; }
 
-    read -p "输入每秒启动的新用户数 (默认: $DEFAULT_SPAWN_RATE): " SPAWN_RATE
-    SPAWN_RATE=${SPAWN_RATE:-$DEFAULT_SPAWN_RATE}
-
-    read -p "输入测试持续时长（格式：1m, 15m, 1h, 一般15m或30m） (默认: $DEFAULT_RUN_TIME): " RUN_TIME
-    RUN_TIME=${RUN_TIME:-$DEFAULT_RUN_TIME}
-
-    # 输入的持续时长兼容不带时间单位，默认为分
-    if [[ "$RUN_TIME" =~ ^[0-9]+$ ]]; then
-        RUN_TIME="${RUN_TIME}m"
-    fi
-
-    read -p "输入总用户数迭代步长 (0表示不迭代，默认: $DEFAULT_STEP): " STEP
-    STEP=${STEP:-$DEFAULT_STEP}
-    read -p "输入报告保存的目录 (默认: $DEFAULT_REPORT_DIR): " REPORT_DIR
-    REPORT_DIR=${REPORT_DIR:-$DEFAULT_REPORT_DIR}
-    [ ! -d $REPORT_DIR ] && mkdir -p $REPORT_DIR
-   
-}
-
-
-# 动态获取测试路径
-get_additional_paths() {
-    ADDITIONAL_PATHS=""
+# 进度条显示函数（简洁模式）
+show_progress_bar() {
+    local elapsed=$1
+    local total=$2
+    local current_tps=$3
+    local current_rt=$4
+    local fail_count=$5
     
-    # 自动探测路径
-    auto_detect_paths() {
-        echo -e "${GREEN}正在探测目标网站的路径，请稍候...${NC}"
+    local progress=$((elapsed * 100 / total))
+    local remaining=$((total - elapsed))
+    local filled=$((progress / 2))
+    local empty=$((50 - filled))
+    
+    # 构建进度条
+    local bar=""
+    for ((i=0; i<filled; i++)); do bar+="█"; done
+    for ((i=0; i<empty; i++)); do bar+="░"; done
+    
+    # 原地刷新显示
+    printf "\r⏱️  进度：[%s] %d%% 剩余：%ds | TPS: %s | RT: %sms | 失败：%s  " \
+        "$bar" "$progress" "$remaining" "$current_tps" "$current_rt" "$fail_count"
+}
+
+# 清理进度条并换行
+clear_progress_bar() {
+    if [ "$QUIET_MODE" == "true" ]; then
+        printf "\r\033[K"  # 清除当前行
+        echo ""
+    fi
+}
+
+# 获取当前轮次的实时统计（从 locust CSV）
+get_current_stats() {
+    local csv_file=$1
+    if [ -f "$csv_file" ]; then
+        # 读取最新的 stats 数据
+        local stats=$(tail -n 2 "$csv_file" | head -n 1)
+        local tps=$(echo "$stats" | cut -d',' -f3)
+        local rt=$(echo "$stats" | cut -d',' -f8)
+        local fails=$(echo "$stats" | cut -d',' -f6)
+        echo "${tps:-0} ${rt:-0} ${fails:-0}"
+    else
+        echo "0 0 0"
+    fi
+}
+
+# 后台监控函数（简洁模式）
+monitor_progress() {
+    local csv_file=$1
+    local duration=$2
+    local start_time=$(date +%s)
+    
+    while true; do
+        local now=$(date +%s)
+        local elapsed=$((now - start_time))
         
-        # 检测是否安装了selenium
-        if python -c "import selenium" &> /dev/null; then
-            echo -e "${GREEN}selenium路径探测...${NC}"
-            
-            # 使用selenium模拟浏览器行为
-            DETECTED_PATHS=$(python -c "
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-
-chrome_options = Options()
-chrome_options.add_argument('--headless')
-driver = webdriver.Chrome(options=chrome_options)
-driver.get('$HOST')
-dynamic_paths = [elem.get_attribute('href') for elem in driver.find_elements_by_tag_name('a') if elem.get_attribute('href').startswith('/') and '?' not in elem.get_attribute('href') and '#' not in elem.get_attribute('href')]
-driver.quit()
-print(';'.join(dynamic_paths))
-")
-        else
-            echo -e "${GREEN}BeautifulSoup路径探测...${NC}"
-            
-            # 使用BeautifulSoup解析HTML并提取路径
-            DETECTED_PATHS=$(python -c "
-import requests
-from bs4 import BeautifulSoup
-
-response = requests.get('$HOST')
-soup = BeautifulSoup(response.text, 'html.parser')
-paths = []
-
-# 提取所有<a>标签中的href属性
-for link in soup.find_all('a', href=True):
-    href = link['href']
-    if href.startswith('/') and '?' not in href and '#' not in href:
-        paths.append(href)
-
-print(';'.join(paths))
-")
+        if [ $elapsed -ge $duration ]; then
+            break
         fi
+        
+        # 每 0.5 秒刷新一次
+        local stats=$(get_current_stats "$csv_file")
+        local tps=$(echo "$stats" | cut -d' ' -f1)
+        local rt=$(echo "$stats" | cut -d' ' -f2)
+        local fails=$(echo "$stats" | cut -d' ' -f3)
+        
+        show_progress_bar "$elapsed" "$duration" "${tps%.*}" "${rt%.*}" "$fails"
+        sleep 0.5
+    done
+    
+    clear_progress_bar
+}
 
-        if [[ -z "$DETECTED_PATHS" ]]; then
-            echo -e "${RED}未能探测到任何路径，请手动输入。${NC}"
+# 依赖检查函数
+check_dependencies() {
+    log_info "检查系统依赖..."
+    local missing=()
+    local reinstall_locust="false"
+
+    # 检查 python3
+    if ! command -v python3 >/dev/null 2>&1; then
+        missing+=("python3")
+    fi
+
+    # 检查 bc (用于数值计算)
+    if ! command -v bc >/dev/null 2>&1; then
+        missing+=("bc")
+    fi
+
+    # 检查虚拟环境中的 locust
+    if [ -f "$VENV_PYTHON" ]; then
+        if ! "$VENV_PYTHON" -c "import locust" 2>/dev/null; then
+            log_warn "检测到 locust 未正确安装，正在重新安装..."
+            reinstall_locust="true"
+        fi
+    fi
+    
+    # 报告缺失的依赖
+    if [ ${#missing[@]} -gt 0 ]; then
+        log_err "缺少必要依赖: ${missing[*]}"
+        
+        # 根据操作系统提供安装建议
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            log_err "请使用以下命令安装: brew install ${missing[*]}"
+        elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            if command -v apt-get >/dev/null 2>&1; then
+                log_err "请使用以下命令安装: sudo apt-get install ${missing[*]}"
+            elif command -v yum >/dev/null 2>&1; then
+                log_err "请使用以下命令安装: sudo yum install ${missing[*]}"
+            else
+                log_err "请根据您的 Linux 发行版安装: ${missing[*]}"
+            fi
+        fi
+        
+        exit 1
+    fi
+    
+    log_info "✅ 系统依赖检查通过"
+    
+    # 如果需要重新安装 locust
+    if [ "$reinstall_locust" == "true" ]; then
+        log_info "正在重新安装 locust 及相关依赖..."
+        "$VENV_PATH/bin/pip" install -q locust pandas beautifulsoup4 lxml requests || {
+            log_err "locust 安装失败"
+            exit 1
+        }
+        log_info "✅ locust 安装成功"
+    fi
+}
+
+# 声音提醒函数 (MacOS 专用)
+play_notification() {
+    if [[ "$OSTYPE" == "darwin"* ]] && command -v afplay >/dev/null 2>&1; then
+        (afplay /System/Library/Sounds/Hero.aiff &)
+    fi
+}
+
+get_load_average() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sysctl -n vm.loadavg | awk '{print $2}'
+    else
+        awk '{print $1}' /proc/loadavg 2>/dev/null || uptime | awk -F'load average:' '{ print $2 }' | cut -d, -f1 | sed 's/ //g'
+    fi
+}
+
+show_top_memory_processes() {
+    log_diag "当前系统内存占用最高的进程 Top 5:"
+    echo "----------------------------------------------------------------"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        ps -eo pmem,rss,comm -m | sort -rk 1 | head -n 6
+    else
+        ps -eo pmem,rss,comm --sort=-pmem | head -n 6
+    fi
+    echo "----------------------------------------------------------------"
+}
+
+check_and_optimize_env() {
+    log_info "正在进行发起端环境预检与调优..."
+    
+    # 自动清理历史残留进程
+    pkill -f "locust.*distributedbench.py" >/dev/null 2>&1 || true
+
+    # 1. ulimit 提升
+    local current_ulimit=$(ulimit -n)
+    if [ "$current_ulimit" -lt 1024 ]; then
+        log_warn "当前系统文件句柄限制过低 ($current_ulimit)，尝试提升..."
+        ulimit -n 65535 >/dev/null 2>&1 || true
+        [ "$(ulimit -n)" -gt "$current_ulimit" ] && log_info "成功提升文件句柄限制至 $(ulimit -n)"
+    fi
+
+    # 2. 内存状态
+    local free_mem_mb=0
+    local total_mem_mb=0
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        local free_pages=$(vm_stat | awk '/Pages free/ {print $3}' | sed 's/\.//')
+        local spec_pages=$(vm_stat | awk '/Pages speculative/ {print $3}' | sed 's/\.//')
+        local page_size=$(sysctl -n hw.pagesize)
+        free_mem_mb=$(( (free_pages + spec_pages) * page_size / 1024 / 1024 ))
+        total_mem_mb=$(sysctl -n hw.memsize | awk '{print $1/1024/1024}')
+    else
+        free_mem_mb=$(free -m | awk '/^Mem:/{print $4 + $7}')
+        total_mem_mb=$(free -m | awk '/^Mem:/{print $2}')
+    fi
+
+    log_info "系统内存状态: 可用 ${free_mem_mb}MB / 总计 ${total_mem_mb}MB"
+
+    if [ "$free_mem_mb" -lt "$MIN_MEM_CRITICAL" ]; then
+        log_err "❌ 剩余可用内存仅为 ${free_mem_mb}MB，无法启动压测！(极端情况下强制退出)"
+        show_top_memory_processes
+        exit 1
+    elif [ "$free_mem_mb" -lt "$MIN_MEM_WARN" ]; then
+        log_warn "⚠️ 内存较低 (${free_mem_mb}MB)，建议监控系统稳定性，防止 Swap 干扰。(发出建议提示)"
+    fi
+
+    # 3. 基础负载检查
+    local cpu_cores=$(sysctl -n hw.ncpu || nproc || echo 1)
+    local load=$(get_load_average)
+    if [ ! -z "$load" ] && (( $(echo "$load > $cpu_cores" | bc -l) )); then
+        log_warn "发现系统初始负载较高 (Load: $load / Cores: $cpu_cores)。建议清理后台应用。"
+    fi
+}
+
+check_runtime_bottleneck() {
+    [ "$MODE" == "worker" ] && return 0
+    local cpu_cores=$(sysctl -n hw.ncpu || nproc || echo 1)
+    local load=$(get_load_average)
+    if [ ! -z "$load" ] && (( $(echo "$load > $cpu_cores * 1.5" | bc -l) )); then
+        echo ""
+        log_err "⚠️  [发起端瓶颈] 检测到主机负载过重 (Load: $load)！"
+        if [ "$DESTRUCTIVE" != "true" ]; then
+            log_err ">>> 已自动熔断，防止产出误导性数据。"
             return 1
         fi
+    fi
+    return 0
+}
 
-        # 显示探测到的路径列表
-        echo -e "${GREEN}探测到以下路径：${NC}"
-        PATH_LIST=()
-        INDEX=1
-        for path in $DETECTED_PATHS; do
-            PATH_LIST+=("$path")
-            echo "[$INDEX] $path"
-            ((INDEX++))
-        done
+format_duration() {
+    local seconds=$1
+    local hours=$((seconds / 3600))
+    local minutes=$(((seconds % 3600) / 60))
+    local secs=$((seconds % 60))
+    printf "%02d:%02d:%02d" $hours $minutes $secs
+}
 
-        # 用户选择路径
-        while true; do
-            read -p "请选择路径编号（多个用逗号分隔，输入 'all' 选择所有路径，按 Enter 跳过）: " selection
-            if [[ -z "$selection" ]]; then
-                break
-            elif [[ "$selection" == "all" ]]; then
-                for path in "${PATH_LIST[@]}"; do
-                    ADDITIONAL_PATHS+="$path,自动探测;"
-                done
-                echo -e "${GREEN}已选择所有路径。${NC}"
-                break
-            else
-                IFS=',' read -ra selections <<< "$selection"
-                for idx in "${selections[@]}"; do
-                    if [[ "$idx" =~ ^[0-9]+$ ]] && (( idx >= 1 && idx <= ${#PATH_LIST[@]} )); then
-                        selected_path="${PATH_LIST[$((idx-1))]}"
-                        ADDITIONAL_PATHS+="$selected_path,自动探测;"
-                    else
-                        echo -e "${RED}无效的选择: $idx，请重新输入。${NC}"
-                    fi
-                done
-                break
-            fi
-        done
-    }
-
-    # 手动输入路径
-    manual_input_paths() {
-        while true; do
-            read -p "默认首页，输入其他路由路径 (例如: /about,关于我们) 或按 Enter 结束: " path_input
-            if [[ -z "$path_input" ]]; then
-                break
-            elif [[ "$path_input" =~ ^/.+,.+$ ]]; then
-                ADDITIONAL_PATHS+="${path_input};"
-            else
-                echo -e "${RED}路径格式错误，应为 '/path,描述'。${NC}"
-            fi
-        done
-    }
-
-    while true; do
-        read -p "是否自动探测路径？(y/n，默认: y): " AUTO_DETECT
-        AUTO_DETECT=${AUTO_DETECT:-y}
-        if [[ "$AUTO_DETECT" == "y" ]]; then
-            if ! auto_detect_paths; then
-                manual_input_paths
-            fi
-            break
-        elif [[ "$AUTO_DETECT" == "n" ]]; then
-            manual_input_paths
-            break
-        else
-            echo -e "${RED}无效输入，请输入 'y' 或 'n'。${NC}"
-        fi
+show_duration_summary() {
+    local session_end_time=$(date +%s)
+    [ -z "$SESSION_START_TIME" ] && return
+    local total_duration=$((session_end_time - SESSION_START_TIME))
+    echo -e "\n=============================================================================="
+    echo "⏱️  压测耗时汇总报告 | 标签: $SESSION_LABEL"
+    echo "=============================================================================="
+    echo "任务开始时间: $(date -r $SESSION_START_TIME '+%Y-%m-%d %H:%M:%S')"
+    echo ""
+    echo "各轮次执行明细:"
+    echo "  轮次 | 并发数  | 耗时"
+    echo "  ------|---------|------------------"
+    for i in "${!ITERATION_DURATIONS[@]}"; do
+        printf "  %-4d | %-7s | %s\n" $((i+1)) "${CONCURRENT_HISTORY[$i]}" "$(format_duration ${ITERATION_DURATIONS[$i]})"
     done
-
-    export LOCUST_ADDITIONAL_PATHS=$ADDITIONAL_PATHS
+    echo "------------------------------------------------------------------------------"
+    echo "总运行耗时: $(format_duration $total_duration)"
+    echo "=============================================================================="
 }
 
-# 提示用户是否启用分布式测试
-ask_for_distributed_test() {
-    read -p "是否启用分布式测试？(y/n，默认: n): " DISTRIBUTED
-    DISTRIBUTED=${DISTRIBUTED:-n}
+show_help() {
+    echo "用法: $0 [选项]"
+    echo ""
+    echo "核心选项:"
+    echo "  -H <URL>       目标主机地址 (默认: $TARGET_HOST)"
+    echo "  -u <数字>      起始并发用户数 [$MIN_USERS ~ $MAX_USERS_DEFAULT]"
+    echo "  -t <秒>        单轮测试时长 [$MIN_DURATION ~ $MAX_DURATION]"
+    echo "  -r <数字>      用户增长速率/秒 [$MIN_RATE ~ $MAX_RATE]"
+    echo ""
+    echo "自适应控制:"
+    echo "  -m <倍数>      指定递进倍率 (设置此项即开启阶梯模式) [当前: $MULTIPLIER]"
+    echo "  -c <数字>      设置硬性并发上限 [默认: $MAX_USERS_DEFAULT]"
+    echo "  -L <标签>      为本次任务添加备注标签 (如: v1.2-fix)"
+    echo ""
+    echo "SLA 控制与参数:"
+    echo "  -S <毫秒>      SLA 平均延迟阈值 (当前: $MAX_AVERAGE_RESPONSE_TIME ms)"
+    echo "  -F <百分比>    SLA 错误率阈值 (当前: $MAX_FAILURE_RATE %)"
+    echo "  -w <min:max>   用户思考时间范围 (秒) (当前: $LOCUST_MIN_WAIT:$LOCUST_MAX_WAIT)"
+    echo ""
+    echo "模式切换:"
+    echo "  -d             开启本地多核分布式模式"
+    echo "  -x             开启破坏性测试模式 (无视 SLA 熔断)"
+    echo "  -q             开启简洁模式 (显示实时进度条)"
+    exit 0
 }
 
-# 获取当前主机IP
-get_current_host_ip() {
-    CURRENT_HOST_IP=$(hostname -I | awk '{print $1}')
-    echo -e "${GREEN}当前主机IP: $CURRENT_HOST_IP${NC}"
-}
+# ==============================================================================
+# 4. 参数解析与执行入口
+# ==============================================================================
 
-# 添加函数：将运行时间转换为秒数
-convert_run_time_to_seconds() {
-    local run_time=$1
-    local duration
-    case ${run_time: -1} in
-        m) duration=$((10#${run_time::-1} * 60));;  # 分钟转秒
-        h) duration=$((10#${run_time::-1} * 3600));; # 小时转秒
-        s) duration=$((10#${run_time::-1}));;       # 秒转秒
-        *) duration=$run_time;;                     # 默认为秒
+while getopts "hH:u:t:r:m:c:L:S:F:w:dxq" opt; do
+    case $opt in
+        h) show_help ;;
+        H) TARGET_HOST=$OPTARG ;;
+        u) USERS=$OPTARG ;;
+        t) RUN_TIME=$OPTARG ;;
+        r) SPAWN_RATE=$OPTARG ;;
+        m) MULTIPLIER=$OPTARG; ADAPTIVE_MODE="true" ;;
+        c) MAX_CONCURRENCY=$OPTARG ;;
+        L) SESSION_LABEL=$OPTARG ;;
+        S) export MAX_AVERAGE_RESPONSE_TIME=$OPTARG ;;
+        F) export MAX_FAILURE_RATE=$OPTARG ;;
+        w) IFS=':' read -r LOCUST_MIN_WAIT LOCUST_MAX_WAIT <<< "$OPTARG"
+           export LOCUST_MIN_WAIT; export LOCUST_MAX_WAIT ;;
+        d) MODE="master" ;;
+        x) export DESTRUCTIVE=true ;;
+        q) QUIET_MODE=true ;;
+        *) exit 1 ;;
     esac
-    echo $duration
+done
+
+# 环境初始化
+init_env() {
+    # 先检查系统依赖
+    check_dependencies
+
+    if [ ! -f "$VENV_PYTHON" ]; then
+        log_info "正在初始化全局虚拟环境..."
+        python3 -m venv "$VENV_PATH"
+        "$VENV_PATH/bin/pip" install -q locust pandas beautifulsoup4 lxml requests
+        log_info "✅ 虚拟环境初始化完成"
+    fi
+    check_and_optimize_env
 }
+init_env
 
-# 启动 Locust 测试
-run_locust_test() {
-    START_TIME=$(date +%s)
-    MAX_DURATION=$(($(date +%s) + $(convert_run_time_to_seconds $RUN_TIME)))
+# 运行准备
+DOMAIN=$(echo "$TARGET_HOST" | awk -F[/:] '{print $4}')
+REPORT_DIR="$BASE_REPORT_DIR/${DOMAIN}_${SESSION_ID}"
+mkdir -p "$REPORT_DIR"
 
-    CURRENT_USERS=$USERS
-    ITERATION=1
+# 优化建议 6: 使用进程组清理所有子进程，避免遗留 Python 子进程
+SUMMARY_SHOWN="false"  # 标记汇总报告是否已显示
+CLEANUP_DONE="false"   # 标记清理是否已完成
+cleanup_all() {
+    # 防止重复执行
+    [ "$CLEANUP_DONE" == "true" ] && return 0
+    
+    log_info "正在清理所有子进程..."
+    # 清理整个进程组，包括所有 Python 子进程
+    pkill -P $MAIN_PID 2>/dev/null || true
+    # 额外清理可能残留的 locust 进程
+    pkill -f "locust" 2>/dev/null || true
+    # 只在未显示过时才显示汇总报告
+    if [ "$SUMMARY_SHOWN" == "false" ]; then
+        show_duration_summary
+        play_notification
+    fi
+    CLEANUP_DONE="true"
+    log_info "清理完成，退出。"
+    exit 0
+}
+trap cleanup_all INT TERM
 
-    while true; do
-        TIMESTAMP=$(date +"%Y%m%d%H%M%S")
-        DOMAIN=$(echo $HOST | awk -F[/:] '{print $4}')
-        # 修改文件名格式，将迭代次数和时间戳移到文件后缀前面
-        REPORT_FILE="$REPORT_DIR/${DOMAIN}_报告${ITERATION}_${TIMESTAMP}.html"
+SESSION_START_TIME=$(date +%s)
+CURRENT_USERS=$USERS; ITER=1; CURRENT_RUN_TIME=$RUN_TIME
 
-        COMMON_ARGS=(
-            "-f" "distributedbench.py" 
-            "--host=$HOST"
-            "--headless"
-            "-u" "$CURRENT_USERS"
-            "-r" "$SPAWN_RATE"
-            "--run-time" "$RUN_TIME"
-            "--html" "$REPORT_FILE"
-            "--csv" "$REPORT_DIR/${DOMAIN}_报告${ITERATION}_${TIMESTAMP}"
-        )
+# 主循环
+while true; do
+    rm -f .bench_threshold_reached
+    REPORT_BASE="${REPORT_DIR}/${DOMAIN}_u${CURRENT_USERS}_i${ITER}_$(date +%H%M%S)"
+    CSV_STATS="${REPORT_BASE}_stats.csv"
+    
+    echo -e "\n=============================================================================="
+    echo -e "\033[1;35m🚀 [轮次 $ITER] 并发: $CURRENT_USERS | 时长: ${CURRENT_RUN_TIME}s | 标签: $SESSION_LABEL\033[0m"
+    echo "=============================================================================="
+    
+    T_START=$(date +%s)
+    v_locust="$VENV_PATH/bin/locust"
+    v_python="$VENV_PATH/bin/python3"
 
-        # 确保 Locust 运行时的语言环境为中文
-        export LANG="zh_CN.UTF-8"
-        export LC_ALL="zh_CN.UTF-8"
-
-        if [[ "$DISTRIBUTED" == "y" ]]; then
-            # 获取当前主机IP
-            get_current_host_ip
-            
-            # 如果用户未输入master节点IP，则默认使用当前主机IP
-            read -p "请输入master节点的IP地址（默认: $CURRENT_HOST_IP）: " MASTER_HOST
-            MASTER_HOST=${MASTER_HOST:-$CURRENT_HOST_IP}
-            
-            read -p "此节点是 master 还是 worker？(m/w，默认: m): " NODE_TYPE
-            NODE_TYPE=${NODE_TYPE:-m}
-            
-            if [[ "$NODE_TYPE" == "m" ]]; then
-                echo -e "${GREEN}启动Locust master节点...${NC}"
-                locust "${COMMON_ARGS[@]}" --master &
-            elif [[ "$NODE_TYPE" == "w" ]]; then
-                # 如果worker节点不是当前主机，则通过SSH传输脚本并执行
-                if [[ "$MASTER_HOST" != "$CURRENT_HOST_IP" ]]; then
-                    read -p "请输入远程主机的用户名: " REMOTE_USER
-                    read -s -p "请输入远程主机的密码: " REMOTE_PASSWORD
-                    echo
-                    
-                    # 使用SSH传输脚本并执行
-                    sshpass -p "$REMOTE_PASSWORD" scp distributedbench.sh "$REMOTE_USER@$MASTER_HOST:/tmp/"
-                    sshpass -p "$REMOTE_PASSWORD" ssh "$REMOTE_USER@$MASTER_HOST" "bash /tmp/distributedbench.sh"
-                    exit 0  # 工作节点不需要继续执行后续逻辑
-                else
-                    echo -e "${GREEN}启动Locust worker节点...${NC}"
-                    locust --worker --master-host=$MASTER_HOST
-                    exit 0  # 工作节点不需要继续执行后续逻辑
-                fi
-            else
-                echo -e "${RED}无效的节点类型，必须是 'm' 或 'w'. 使用默认值 'm'.${NC}"
-                locust "${COMMON_ARGS[@]}" --master &
-            fi
-        else
-            echo -e "${GREEN}启动单节点Locust测试...${NC}"
-            locust "${COMMON_ARGS[@]}" &
-        fi
-
-        PID=$!
-        wait $PID 2>/dev/null
-
-        END_TIME=$(date +%s)
-        ELAPSED_TIME=$((END_TIME - START_TIME))
-
-        if [[ $? -eq 0 ]] && ((ELAPSED_TIME < MAX_DURATION)); then
-            echo -e "${GREEN}测试成功，可以继续增加用户数。${NC}"
-            if ((STEP > 0)); then
-                CURRENT_USERS=$((CURRENT_USERS * STEP))
-                ITERATION=$((ITERATION + 1))
-            else
-                echo -e "${GREEN}不进行迭代，测试结束。${NC}"
-                break
-            fi
-        else
-            echo -e "${RED}测试未能继续或已达到最大持续时间，停止增加用户数。${NC}"
-            break
-        fi
-
-        echo -e "${GREEN}测试完成，报告已保存至 $REPORT_FILE${NC}"
+    if [ "$MODE" == "master" ]; then
+        workers=$(sysctl -n hw.ncpu || nproc || echo 4)
+        log_info "启动分布式模式 (Workers: $workers)..."
         
-        # 如果剩余时间不足以完成一次新的测试，则退出
-        REMAINING_TIME=$((MAX_DURATION - $(date +%s)))
-        if ((REMAINING_TIME < $(convert_run_time_to_seconds $RUN_TIME))); then
-            echo -e "${RED}剩余时间不足以完成新的测试，停止迭代。${NC}"
-            break
+        # 创建 Worker 日志目录
+        WORKER_LOG_DIR="${REPORT_DIR}/worker_logs"
+        mkdir -p "$WORKER_LOG_DIR"
+        
+        # 启动 Worker 并记录日志
+        for i in $(seq 1 "$workers"); do
+            "$v_locust" -f distributedbench.py --worker --master-host=127.0.0.1 \
+                --logfile "${WORKER_LOG_DIR}/worker_${i}.log" > /dev/null 2>&1 &
+        done
+        log_info "Worker 日志目录：$WORKER_LOG_DIR"
+        
+        "$v_locust" -f distributedbench.py --master --headless -u "$CURRENT_USERS" -r "$SPAWN_RATE" --run-time "${CURRENT_RUN_TIME}s" \
+               --host="$TARGET_HOST" --html "${REPORT_BASE}.html" --csv "${REPORT_BASE}" --expect-workers "$workers"
+        pkill -f "locust.*--worker" || true
+    else
+        # 简洁模式下静默 locust 输出，避免与进度条交叉
+        if [ "$QUIET_MODE" == "true" ]; then
+            "$v_locust" -f distributedbench.py --host="$TARGET_HOST" --headless -u "$CURRENT_USERS" -r "$SPAWN_RATE" --run-time "${CURRENT_RUN_TIME}s" \
+                   --html "${REPORT_BASE}.html" --csv "${REPORT_BASE}" > /dev/null 2>&1 &
+            LOCUST_PID=$!
+            wait $LOCUST_PID 2>/dev/null || true
+        else
+            "$v_locust" -f distributedbench.py --host="$TARGET_HOST" --headless -u "$CURRENT_USERS" -r "$SPAWN_RATE" --run-time "${CURRENT_RUN_TIME}s" \
+                   --html "${REPORT_BASE}.html" --csv "${REPORT_BASE}" 2>&1 | "$v_python" translate_console.py
         fi
-    done
-    # 调用翻译脚本
-    python3 translate_report.py
+    fi
+    
+    T_END=$(date +%s)
+    
+    CONCURRENT_HISTORY+=("$CURRENT_USERS")
+    ITERATION_DURATIONS+=($((T_END - T_START)))
+    
+    "$VENV_PATH/bin/python3" translate_report.py "${REPORT_BASE}.html" > /dev/null 2>&1
 
-}
+    if [ "$ADAPTIVE_MODE" == "false" ]; then
+        log_info "单轮压测完成。"
+        break
+    fi
 
-webtest() {
-    install_pyenv_and_virtualenv
-    ensure_python_installed
-    create_and_activate_venv
-    install_locust
-    get_user_input
-    get_additional_paths
-    ask_for_distributed_test
-    run_locust_test
-}
+    if [ -f .bench_threshold_reached ] && [ "$DESTRUCTIVE" != "true" ]; then
+        log_err ">>> SLA 触发熔断，终止探测。"
+        break
+    fi
 
-webtest
+    if ! check_runtime_bottleneck; then break; fi
+
+    NEXT_USERS=$(awk "BEGIN {print int($CURRENT_USERS * $MULTIPLIER)}")
+    [ "$NEXT_USERS" -le "$CURRENT_USERS" ] && NEXT_USERS=$((CURRENT_USERS + 10))
+
+    if [ "$NEXT_USERS" -gt "$MAX_CONCURRENCY" ]; then
+        log_warn "已达到并发上限 ($MAX_CONCURRENCY)。"
+        break
+    fi
+    
+    CURRENT_RUN_TIME=$((CURRENT_RUN_TIME + 30))
+    [ "$CURRENT_RUN_TIME" -gt "$MAX_DURATION" ] && CURRENT_RUN_TIME=$MAX_DURATION
+
+    log_info "本轮完成，5秒后开始下一轮 ($NEXT_USERS 并发)..."
+    CURRENT_USERS=$NEXT_USERS; ITER=$((ITER + 1)); sleep 5
+done
+
+# 生成汇总看板
+# 如果 SESSION_LABEL 为空，自动生成标签
+if [ -z "$SESSION_LABEL" ]; then
+    export EXPORT_LABEL="${CURRENT_USERS}U_$(date +%m%d)"
+else
+    export EXPORT_LABEL="$SESSION_LABEL"
+fi
+export SESSION_ID="$SESSION_ID"
+log_info "正在生成性能演进趋势看板..."
+"$VENV_PATH/bin/python3" aggregate_reports.py "$BASE_REPORT_DIR" && log_info "✅ 汇总报告生成成功" || log_warn "⚠️  汇总报告生成失败"
+
+show_duration_summary
+SUMMARY_SHOWN="true"  # 标记已显示汇总报告
+play_notification
+log_info "任务结束。详情请查看域名看板: $BASE_REPORT_DIR/${DOMAIN}.html"

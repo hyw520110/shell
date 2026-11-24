@@ -1,0 +1,70 @@
+{
+  "id": "bb-browser",
+  "name": "bb-browser",
+  "description": "AI 代理浏览器控制工具。复用真实浏览器（Chrome）的登录态和 Cookie，支持 36+ 主流平台的自动化操作。无需重复登录，直接让 Agent 继承您的身份。",
+  "category": "ai-utility",
+  "tags": [
+    "浏览器",
+    "自动化",
+    "登录态",
+    "爬虫",
+    "Agent"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "NPM 全局安装",
+        "type": "npm",
+        "command": "npm install -g bb-browser",
+        "check": "bb-browser --version",
+        "uninstall": [
+          "npm uninstall -g bb-browser"
+        ]
+      },
+      {
+        "name": "安装 MCP server (bb-browser-api)",
+        "type": "npm",
+        "command": "npm install -g bb-browser-api",
+        "check": "bb-browser-api --version",
+        "uninstall": [
+          "npm uninstall -g bb-browser-api"
+        ]
+      }
+    ],
+    "default_method": 0,
+    "prepare": "bash scripts/mcp/prepare-bb-browser.sh"
+  },
+  "update": {
+    "command": "npm install -g bb-browser@latest",
+    "check": "bb-browser --version"
+  },
+  "commands": {
+    "start": "bb-browser start",
+    "status": "bb-browser status",
+    "version": "bb-browser --version"
+  },
+  "status_check": [
+    {
+      "name": "检查 CLI",
+      "command": "bb-browser --version 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查 MCP server",
+      "command": "bb-browser-api --version 2>/dev/null || echo '未安装'"
+    }
+  ],
+  "prompts": {
+    "login-reuse": "使用 bb-browser 访问 GitHub。由于它复用了我的 Chrome 登录态，请直接列出我的私有仓库列表。",
+    "platform-automation": "在知乎上搜索关于 'AI Engineering' 的内容并点赞第一个回答。利用 bb-browser 的已登录环境执行。",
+    "browser-control": "启动 bb-browser 控制台并保持待命。"
+  },
+  "notes": "bb-browser 的强大之处在于它能同步您本地 Chrome 的 Session。在使用前，请确保您的 Chrome 已经安装了对应的插件并处于登录状态。MCP server 由 bb-browser-api 提供（bb-browser 本体仅 CLI，无 MCP 能力），需同时安装 bb-browser 与 bb-browser-api。",
+  "homepage": "https://github.com/better-browser/bb-browser",
+  "scenarios": [
+    "productivity",
+    "research"
+  ],
+  "default_enabled": true,
+  "optional": false,
+  "experimental": false
+}

@@ -1,0 +1,137 @@
+{
+  "id": "qwen",
+  "name": "Qwen CLI",
+  "description": "Qwen Code CLI - 通义千问终端编程助手",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "coding",
+    "npm",
+    "china",
+    "alibaba"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "npm 安装",
+        "type": "npm",
+        "command": "npm install -g @qwen-code/qwen-code --registry {{npm_registry}}",
+        "check": "npm list -g @qwen-code/qwen-code --depth=0",
+        "uninstall": [
+          "npm uninstall -g @qwen-code/qwen-code"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "npm install -g @qwen-code/qwen-code --registry {{npm_registry}} --force",
+    "check": "npm list -g @qwen-code/qwen-code --depth=0"
+  },
+  "config": {
+    "path": "$HOME/.qwen/settings.json",
+    "operations": {
+      "view": "cat $HOME/.qwen/settings.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.qwen/settings.json",
+      "reset": [
+        "cp $HOME/.qwen/settings.json $HOME/.qwen/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.qwen/settings.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "qwen",
+    "version": "qwen --version",
+    "login": "qwen /login",
+    "model": "qwen /model"
+  },
+  "status_check": [
+    {
+      "name": "检查进程",
+      "command": "ps aux | grep qwen | grep -v grep"
+    },
+    {
+      "name": "检查版本",
+      "command": "qwen --version 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.qwen/ 2>/dev/null || echo '配置目录不存在'"
+    }
+  ],
+  "mcp_servers": {
+    "qwen-fetch": {
+      "name": "网页内容获取",
+      "type": "npm",
+      "install_command": "npm install -g @kazuph/mcp-fetch",
+      "config": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@kazuph/mcp-fetch"
+        ],
+        "transportType": "stdio"
+      }
+    },
+    "qwen-github": {
+      "name": "GitHub MCP",
+      "type": "npm",
+      "install_command": "npm install -g @modelcontextprotocol/server-github",
+      "config": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-github"
+        ],
+        "transportType": "stdio",
+        "env": {
+          "GITHUB_TOKEN": "{{github_token}}"
+        }
+      }
+    }
+  },
+  "skills": {
+    "qwen-git": {
+      "name": "Git 增强",
+      "description": "Git操作增强，PR/Issue管理",
+      "prompts": {
+        "review": "审查当前分支的代码变更，提供改进建议",
+        "commit": "根据代码变更生成规范的commit message",
+        "pr": "为当前分支创建Pull Request描述"
+      },
+      "dependencies": {
+        "mcp_servers": [
+          "qwen-github"
+        ],
+        "system_commands": [
+          "git",
+          "gh"
+        ]
+      },
+      "install_check": "which git"
+    },
+    "qwen-pdf": {
+      "name": "PDF 处理",
+      "description": "PDF文档读取、文本提取",
+      "prompts": {
+        "extract": "提取PDF文件中的文本内容，保持原有结构和格式",
+        "summarize": "阅读并总结PDF文档的核心内容和关键信息"
+      },
+      "dependencies": {
+        "system_commands": [
+          "pdftotext"
+        ]
+      },
+      "install_check": "which pdftotext || which pandoc"
+    }
+  },
+  "references": {
+    "shared_mcp_servers": [
+      "filesystem"
+    ],
+    "shared_skills": []
+  },
+  "notes": "通义千问提供每日免费额度",
+  "post_install": [],
+  "post_uninstall": []
+}

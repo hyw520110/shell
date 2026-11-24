@@ -1,0 +1,40 @@
+# FRP 服务端配置模板
+# 此文件包含占位符，安装脚本会自动替换为实际值
+
+bindAddr = "0.0.0.0"
+bindPort = 7000
+
+# 认证配置
+auth.method = "token"
+auth.token = "{{AUTH_TOKEN}}"
+
+# 虚拟主机端口配置
+vhostHTTPPort = 7800
+vhostHTTPSPort = 7443
+
+# Web 管理界面配置
+webServer.addr = "0.0.0.0"
+webServer.port = 7500
+{{WEB_SERVER_CONFIG}}
+
+# 日志配置
+log.to = "{{LOG_FILE}}"
+log.level = "info"
+log.maxDays = 30
+
+# 可选：允许的端口范围
+# allowPorts = [
+#   { start = 6000, end = 7000 }
+# ]
+
+# 可选：最大连接数
+# maxConnections = 1000
+
+# 可选：最大端口数
+# maxPortsPerClient = 0
+
+# 可选：认证超时时间（秒）
+# authenticationTimeout = 900
+
+# 可选：子域名
+# subdomainHost = "example.com"

@@ -1,0 +1,23 @@
+services:
+  harness:
+    image: harness/harness:latest
+    container_name: harness
+    restart: always
+    ports:
+      - "3000:3000"   # Web UI
+      - "3022:3022"   # SSH
+    environment:
+      - GITNESS_DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - harness-data:/data
+    networks:
+      - harness-net
+
+networks:
+  harness-net:
+    driver: bridge
+
+volumes:
+  harness-data:
+    driver: local

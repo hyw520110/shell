@@ -1,0 +1,82 @@
+{
+  "id": "multica",
+  "name": "Multica",
+  "description": "开源AI代理管理平台，管理AI代理全生命周期",
+  "category": "ai-builder",
+  "tags": ["agent", "platform", "management"],
+
+  "install": {
+    "methods": [
+      {
+        "name": "Homebrew (推荐)",
+        "type": "brew",
+        "command": "brew install multica-ai/tap/multica",
+        "check": "command -v multica",
+        "uninstall": [
+          "brew uninstall multica-ai/tap/multica"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+
+  "update": {
+    "command": "brew upgrade multica-ai/tap/multica",
+    "check": "command -v multica",
+    "pre_update": []
+  },
+
+  "post_install": [
+    {
+      "description": "初始化Multica",
+      "command": "echo '运行 multica setup 连接到Multica Cloud，或使用 --with-server 自托管'"
+    }
+  ],
+
+  "post_uninstall": [
+    {
+      "description": "清理配置",
+      "command": "rm -rf ~/.multica 2>/dev/null || true"
+    }
+  ],
+
+  "config": {
+    "path": "$HOME/.multica/config.json",
+    "operations": {
+      "view": "cat $HOME/.multica/config.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.multica/config.json",
+      "reset": [
+        "rm -f $HOME/.multica/config.json"
+      ]
+    }
+  },
+
+  "commands": {
+    "setup": "multica setup",
+    "version": "multica --version",
+    "status": "multica status",
+    "daemon": "multica daemon"
+  },
+
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "multica --version 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查守护进程",
+      "command": "pgrep -f multica-daemon > /dev/null && echo '守护进程运行中' || echo '守护进程未运行'"
+    }
+  ],
+
+  "mcp_servers": {},
+
+  "skills": {},
+
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+
+  "notes": "Multica是开源AI代理管理平台，支持Claude Code、Codex、OpenClaw等。安装后运行 'multica setup' 初始化配置。自托管需要Docker。"
+}

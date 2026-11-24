@@ -1,0 +1,103 @@
+{
+  "id": "openrouter",
+  "name": "OpenRouter",
+  "description": "AI 模型聚合 API 平台，统一接口访问 200+ 主流大模型。支持 GPT-4、Claude、Gemini、DeepSeek、Qwen、Llama 等，一个 API Key 访问所有模型，按量计费，部分模型免费。是 Hermes Agent、Cline 等工具的官方推荐模型提供商。",
+  "category": "ai-gateway",
+  "tags": [
+    "ai",
+    "api",
+    "model",
+    "gpt",
+    "claude",
+    "gemini",
+    "deepseek"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "注册账号获取 API Key",
+        "type": "web",
+        "command": "echo '请访问 https://openrouter.ai/ 注册账号并创建 API Key'",
+        "url": "https://openrouter.ai/"
+      }
+    ],
+    "default_method": 0,
+    "post_install": [
+      "echo '1. 访问 https://openrouter.ai/ 注册账号'",
+      "echo '2. 创建 API Key'",
+      "echo '3. 配置环境变量: export OPENROUTER_API_KEY=sk-or-v1-xxxxx'"
+    ]
+  },
+  "config": {
+    "env_var": "OPENROUTER_API_KEY",
+    "env_format": "sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "base_url": "https://openrouter.ai/api/v1",
+    "operations": {
+      "set_key": "export OPENROUTER_API_KEY=sk-or-v1-xxxxx",
+      "verify": "curl -s https://openrouter.ai/api/v1/models -H 'Authorization: Bearer $OPENROUTER_API_KEY' | head -c 100",
+      "web_console": "echo '打开 https://openrouter.ai/settings/keys 管理 API Key'"
+    }
+  },
+  "commands": {
+    "list_models": "curl -s https://openrouter.ai/api/v1/models -H 'Authorization: Bearer $OPENROUTER_API_KEY' | python3 -m json.tool | grep '\"id\"'",
+    "check_balance": "curl -s https://openrouter.ai/api/v1/auth/key -H 'Authorization: Bearer $OPENROUTER_API_KEY'",
+    "test": "curl -s https://openrouter.ai/api/v1/chat/completions -H 'Authorization: Bearer $OPENROUTER_API_KEY' -H 'Content-Type: application/json' -d '{\"model\":\"anthropic/claude-sonnet-4\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],\"max_tokens\":10}'"
+  },
+  "models": {
+    "free": {
+      "name": "免费模型",
+      "list": [
+        "deepseek/deepseek-chat-v3-0324:free",
+        "google/gemma-3-27b-it:free",
+        "meta-llama/llama-4-maverick:free",
+        "qwen/qwen3-235b-a22b:free"
+      ]
+    },
+    "popular": {
+      "name": "热门模型",
+      "list": [
+        "anthropic/claude-sonnet-4",
+        "openai/gpt-4.1",
+        "google/gemini-2.5-flash-preview",
+        "deepseek/deepseek-chat-v3-0324",
+        "meta-llama/llama-4-maverick",
+        "qwen/qwen3-235b-a22b",
+        "mistralai/mistral-small-3.1-24b-instruct"
+      ]
+    }
+  },
+  "integrations": {
+    "hermes_agent": {
+      "config": "hermes model → 选择 OpenRouter → 输入 API Key",
+      "note": "Hermes Agent 官方推荐模型提供商"
+    },
+    "cline": {
+      "config": "Settings → OpenRouter API → 输入 API Key",
+      "note": "Cline 支持 OpenRouter 作为模型提供商"
+    },
+    "curl": {
+      "config": "curl -H 'Authorization: Bearer $OPENROUTER_API_KEY' https://openrouter.ai/api/v1/chat/completions",
+      "note": "兼容 OpenAI API 格式"
+    }
+  },
+  "status_check": [
+    {
+      "name": "检查 API Key",
+      "command": "[ -n \"$OPENROUTER_API_KEY\" ] && echo 'API Key 已配置' || echo 'API Key 未配置'"
+    },
+    {
+      "name": "测试连接",
+      "command": "curl -s -o /dev/null -w '%{http_code}' https://openrouter.ai/api/v1/models -H \"Authorization: Bearer $OPENROUTER_API_KEY\" 2>/dev/null | grep -q '200' && echo '连接正常' || echo '连接失败'"
+    }
+  ],
+  "references": {
+    "homepage": "https://openrouter.ai/",
+    "docs": "https://openrouter.ai/docs",
+    "models": "https://openrouter.ai/models",
+    "pricing": "https://openrouter.ai/pricing",
+    "github": "https://github.com/openrouter"
+  },
+  "notes": "OpenRouter 是 API 聚合服务，不是本地工具。需要网络连接，国内访问可能有延迟。建议配合 Hermes Agent、Cline 等工具使用。兼容 OpenAI API 格式，可以直接替换 base_url。",
+  "post_install": [],
+  "post_uninstall": []
+}

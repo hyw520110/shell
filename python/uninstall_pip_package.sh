@@ -1,13 +1,105 @@
 #!/bin/bash
 
+# 显示帮助信息
+show_help() {
+    cat << EOF
+批量卸载 pip 包脚本
+
+批量卸载指定环境中的 pip 包和 conda 包，支持日志记录。
+
+用法: ./uninstall_pip_package.sh [目录] [日志文件]
+
+参数:
+    目录               目标环境目录（默认: 当前目录）
+    日志文件           日志文件路径（默认: ~/logs/uninstall_packages.log）
+
+选项:
+    -h, --help         显示此帮助信息
+    -v, --version      显示版本信息
+    --yes              跳过确认直接卸载
+
+说明:
+    - 自动检测当前环境的 pip 和 conda 包
+    - 忽略基础包（pip、setuptools、wheel等）
+    - 支持批量并行卸载
+    - 自动生成详细日志
+    - 用户确认后执行卸载
+
+忽略的包:
+    基础运行时包和系统包会被自动忽略，避免破坏环境：
+    - pip, setuptools, wheel
+    - python, openssl, zlib
+    - 系统依赖库等
+
+示例:
+    ./uninstall_pip_package.sh                          # 卸载当前环境
+    ./uninstall_pip_package.sh /path/to/project         # 卸载指定目录
+    ./uninstall_pip_package.sh . /var/log/uninstall.log # 自定义日志路径
+    ./uninstall_pip_package.sh --yes                    # 自动确认卸载
+
+使用场景:
+    - 清理测试环境
+    - 重置开发环境
+    - 移除不需要的依赖包
+    - 环境迁移前清理
+
+注意事项:
+    - 卸载操作不可逆，请确认后执行
+    - 建议在虚拟环境中使用
+    - 卸载前建议导出依赖列表
+    - 某些包可能有依赖关系
+
+导出依赖列表:
+    pip freeze > requirements.txt
+
+查看日志:
+    cat ~/logs/uninstall_packages.log
+
+EOF
+}
+
+# 参数解析
+AUTO_CONFIRM=false
+TARGET_DIR=""
+LOG_FILE=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -v|--version)
+            echo "批量卸载pip包脚本版本: 1.0"
+            exit 0
+            ;;
+        --yes)
+            AUTO_CONFIRM=true
+            shift
+            ;;
+        *)
+            if [ -z "$TARGET_DIR" ]; then
+                TARGET_DIR="$1"
+            elif [ -z "$LOG_FILE" ]; then
+                LOG_FILE="$1"
+            else
+                echo "未知参数: $1"
+                show_help
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
 # 忽略列表
 IGNORE_PACKAGES="_libgcc_mutex|_openmp_mutex|pip|setuptools|wheel|python|openssl|libgcc-ng|libstdcxx-ng|zlib|ca-certificates|certifi|tzdata|readline|sqlite|ncurses|libffi|tk|libgomp|lz4-c|packaging|pluggy|pycosat|pycparser|pyopenssl|pysocks|requests|ruamel.yaml|ruamel.yaml.clib|tqdm|urllib3|xz|zstandard|zstd|conda|conda-package-handling|conda-package-streaming|boltons|brotli-python|cffi|charset-normalizer|cryptography|idna|jsonpatch|jsonpointer"
 
 # 默认目录为当前目录
-TARGET_DIR=${1:-$(pwd)}
+TARGET_DIR=${TARGET_DIR:-$(pwd)}
 
 # 允许用户通过命令行参数指定日志文件路径
-LOG_FILE=${2:-"$HOME/logs/uninstall_packages.log"}
+LOG_FILE=${LOG_FILE:-"$HOME/logs/uninstall_packages.log"}
 
 # 创建日志目录（如果不存在）
 LOG_DIR=$(dirname "$LOG_FILE")
@@ -69,11 +161,13 @@ if [[ -n "$CONDA_PACKAGES" ]]; then
 fi
 
 # 用户确认是否继续卸载
-read -p "是否继续卸载这些包？(y/n): " CONFIRM
-if [[ "$CONFIRM" == "n" ]]; then
-    echo "操作已取消。" | tee -a "$LOG_FILE"
-    rm "$LOG_FILE"  # 删除空日志文件
-    exit 0
+if [ "$AUTO_CONFIRM" = false ]; then
+    read -p "是否继续卸载这些包？(y/n): " CONFIRM
+    if [[ "$CONFIRM" == "n" ]]; then
+        echo "操作已取消。" | tee -a "$LOG_FILE"
+        rm "$LOG_FILE"  # 删除空日志文件
+        exit 0
+    fi
 fi
 
 # 开始卸载 pip 包

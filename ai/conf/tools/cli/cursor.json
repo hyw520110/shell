@@ -1,0 +1,121 @@
+{
+  "id": "cursor",
+  "name": "Cursor CLI",
+  "description": "Cursor Agent CLI - Cursor 官方命令行工具，支持 Agent 模式、Plan 模式和 Ask 模式，可在终端直接与 AI 交互进行代码编写、审查和修改",
+  "category": "ai-coding",
+  "tags": [
+    "ai",
+    "bash",
+    "agent"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "官方安装脚本",
+        "type": "bash",
+        "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-cursor.XXXXXX\") && curl https://cursor.com/install -fsS -o \"$tmp\" && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
+        "check": "command -v agent",
+        "uninstall": [
+          "rm -f ~/.local/bin/agent",
+          "rm -rf ~/.cursor"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-cursor.XXXXXX\") && curl https://cursor.com/install -fsS -o \"$tmp\" && bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; exit $rc",
+    "check": "command -v agent"
+  },
+  "config": {
+    "path": "$HOME/.cursor/config.json",
+    "operations": {
+      "view": "cat $HOME/.cursor/config.json 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} $HOME/.cursor/config.json",
+      "reset": [
+        "cp $HOME/.cursor/config.json $HOME/.cursor/config.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.cursor/config.json"
+      ]
+    }
+  },
+  "commands": {
+    "start": "agent",
+    "version": "agent --version",
+    "list": "agent ls",
+    "resume": "agent resume",
+    "plan": "agent --plan",
+    "ask": "agent --mode=ask",
+    "cloud": "agent -c"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "agent --version 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查命令",
+      "command": "command -v agent 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查配置",
+      "command": "ls -la $HOME/.cursor/ 2>/dev/null || echo '配置目录不存在'"
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {
+    "cursor-agent": {
+      "name": "Agent 模式",
+      "description": "完整访问所有工具的复杂编码任务",
+      "prompts": {
+        "code": "使用 Agent 模式进行完整的代码编写和重构任务",
+        "refactor": "重构代码模块并添加测试",
+        "fix": "查找并修复代码中的问题"
+      },
+      "dependencies": {
+        "system_commands": []
+      },
+      "install_check": "command -v agent"
+    },
+    "cursor-plan": {
+      "name": "Plan 模式",
+      "description": "在编码前设计方法，通过澄清问题来规划",
+      "prompts": {
+        "plan": "使用 Plan 模式设计代码实现方案",
+        "design": "设计系统架构和实现步骤"
+      },
+      "dependencies": {
+        "system_commands": []
+      },
+      "install_check": "command -v agent"
+    },
+    "cursor-ask": {
+      "name": "Ask 模式",
+      "description": "只读探索，不进行修改",
+      "prompts": {
+        "explain": "解释代码的工作原理",
+        "review": "审查代码并提供改进建议"
+      },
+      "dependencies": {
+        "system_commands": []
+      },
+      "install_check": "command -v agent"
+    }
+  },
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "Cursor CLI 使用 'agent' 命令而非 'cursor'。支持交互式和非交互式模式，可与 Cloud Agent 集成。首次使用需要登录 Cursor 账户。",
+  "post_install": [
+    {
+      "description": "显示使用提示",
+      "command": "echo -e '\\nCursor CLI 安装完成！\\n\\n基本用法：\\n  agent              # 启动交互式会话\\n  agent \"prompt\"     # 直接执行任务\\n  agent --plan       # 使用 Plan 模式\\n  agent --mode=ask   # 使用 Ask 模式\\n\\n文档: https://cursor.com/docs/cli/overview'"
+    }
+  ],
+  "post_uninstall": [
+    {
+      "description": "清理残留文件",
+      "command": "rm -rf ~/.cursor ~/.cache/cursor 2>/dev/null || true"
+    }
+  ]
+}
