@@ -2693,6 +2693,13 @@ rebase_in_progress() {
     [[ -d "$git_dir/rebase-merge" || -d "$git_dir/rebase-apply" ]]
 }
 
+merge_in_progress() {
+    local git_dir
+    git_dir="$(git rev-parse --git-dir 2>/dev/null || true)"
+    [[ -n "$git_dir" ]] || return 1
+    [[ -f "$git_dir/MERGE_HEAD" ]]
+}
+
 set_sync_failure() {
     GITER_SYNC_FAILURE_STATUS="${1:-失败}"
     GITER_SYNC_FAILURE_DETAIL="${2:-同步远端失败}"
@@ -2841,6 +2848,57 @@ abort_if_rebase_in_progress() {
     fi
 }
 
+# 自动完成尚未结束的合并（MERGE_HEAD 存在）：
+# - 仍有未解决冲突：停止并给出处理命令，绝不自动提交
+# - 无冲突且已暂存：按 -m 消息执行 git commit，后续由推送流程 push
+complete_in_progress_merge() {
+    local branch="${1:-$(get_current_branch)}"
+    local unmerged conflict_file msg
+
+    unmerged="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
+    if [[ -n "$unmerged" ]]; then
+        set_sync_failure "暂停" "检测到未完成的合并，仍有未解决冲突"
+        log_error "检测到未完成的合并，且仍有未解决的冲突文件："
+        while IFS= read -r conflict_file; do
+            [[ -n "$conflict_file" ]] && printf '  %s\n' "$conflict_file" >&2
+        done <<< "$unmerged"
+        log_error "请解决冲突并执行: git add <文件> && git commit"
+        log_error "或放弃本次合并: git merge --abort"
+        return 1
+    fi
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        log_info "[dry-run] 检测到未完成的合并，将自动完成提交并推送。"
+        return 0
+    fi
+
+    if git diff --cached --quiet; then
+        if [ -n "$(git status --porcelain)" ]; then
+            set_sync_failure "暂停" "合并已无冲突但变更未暂存"
+            log_error "检测到未完成的合并，但变更尚未暂存。"
+            log_error "请先执行: git add <文件> 后重试。"
+            return 1
+        fi
+        log_warn "检测到未完成的合并，但没有待提交变更，尝试以 --no-edit 完成。"
+        if ! git commit --no-edit -q; then
+            set_sync_failure "暂停" "无法自动完成合并提交"
+            log_error "自动完成合并失败，请手动执行 git commit。"
+            return 1
+        fi
+    else
+        msg="${COMMIT_MSG:-$DEFAULT_COMMIT_MSG}"
+        log_info "检测到未完成的合并，自动完成合并提交: ${msg}"
+        if ! git commit -q -m "$msg"; then
+            set_sync_failure "暂停" "合并提交失败"
+            log_error "自动提交合并失败，请手动执行 git commit。"
+            return 1
+        fi
+    fi
+
+    log_info "合并已完成: $(git rev-parse --short HEAD 2>/dev/null || echo '?')"
+    return 0
+}
+
 reset_hard_to_upstream() {
     local upstream="$1"
     if [[ "${GITER_ALLOW_RESET_HARD:-0}" != "1" ]]; then
@@ -2892,7 +2950,7 @@ handle_dirty_workdir_before_sync() {
         echo "  3) 跳过同步，仅提交推送本地变更（可能推送失败）" >&2
         echo "  4) 丢弃本地变更，直接同步远端（危险）" >&2
         echo "  5) 停止，手动处理" >&2
-        read_input choice "请选择 (1/${#remotes[@]}，回车=1): "
+        read_input choice "请选择 (1-5，回车=1): "
         case "${choice:-1}" in
             1|c|C|commit)  action="commit" ;;
             2|s|S|stash)   action="stash" ;;
@@ -3750,6 +3808,9 @@ sync_remote_before_commit() {
     local local_commit remote_commit base
 
     clear_sync_failure
+    if merge_in_progress; then
+        complete_in_progress_merge "$branch" || return 1
+    fi
     abort_if_rebase_in_progress || return 1
 
     display_all_remotes
