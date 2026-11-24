@@ -20,6 +20,7 @@
   },
   "install_check": "which git",
   "tips": "安装 GitHub CLI (gh) 可获得更多 GitHub 操作能力",
+  "view_group": "研发/代码",
   "tags": [
     "Git",
     "版本控制",

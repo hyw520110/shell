@@ -15,6 +15,7 @@
   "install_check": "true",
   "tips": "输出使用 Chart.js 和 D3.js 进行可视化，需要浏览器环境查看",
   "notes": "原名 SPACE-analytics，输出可视化HTML数据分析报告",
+  "view_group": "产品/文档",
   "tags": [
     "产品分析",
     "数据分析",

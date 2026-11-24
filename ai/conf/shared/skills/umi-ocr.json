@@ -1,8 +1,14 @@
 {
   "id": "umi-ocr",
   "name": "离线 OCR 文字识别 (Umi-OCR)",
-  "description": "基于 Umi-OCR 的离线文字识别技能，支持截图 OCR、批量图片识别、PDF 文档提取、二维码识别与生成、公式识别。完全离线运行，支持中英日韩等多语言",
+  "view_group": "设计/原型",
+  "tags": [
+    "OCR",
+    "文字识别",
+    "图片处理"
+  ],
   "category": "vision",
+  "description": "基于 Umi-OCR 的离线文字识别技能，支持截图 OCR、批量图片识别、PDF 文档提取、二维码识别与生成、公式识别。完全离线运行，支持中英日韩等多语言",
   "prompts": {
     "screenshot_ocr": "识别这张截图中的所有文字内容，保持原始排版",
     "batch_ocr": "批量识别以下目录中的所有图片文字: /path/to/images",
@@ -45,11 +51,6 @@
     ]
   },
   "tips": "Umi-OCR 完全离线运行，适合处理敏感文档。支持命令行和 HTTP 接口两种调用方式。",
-  "tags": [
-    "OCR",
-    "文字识别",
-    "图片处理"
-  ],
   "scenarios": [
     "research",
     "design-prototype"

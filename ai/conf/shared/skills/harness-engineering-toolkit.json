@@ -8,6 +8,7 @@
     "architecture",
     "code-review"
   ],
+  "view_group": "安全/审计",
   "tags": [
     "审计",
     "构建",

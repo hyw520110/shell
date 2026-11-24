@@ -33,6 +33,7 @@
     ]
   },
   "tips": "配合本地 sshm 脚本使用更便捷：先用 sshm 配置好 ~/.ssh/config，再通过 SSH MCP 执行自动化操作",
+  "view_group": "云与运维",
   "tags": [
     "SSH",
     "远程连接",

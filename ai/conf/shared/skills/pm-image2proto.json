@@ -15,6 +15,7 @@
   "install_check": "true",
   "tips": "首次使用时会进行onboarding，收集设计系统参考。输出单文件HTML，无外部依赖（除Mermaid CDN）",
   "notes": "原名 space-image2proto，支持学习记忆以适应用户设计风格",
+  "view_group": "设计/原型",
   "tags": [
     "原型",
     "图片转原型",

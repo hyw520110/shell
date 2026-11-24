@@ -15,6 +15,7 @@
   },
   "install_check": "which pdftotext || which pandoc",
   "tips": "安装 poppler-utils 可获得 pdftotext 命令用于PDF文本提取",
+  "view_group": "研究/知识",
   "tags": [
     "PDF",
     "文档",

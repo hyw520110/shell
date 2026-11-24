@@ -40,6 +40,7 @@
       "command": "npx playwright install"
     }
   ],
+  "view_group": "浏览器/爬虫",
   "tags": [
     "浏览器",
     "自动化",

@@ -31,6 +31,7 @@
     "usage": "Goose 是独立 Agent，不要把它当作 MCP server。优先用于需要本地 CLI Agent 长任务、跨工具自动化或独立工作台的场景。",
     "safety": "运行 Goose 前说明它将读取/修改哪些目录；涉及凭据、系统安装或外部服务登录时先让用户确认。"
   },
+  "view_group": "Agent平台",
   "tags": [
     "Agent",
     "MCP",

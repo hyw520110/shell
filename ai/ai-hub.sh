@@ -218,10 +218,10 @@ operate_tool() {
             if [[ -n "$nvd_latest" ]]; then
                 local nvd_installed=""
                 nvd_installed=$(npm_installed_version "$nvd_name")
-                info_log "🔎 版本检测: $nvd_name 当前 ${nvd_installed:-未安装}，npm 最新 $nvd_latest"
+                info_log " 版本检测: $nvd_name 当前 ${nvd_installed:-未安装}，npm 最新 $nvd_latest"
                 if [[ "$op" == "update" && "$nvd_spec" != "$nvd_name" && "$nvd_spec" != "$nvd_name@latest" && "$nvd_spec" != "$nvd_name@$nvd_latest" ]]; then
                     run_cmd="${run_cmd//"$nvd_spec"/"$nvd_name@$nvd_latest"}"
-                    info_log "➜ 配置钉住 ${nvd_spec#"$nvd_name"@}，已提升到 npm 最新版 $nvd_latest"
+                    info_log "-> 配置钉住 ${nvd_spec#"$nvd_name"@}，已提升到 npm 最新版 $nvd_latest"
                 elif [[ "$op" == "install" && "$nvd_spec" != "$nvd_name" && "$nvd_spec" != "$nvd_name@latest" && "$nvd_spec" != "$nvd_name@$nvd_latest" ]]; then
                     info_log "提示: 配置钉住 ${nvd_spec#"$nvd_name"@}，npm 最新为 $nvd_latest（更新操作会自动升级到最新版）"
                 fi
@@ -248,7 +248,7 @@ operate_tool() {
 
     # 3. 执行核心逻辑
     if [[ -n "$OP_plugin" ]]; then
-        info_log "➜ 正在执行插件 $OP_plugin ($op) $OP_name..."
+        info_log "-> 正在执行插件 $OP_plugin ($op) $OP_name..."
         local p_script="$SCRIPT_DIR/scripts/plugins/run_plugin.sh"
         if [[ -f "$p_script" ]]; then
             # 允许实时输出，解决卡死错觉
@@ -258,7 +258,7 @@ operate_tool() {
         fi
     elif [[ -z "$run_cmd" ]]; then
         if [[ "$OP_type" == "npm" || "$OP_type" == "pip" || "$OP_type" == "pip_official" || "$OP_type" == "brew" || "$OP_type" == "uv" || "$OP_type" == "bash" ]]; then
-            info_log "➜ 正在通过 $OP_type $op $OP_name..."
+            info_log "-> 正在通过 $OP_type $op $OP_name..."
             exec_pkg_op "$OP_type" "$op" "$OP_name" "$OP_pkg" "$npm_registry" "$OP_id" "$OP_type" "$OP_cmd"
             core_rc=$?
         else
@@ -267,7 +267,7 @@ operate_tool() {
             return 1
         fi
     else
-        info_log "➜ 正在执行 $op $OP_name..."
+        info_log "-> 正在执行 $op $OP_name..."
         run_configured_command "$(expand_vars "$run_cmd")" "$OP_name $op"
         core_rc=$?
     fi
@@ -440,7 +440,7 @@ safe_remove_config_path() {
 
 uninstall_tool_extended() {
     local idx=$1; parse_tool_data "${TOOLS[$idx]}" "UN"
-    echo -e "${RED}⚠️ 彻底卸载 $UN_name...${NC}"
+    echo -e "${RED}[未安装] 彻底卸载 $UN_name...${NC}"
     operate_tool "$idx" "uninstall" "true" || return 1
     execute_extended_commands "$UN_id" "post_uninstall" "$UN_name"
     execute_extended_commands "$UN_id" "uninstall_extended" "$UN_name"
@@ -480,7 +480,7 @@ show_tool_usage_guide() {
     jq -e '(.setup_guide.workflows // .usage_guide.workflows // .commands // {}) | length > 0' "$file" >/dev/null 2>&1 && has_guide=true
     [[ "$has_guide" == true ]] || return 0
 
-    echo -e "\n${CYAN}📖 ${name} 使用指南（${operation}完成）${NC}"
+    echo -e "\n${CYAN} ${name} 使用指南（${operation}完成）${NC}"
     [[ -n "$manual" ]] && echo -e "  ${manual}"
     local workflow_name workflow_example
     while IFS=$'\t' read -r workflow_name workflow_example; do
@@ -793,14 +793,14 @@ run_configured_command() {
     fi
 
     # dry-run 下连命令也不执行：形态校验已经跑过，被拒的命令在演练里同样会显示为被拒。
-    dry_run_skip "$desc → $cmd" && return 0
+    dry_run_skip "$desc  $cmd" && return 0
 
     if is_destructive_command "$cmd" && [[ "${AI_HUB_ALLOW_DANGEROUS:-}" != "1" ]]; then
         if [[ "${AI_HUB_NON_INTERACTIVE:-0}" == "1" ]]; then
             warn_log "已跳过高风险非交互命令: ${desc}。设置 AI_HUB_ALLOW_DANGEROUS=1 可允许执行。"
             return 1
         elif [[ -t 0 ]]; then
-            echo -e "${YELLOW}⚠️  即将执行高风险步骤: $desc${NC}"
+            echo -e "${YELLOW}[未安装]  即将执行高风险步骤: $desc${NC}"
             echo "$cmd"
             read -p "确认执行？(y/N): " confirm_danger
             [[ "$confirm_danger" == "y" || "$confirm_danger" == "Y" ]] || return 1
@@ -885,10 +885,52 @@ get_tool_display_status() {
 # npm 全局包列表缓存，避免 is_mcp_server_installed 多次调用 npm list -g
 _NPM_GLOBAL_LIST_CACHE=""
 _get_npm_global_list() {
+    # 文件缓存：is_mcp_server_installed 里 `_get_npm_global_list | grep` 是管道子 shell，
+    # 内存变量 $_NPM_GLOBAL_LIST_CACHE 在子 shell 里赋值后丢失，导致 41 个 MCP 每个都重跑
+    # npm list -g（≈4.6s 一次，-m 菜单要 70s+）。改用文件缓存跨子 shell 共享。
+    # 自动失效：缓存文件首行存 npm_root 路径，用 stat 检查该目录 mtime（不跑 npm root -g），
+    # npm 全局 node_modules 比缓存新（用户装了新包）则重建。
+    # 结果同时存入全局 $_NPM_GLOBAL_LIST_CACHE，供 _npm_has_pkg 内存匹配（不再每项 fork）。
+    local cache_file="${AI_HUB_NPM_LIST_CACHE:-$HOME/.cache/ai-hub/npm-global-list.txt}"
+    if [[ -z "$_NPM_GLOBAL_LIST_CACHE" && -f "$cache_file" && -z "$_NPM_GLOBAL_LIST_FORCE" ]]; then
+        local cached_root cache_mtime node_mtime
+        cached_root=$(head -1 "$cache_file" 2>/dev/null)
+        if [[ -n "$cached_root" && -d "$cached_root" ]]; then
+            cache_mtime=$(stat -f %m "$cache_file" 2>/dev/null || echo 0)
+            node_mtime=$(stat -f %m "$cached_root" 2>/dev/null || echo 0)
+            if (( node_mtime <= cache_mtime )); then
+                _NPM_GLOBAL_LIST_CACHE=$(tail -n +2 "$cache_file" 2>/dev/null)
+            fi
+        fi
+    fi
     if [[ -z "$_NPM_GLOBAL_LIST_CACHE" ]] && command_exists npm; then
         _NPM_GLOBAL_LIST_CACHE=$(npm list -g --depth=0 2>/dev/null || true)
+        local npm_root; npm_root=$(npm root -g 2>/dev/null)
+        mkdir -p "$(dirname "$cache_file")" 2>/dev/null
+        printf '%s\n%s\n' "$npm_root" "$_NPM_GLOBAL_LIST_CACHE" > "$cache_file" 2>/dev/null
     fi
     echo "$_NPM_GLOBAL_LIST_CACHE"
+}
+
+# 内存版 npm 全局包检测：优先读 $_NPM_GLOBAL_LIST_CACHE，未加载则调 _get_npm_global_list。
+# 用 bash 内置匹配替代 `_get_npm_global_list | grep -q`（省 2 个 fork/项）。
+# 精确匹配包名行（`npm list -g` 输出形如 "├── @scope/name@version" 或 "├── name@version"）：
+#   1. pkg 可能带版本后缀（"appium-mcp@latest"）或 git 前缀（"github:scharf-black/tolaria-mcp"），
+#      先剥 git 前缀；剥版本后缀时须保护 scoped 包名首字符的 `@`（`@scope/name` 的 `@` 是包名
+#      一部分，不是版本分隔符），只当出现第二个 `@` 或 `@` 不在首位时才剥。
+#   2. 匹配 `${pkg}@` 确保包名边界（"fetch" 不匹配 "@kazuph/mcp-fetch@1.6.3"）。
+_npm_has_pkg() {
+    local pkg="$1" ats
+    [[ -z "$pkg" ]] && return 1
+    pkg="${pkg##*:}"                       # 剥 github:/gitlab: 前缀 → 裸包名（含可能版本）
+    ats=${pkg//[^@]/}                      # 统计 @ 数量
+    if [[ "${#ats}" -ge 2 || ( "${#ats}" -eq 1 && "${pkg:0:1}" != "@" ) ]]; then
+        pkg="${pkg%@*}"                    # 去掉版本后缀（@latest/@1.2.3）
+    fi
+    [[ -z "$pkg" ]] && return 1
+    [[ -z "$_NPM_GLOBAL_LIST_CACHE" ]] && _get_npm_global_list >/dev/null
+    [[ -z "$_NPM_GLOBAL_LIST_CACHE" ]] && return 1
+    [[ "$_NPM_GLOBAL_LIST_CACHE" == *"${pkg}@"* ]]
 }
 
 # ==================== npm 版本检测（安装/更新前提示当前与最新版本） ====================
@@ -899,7 +941,7 @@ npm_cmd_extract_spec() {
     printf '%s\n' "$1" | sed -nE "s/.*npm[3]? install -g[[:space:]]+'?\"?([^'\"[:space:]]+).*/\1/p" | head -n 1
 }
 
-# 去掉包 spec 的版本后缀，得到纯包名（@scope/name@1.0.0 → @scope/name，name@1.0.0 → name）
+# 去掉包 spec 的版本后缀，得到纯包名（@scope/name@1.0.0  @scope/name，name@1.0.0  name）
 npm_spec_name() {
     local spec="${1// /}"
     [[ -n "$spec" ]] || return 0
@@ -947,23 +989,41 @@ is_mcp_server_installed() {
     local server_id="$1"
     local file="${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/mcp-servers/${server_id}.json"
     [[ -f "$file" ]] || return 1
-    local check_cmd pkg
-    check_cmd=$(jq -r '.status_check[0].command // ""' "$file" 2>/dev/null)
-    if [[ "$check_cmd" == npm\ list* ]]; then
-        pkg=$(echo "$check_cmd" | sed -E 's/^npm list -g ([^ ]+).*/\1/')
-        if [[ -n "$pkg" ]]; then
-            _get_npm_global_list | grep -q "$pkg" && return 0
-        fi
+    # 优先用预取映射（view 一次 jq 加载全部），否则单次 jq 读包名
+    local pkg
+    if [[ -n "${_MCP_PKG_MAP_LOADED:-}" ]]; then
+        pkg="${_MCP_PKG_MAP[$server_id]:-}"
+    else
+        pkg=$(jq -r '
+            ((.status_check[0].command // "") | capture("^npm list -g (?<p>[^ ]+)")?.p)
+            // ((.install.command // "") | capture(".*npm install -g (?<p>[^ ]+)")?.p)
+            // ""' "$file" 2>/dev/null)
     fi
-    local install_cmd
-    install_cmd=$(jq -r '.install.command // ""' "$file" 2>/dev/null)
-    if [[ "$install_cmd" == npm\ install* ]]; then
-        pkg=$(echo "$install_cmd" | sed -E 's/.*npm install -g ([^ ]+).*/\1/' | awk '{print $1}')
-        if [[ -n "$pkg" ]]; then
-            _get_npm_global_list | grep -q "$pkg" && return 0
-        fi
-    fi
+    [[ -n "$pkg" ]] || return 1
+    _npm_has_pkg "$pkg" && return 0
     return 1
+}
+
+# 单次 jq 预取全部 MCP 的 npm 包名到 $_MCP_PKG_MAP（id→pkg），供 is_mcp_server_installed 内存读。
+# glob 与 jq 参数同为字典序展开，按下标配对文件名与包名（同 view_group_map 技巧）。
+# 避免 41 项每项一次 jq fork（-m 查看 ≈1s 的检查开销 → 近乎 0）。
+_load_mcp_pkg_map() {
+    [[ -n "${_MCP_PKG_MAP_LOADED:-}" ]] && return 0
+    declare -gA _MCP_PKG_MAP=()
+    local dir="${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/mcp-servers"
+    local -a files=("$dir"/*.json) pkgs=() f base
+    [[ -e "${files[0]}" ]] || { _MCP_PKG_MAP_LOADED=1; return 0; }
+    mapfile -t pkgs < <(jq -r '
+        ((.status_check[0].command // "") | capture("^npm list -g (?<p>[^ ]+)")?.p)
+        // ((.install.command // "") | capture(".*npm install -g (?<p>[^ ]+)")?.p)
+        // ""' "${files[@]}" 2>/dev/null)
+    for f in "${files[@]}"; do
+        base=$(basename "$f" .json)
+        [[ "$base" == _* ]] && { pkgs=("${pkgs[@]:1}"); continue; }
+        _MCP_PKG_MAP["$base"]="${pkgs[0]:-}"
+        pkgs=("${pkgs[@]:1}")
+    done
+    _MCP_PKG_MAP_LOADED=1
 }
 
 is_skill_installed() {
@@ -974,7 +1034,7 @@ is_skill_installed() {
 
 CURRENT_TAB=0
 # 标签页配置
-TABS=("⌨️ CLI 助手" "💻 IDE 集成" "🤖 自主智能体" "📊 分析工作台" "🛠️ 应用开发平台" "🌐 API 网关" "⚙️ 推理引擎" "🛡️ 质量与安全" "🔧 工具组件")
+TABS=("CLI 助手" " IDE 集成" " 自主智能体" " 分析工作台" " 应用开发平台" " API 网关" " 推理引擎" " 质量与安全" " 工具组件")
 
 
 tool_categories_for_tab() {
@@ -1022,9 +1082,9 @@ select_tool_interactive() {
                         [[ "${TOOL_STATUS[$gi]}" != true ]] || group_installed=$((group_installed + 1))
                     done
                     local group_name="${C_name% (*}"
-                    # 组行也需要 ✅/⚠️：只给计数时，多选框 [x] 容易被读成「已安装」。
-                    local group_icon="${YELLOW}⚠️ ${NC}"
-                    [[ $group_installed -gt 0 ]] && group_icon="${GREEN}✅ ${NC}"
+                    # 组行也需要 [OK] /[未安装] ：只给计数时，多选框 [x] 容易被读成「已安装」。
+                    local group_icon="${YELLOW}[未安装] ${NC}"
+                    [[ $group_installed -gt 0 ]] && group_icon="${GREEN}[已安装] ${NC}"
                     # 一个都没装时别说「已安装」字样，避免读错。
                     local group_count_label
                     if [[ $group_installed -eq 0 ]]; then
@@ -1038,12 +1098,12 @@ select_tool_interactive() {
                     idxs+=("$i")
                     continue
                 fi
-                local status_icon="${YELLOW}⚠️ ${NC}"
+                local status_icon="${YELLOW}[未安装] ${NC}"
                 local extra_info=""
                 local badge
                 badge=$(tool_category_badge "$C_cat")
                 if [[ "${TOOL_STATUS[$i]}" == "true" ]]; then
-                    status_icon="${GREEN}✅ ${NC}"
+                    status_icon="${GREEN}[已安装] ${NC}"
                     extra_info=" [$(get_tool_display_status "$i")]"
                     if [[ "$C_cat" == "ai-gateway" ]]; then
                         if [[ "$C_id" == "sub2api" || "$C_id" == "one-api" || "$C_id" == "new-api" ]]; then
@@ -1123,10 +1183,10 @@ select_tool_interactive() {
                 *"技能"*) manage_skills ;;
                 *"批量"*) 
                     local batch_opts=()
-                    batch_opts+=("🎯 按推荐场景配置")
-                    batch_opts+=("🏷️ 按标签精细选择")
-                    batch_opts+=("🧩 自定义 MCP / Skills")
-                    batch_opts+=("🔍 检查 MCP / Skills 配置")
+                    batch_opts+=(" 按推荐场景配置")
+                    batch_opts+=(" 按标签精细选择")
+                    batch_opts+=(" 自定义 MCP / Skills")
+                    batch_opts+=(" 检查 MCP / Skills 配置")
                     local batch_res
                     batch_res=$(menu_select "选择批量配置方式" "false" "false" "" "" "" "${batch_opts[@]}")
                     [[ "$batch_res" == "EXIT" ]] && continue
@@ -1184,10 +1244,10 @@ _show_group_variant_menu() {
     for ((_vi=0; _vi<${#TOOLS[@]}; _vi++)); do
         parse_tool_data "${TOOLS[$_vi]}" "_GV"
         [[ "$_GV_group" == "$group" ]] || continue
-        local v_st_icon="${YELLOW}⚠️ ${NC}"
+        local v_st_icon="${YELLOW}[未安装] ${NC}"
         local v_extra="未安装"
         if [[ "${TOOL_STATUS[$_vi]}" == "true" ]]; then
-            v_st_icon="${GREEN}✅ ${NC}"
+            v_st_icon="${GREEN}[已安装] ${NC}"
             v_extra="$(get_tool_display_status "$_vi")"
         fi
         v_opts+=("${v_st_icon}${_GV_name}  [${v_extra}]")
@@ -1208,7 +1268,7 @@ _show_group_variant_menu() {
     
     local v_res
     _MENU_ALT_SCREEN=true
-    v_res=$(menu_select "📦 ${_first_name} — 选择版本 (可多选)" "true" "true" "$v_pre" "" "" "${v_opts[@]}")
+    v_res=$(menu_select " ${_first_name} — 选择版本 (可多选)" "true" "true" "$v_pre" "" "" "${v_opts[@]}")
     _MENU_ALT_SCREEN=false
     
     [[ "$v_res" == "EXIT" || -z "$v_res" ]] && return
@@ -1277,7 +1337,7 @@ _show_group_variant_uninstall() {
         [[ "${TOOL_STATUS[$_vi]}" != "true" ]] && continue  # 仅已安装
         local v_extra
         v_extra="$(get_tool_display_status "$_vi")"
-        v_opts+=("${GREEN}✅ ${_GV_name}${NC}  [${v_extra}]")
+        v_opts+=("${GREEN}[已安装] ${_GV_name}${NC}  [${v_extra}]")
         v_idxs+=($_vi)
     done
     
@@ -1306,7 +1366,7 @@ _show_group_variant_uninstall() {
     
     local v_res
     _MENU_ALT_SCREEN=true
-    v_res=$(menu_select "🗑️ ${_first_name} — 选择要卸载的版本 (可多选)" "true" "true" "$v_pre" "" "" "${v_opts[@]}")
+    v_res=$(menu_select " ${_first_name} — 选择要卸载的版本 (可多选)" "true" "true" "$v_pre" "" "" "${v_opts[@]}")
     _MENU_ALT_SCREEN=false
     
     [[ "$v_res" == "EXIT" || -z "$v_res" ]] && return
@@ -1367,7 +1427,7 @@ install_or_update_menu() {
     local opts=() idxs=() i
     build_tool_menu_options "all" "opts" "idxs"
     local res
-    res=$(menu_select "📦 安装/更新工具" "true" "true" "" "" "" "${opts[@]}")
+    res=$(menu_select " 安装/更新工具" "true" "true" "" "" "" "${opts[@]}")
     for i in $(_menu_selected_indices "$res" "${#idxs[@]}"); do
         _install_or_update_entry "${idxs[$i]}"
     done
@@ -1379,7 +1439,7 @@ uninstall_menu() {
     [[ ${#opts[@]} -eq 0 ]] && { warn_log "没有已安装的工具"; return; }
     
     local res
-    res=$(menu_select "🗑️ 卸载工具" "false" "true" "" "" "" "${opts[@]}")
+    res=$(menu_select " 卸载工具" "false" "true" "" "" "" "${opts[@]}")
     [[ "$res" == "EXIT" || -z "$res" ]] && return
     
     local tidx=${idxs[$res]}
@@ -1396,7 +1456,7 @@ tool_operations_select() {
     build_tool_menu_options "installed" "opts" "idxs"
     [[ ${#opts[@]} -eq 0 ]] && return
     local res
-    res=$(menu_select "🛠️ 选择工具" "false" "true" "" "TABS" "CURRENT_TAB" "${opts[@]}")
+    res=$(menu_select " 选择工具" "false" "true" "" "TABS" "CURRENT_TAB" "${opts[@]}")
     [[ "$res" != "EXIT" && -n "$res" ]] && tool_operations_menu "${idxs[$res]}"
 }
 
@@ -1418,15 +1478,15 @@ tool_command_display_label() {
     esac
 
     if [[ -n "$desc" && "$desc" != "null" ]]; then
-        printf '▶️ %s / %s - %s\n' "$group" "$action" "$desc"
+        printf '%s / %s - %s\n' "$group" "$action" "$desc"
     else
-        printf '▶️ %s / %s\n' "$group" "$action"
+        printf '%s / %s\n' "$group" "$action"
     fi
 }
 
 tool_operations_menu() {
     local idx=$1; parse_tool_data "${TOOLS[$idx]}" "M"
-    local opts=("@v 👁️ 查看配置" "@e ✏️ 编辑配置" "@s 🔄 重置配置" "@t 🔍 状态" "@u ⬆️ 检查更新" "@r 🗑️ 卸载")
+    local opts=("@v  查看配置" "@e  编辑配置" "@s  重置配置" "@t  状态" "@u 检查更新" "@r  卸载")
     local base_count=${#opts[@]}
     local command_keys=()
     local command_cmds=()
@@ -1452,7 +1512,7 @@ tool_operations_menu() {
     fi
 
     local res
-    res=$(menu_select "🛠️ $M_name 操作" "false" "true" "" "TABS" "CURRENT_TAB" "${opts[@]}")
+    res=$(menu_select " $M_name 操作" "false" "true" "" "TABS" "CURRENT_TAB" "${opts[@]}")
     [[ "$res" == "EXIT" || -z "$res" ]] && return
     case $res in
         0) show_tool_config "$idx" ;;
@@ -1494,7 +1554,7 @@ check_tool_updates() {
         return 0
     fi
 
-    info_log "🔎 正在查询 $name 的最新版本..."
+    info_log " 正在查询 $name 的最新版本..."
     local installed latest
     installed=$(npm_installed_version "$name")
     latest=$(npm_latest_version "$name")
@@ -1504,7 +1564,7 @@ check_tool_updates() {
         return 0
     fi
 
-    echo -e "${CYAN}📦 $CHK_name ($name)${NC}"
+    echo -e "${CYAN} $CHK_name ($name)${NC}"
     if [[ -n "$installed" ]]; then
         echo -e "   当前版本: v$installed"
     else
@@ -1728,7 +1788,7 @@ batch_apply_selected_configs() {
         if [[ ("${TOOL_STATUS[$i]}" == "true" || "$_is_target_explicit" == "true") && -n "$BTG_conf" ]] && is_batch_config_target "$BTG_cat" "$BTG_conf"; then
             local _kind
             _kind=$(skill_target_kind "$BTG_id" "$BTG_name")
-            target_opts+=("${GREEN}✅ ${BTG_name}${NC} - $(get_tool_display_status "$i")")
+            target_opts+=("${GREEN}[已安装] ${BTG_name}${NC} - $(get_tool_display_status "$i")")
             target_confs+=("$BTG_conf")
             target_names+=("$BTG_name")
             target_ids+=("$BTG_id")
@@ -1740,7 +1800,7 @@ batch_apply_selected_configs() {
     while IFS=$'\t' read -r _pid _pname _pkind _pconf _pskills; do
         [[ -n "$_pid" && -n "$_pconf" ]] || continue
         config_path_in_list "$_pconf" "${target_confs[@]}" && continue
-        target_opts+=("${GREEN}✅ ${_pname}${NC} - profile: ${_pconf}")
+        target_opts+=("${GREEN}[已安装] ${_pname}${NC} - profile: ${_pconf}")
         target_confs+=("$_pconf")
         target_names+=("$_pname")
         target_ids+=("$_pid")
@@ -1770,8 +1830,8 @@ batch_apply_selected_configs() {
             return 1
         fi
     else
-        echo -e "\n✅ 解析完毕！共准备了 ${#selected_mcps[@]} 个 MCP 和 ${#selected_skills[@]} 个 Skills（部分无需配置变量已自动就绪）。"
-        target_opts+=("🛠️ 配置到所有环境")
+        echo -e "\n[已安装] 解析完毕！共准备了 ${#selected_mcps[@]} 个 MCP 和 ${#selected_skills[@]} 个 Skills（部分无需配置变量已自动就绪）。"
+        target_opts+=(" 配置到所有环境")
         target_res=$(menu_select "选择要写入配置的 CLI/Agent/profile（可多选）" "true" "true" "" "" "" "${target_opts[@]}")
         [[ "$target_res" == "EXIT" || -z "$target_res" ]] && return 0
     fi
@@ -1784,7 +1844,7 @@ batch_apply_selected_configs() {
     echo ""
     echo "已选择 ${target_count} 个 CLI/Agent/profile"
 
-    echo -e "\n📊 ${CYAN}${title}${NC}"
+    echo -e "\n ${CYAN}${title}${NC}"
     echo -e "   MCP 安装 (${#install_mcps[@]}): ${CYAN}${install_mcps[*]:-无}${NC}"
     echo -e "   MCP 写入 (${#config_mcps[@]}): ${CYAN}${config_mcps[*]:-无}${NC}"
     if [[ ${#incompatible_mcps[@]} -gt 0 ]]; then
@@ -1836,7 +1896,7 @@ batch_apply_selected_configs() {
     for idx in $target_res; do
         local _tname="${target_names[$idx]}"
         [[ -z "$_tname" ]] && _tname="${target_ids[$idx]}"
-        echo -ne "   ➜ 配置 ${_tname} MCP ... "
+        echo -ne "   -> 配置 ${_tname} MCP ... "
         if [[ ${#skipped_mcps[@]} -gt 0 || ${#incompatible_mcps[@]} -gt 0 ]]; then
             remove_mcp_configs_from_file "${target_confs[$idx]}" "${skipped_mcps[@]}" "${incompatible_mcps[@]}" >/dev/null 2>&1 || true
         fi
@@ -1871,7 +1931,7 @@ batch_apply_selected_configs() {
         fi
     done
     for idx in $target_res; do
-        echo -ne "   ➜ 配置 ${target_names[$idx]} Skills ... "
+        echo -ne "   -> 配置 ${target_names[$idx]} Skills ... "
         local missing_skills=()
         if [[ ${#selected_skills[@]} -gt 0 ]]; then
             if [[ "${AI_HUB_UPDATE_CONFIGS:-0}" == "1" ]]; then
@@ -1896,7 +1956,7 @@ batch_apply_selected_configs() {
     done
 
     [[ ${#selected_skills[@]} -gt 0 ]] && prompt_extension_commands_for_skills "${selected_skills[@]}"
-    echo -e "\n📊 批量安装配置结果"
+    echo -e "\n 批量安装配置结果"
     echo "   目标: ${target_count}"
     echo "   MCP: 请求 ${requested_mcp_count}，安装候选 ${#install_mcps[@]}，写入候选 ${#config_mcps[@]}，跳过写入 ${#skipped_mcps[@]}，系统不兼容 ${#incompatible_mcps[@]}，安装成功 ${mcp_install_ok}，安装失败 ${mcp_install_failed}，目标写入成功 ${mcp_config_ok}，目标写入失败 ${mcp_config_failed}"
     echo "   Skills: 请求 ${#selected_skills[@]}，安装成功 ${skill_install_ok}，安装失败 ${skill_install_failed}，目标写入成功 ${skill_config_ok}，目标写入失败 ${skill_config_failed}"
@@ -1905,9 +1965,9 @@ batch_apply_selected_configs() {
 
     local batch_failed=$((mcp_config_failed + skill_config_failed + mcp_install_failed + skill_install_failed))
     if [[ $batch_failed -eq 0 ]]; then
-        echo -e "\n✅ 批量配置完成！"
+        echo -e "\n[已安装] 批量配置完成！"
     else
-        echo -e "\n${RED}❌ 批量配置完成，但有 ${batch_failed} 项失败。${NC}"
+        echo -e "\n${RED}[失败] 批量配置完成，但有 ${batch_failed} 项失败。${NC}"
     fi
     if [[ "${AI_HUB_BATCH_CONFIRM:-}" != "true" ]]; then
         read -p "按回车返回..."
@@ -1916,8 +1976,8 @@ batch_apply_selected_configs() {
 }
 
 batch_apply_standard_configs() {
-    echo -e "${CYAN}🎯 按推荐场景配置 MCP 和 Skills${NC}"
-    echo -e "${YELLOW}💡 场景来自 global.json.scenarios，具体 MCP/Skills 由各自配置文件 scenarios 字段动态匹配。${NC}"
+    echo -e "${CYAN} 按推荐场景配置 MCP 和 Skills${NC}"
+    echo -e "${YELLOW} 场景来自 global.json.scenarios，具体 MCP/Skills 由各自配置文件 scenarios 字段动态匹配。${NC}"
 
     validate_shared_configs "structure" || {
         error_log "MCP/Skills 配置存在结构错误，请先修复后再批量配置。"
@@ -1929,9 +1989,9 @@ batch_apply_standard_configs() {
     local i
     for i in "${!SCENARIO_KEYS[@]}"; do
         if [[ -n "${SCENARIO_DESCS[$i]:-}" ]]; then
-            scenario_opts+=("🎯 ${SCENARIO_NAMES[$i]} - ${SCENARIO_DESCS[$i]} (${SCENARIO_KEYS[$i]})")
+            scenario_opts+=(" ${SCENARIO_NAMES[$i]} - ${SCENARIO_DESCS[$i]} (${SCENARIO_KEYS[$i]})")
         else
-            scenario_opts+=("🎯 ${SCENARIO_NAMES[$i]} (${SCENARIO_KEYS[$i]})")
+            scenario_opts+=(" ${SCENARIO_NAMES[$i]} (${SCENARIO_KEYS[$i]})")
         fi
     done
     [[ ${#scenario_opts[@]} -eq 0 ]] && { warn_log "未找到可用场景配置"; return 1; }
@@ -1953,7 +2013,7 @@ batch_apply_standard_configs() {
     selected_skills=($(find_items_by_scenarios "skills" "$include_optional" "$include_experimental" "${selected_scenarios[@]}"))
     merge_skill_dependency_mcps selected_mcps "${selected_skills[@]}"
 
-    echo -e "\n📌 已选场景: ${CYAN}${selected_scenarios[*]}${NC}"
+    echo -e "\n 已选场景: ${CYAN}${selected_scenarios[*]}${NC}"
     batch_apply_selected_configs "推荐场景配置" "${selected_mcps[@]}" -- "${selected_skills[@]}"
 }
 
@@ -2023,35 +2083,19 @@ count_items_by_tag() {
     echo "$count"
 }
 
-tag_icon() {
-    local tag="$1"
-    case "$tag" in
-        *设计*|UI|*原型*|*网页*|*视觉*|*信息图*) echo "🎨" ;;
-        *架构*|*流程*|*图*|drawio|diagram) echo "📈" ;;
-        PRD|prd|*产品*|*需求*|*评审*|*路线图*|*埋点*|*营销*|SEO|CRO|*增长*|*广告*|*文案*) echo "📋" ;;
-        *编程*|*代码*|Git|GitHub|GitLab|*开发*|*测试*|TypeScript|Python|Golang|Web|*工程实践*|*Issue*|*规则*) echo "💻" ;;
-        *Token*|token|*上下文*|*压缩*|*优化*|*记忆*) echo "🧠" ;;
-        *工作台*|*编排*|*Agent平台*|Harness|Handoff|Hooks|MCP|Claude\ Code|Codex|OpenCode|Cursor) echo "🧩" ;;
-        *安全*|*审计*|*扫描*|*权限*|*注入*) echo "🛡️" ;;
-        *研究*|research|science|*知识*|PDF|*文档*|*Skill\ 集合*|*精选索引*|*Claude\ Skills*) echo "📚" ;;
-        *数据库*|PostgreSQL|*数据*) echo "🗄️" ;;
-        *浏览器*|*前端*) echo "🌐" ;;
-        *SSH*|*远程*|*服务器*) echo "🛠️" ;;
-        *) echo "🏷️" ;;
-    esac
-}
 
 tag_group() {
     local tag="$1"
     case "$tag" in
+        *路线图*|*Roadmap*|*roadmap*) echo "产品/文档" ;;
         *设计*|UI|*原型*|*视觉*|*交互*|*草图*|*配色*|*字体*|*审美*|*风格*|Figma|Penpot|Pixso|Design2Code|TypeUI) echo "设计/原型" ;;
         *架构*|*流程*|*图*|drawio|draw.io|diagram|Mermaid|*可视化*) echo "图表/架构" ;;
-        PRD|prd|*产品*|*需求*|*评审*|*路线图*|*埋点*|*优先级*|*复盘*|*问卷*|*实验*|A/B*|*文案*) echo "产品/文档" ;;
+        PRD|prd|*产品*|*需求*|*评审*|*路线图*|*埋点*|*优先级*|*复盘*|*问卷*|*实验*|A/B*|*文案*|Office*|Word*|Excel*|PPT*|*文档*) echo "产品/文档" ;;
         *编程*|*代码*|*开发*|*重构*|*调试*|Debug|CR|Tree-sitter|Git*|Python|Golang|Rust|TypeScript|React|HTML|Web|*工程实践*|*Issue*|*规则*) echo "研发/代码" ;;
         *测试*|QA|E2E|Playwright|Appium|k6|TDD|*压测*) echo "测试/QA" ;;
-        *安全*|*审计*|*扫描*|*权限*|*注入*|CVE|Cybersecurity|OWASP|MITRE|*漏洞*|*隐私*) echo "安全/审计" ;;
+        *安全*|*审计*|*扫描*|*权限*|*注入*|CVE|Cybersecurity|OWASP|MITRE|*漏洞*|*隐私*|*逆向工程*|*反编译*|*二进制分析*|*逆向*) echo "安全/审计" ;;
         *Token*|token|*上下文*|*压缩*|*优化*|*记忆*) echo "上下文/Token" ;;
-        *工作台*|*编排*|*Agent*|*多代理*|Harness|Handoff|Hooks|MCP|Claude\ Code|claude-code|Codex|OpenCode|Cursor|skill-generation|team-architecture|*技能*) echo "Agent平台" ;;
+        *工作台*|*编排*|*Agent*|*多代理*|Harness|Handoff|Hooks|MCP|Claude\ Code|claude-code|Codex|OpenCode|Cursor|skill-generation|team-architecture|*技能*|Claude\ Skills|Skill*|*精选*|*索引*|AI\ 增强|*生产力*|*增强*) echo "Agent平台" ;;
         *研究*|research|science|*知识*|PDF|*笔记*|*信息*|*思维*|*逻辑*|*推理*|*科研*|bioinformatics|cheminformatics|genomics|proteomics|drug-discovery|ml) echo "研究/知识" ;;
         *数据库*|PostgreSQL|*数据*|API|*请求*|*接口*) echo "数据/接口" ;;
         *浏览器*|*前端*|*爬虫*|*网页*) echo "浏览器/爬虫" ;;
@@ -2062,26 +2106,6 @@ tag_group() {
     esac
 }
 
-tag_group_icon() {
-    local group="$1"
-    case "$group" in
-        设计/原型) echo "🎨" ;;
-        图表/架构) echo "📈" ;;
-        产品/文档) echo "📋" ;;
-        研发/代码) echo "💻" ;;
-        测试/QA) echo "🛡️" ;;
-        安全/审计) echo "🔒" ;;
-        上下文/Token) echo "🧠" ;;
-        Agent平台) echo "🧩" ;;
-        研究/知识) echo "📚" ;;
-        数据/接口) echo "🗄️" ;;
-        浏览器/爬虫) echo "🌐" ;;
-        云与运维) echo "🛠️" ;;
-        业务/运营) echo "💼" ;;
-        通用/工具) echo "🧰" ;;
-        *) echo "🏷️" ;;
-    esac
-}
 
 # 根据标签查找对应的 Skills/MCP
 find_items_by_tags() {
@@ -2613,6 +2637,13 @@ validate_shared_configs() {
             done
             jq -e '.tags and (.tags | type == "array") and (.tags | length > 0)' "$f" >/dev/null 2>&1 || \
                 _config_issue "ERROR" "$f" "缺少 tags 数组，无法按标签分类"
+            # view_group 是 -m/-s 查看菜单的分组名：留空归入「其他」，写了不在内置列表则告警
+            local vg
+            vg=$(jq -r '.view_group // empty' "$f" 2>/dev/null)
+            if [[ -n "$vg" ]]; then
+                known_view_groups | grep -Fxq "$vg" || \
+                    _config_issue "WARN" "$f" "view_group=${vg} 不在内置分组内，查看菜单会单独成一组"
+            fi
             while IFS=$'\t' read -r raw_tag canonical; do
                 [[ -n "$raw_tag" ]] || continue
                 [[ "$raw_tag" == "$canonical" ]] || \
@@ -2692,7 +2723,7 @@ validate_shared_configs() {
 }
 
 check_shared_configs_menu() {
-    echo -e "${CYAN}🔍 检查 MCP / Skills 配置${NC}"
+    echo -e "${CYAN} 检查 MCP / Skills 配置${NC}"
     echo -e "${YELLOW}说明: 结构错误会阻断批量配置；环境变量缺失、链接缺失等为警告。${NC}"
     if validate_shared_configs "warn"; then
         success_log "MCP/Skills 配置结构校验通过。"
@@ -2704,8 +2735,8 @@ check_shared_configs_menu() {
 
 # 基于标签的批量配置
 batch_apply_by_tags() {
-    echo -e "${CYAN}🏷️ 按标签精细选择 MCP 和 Skills${NC}"
-    echo -e "${YELLOW}💡 标签菜单来自 conf/shared/skills 与 conf/shared/mcp-servers 的 tags 字段。${NC}"
+    echo -e "${CYAN} 按标签精细选择 MCP 和 Skills${NC}"
+    echo -e "${YELLOW} 标签菜单来自 conf/shared/skills 与 conf/shared/mcp-servers 的 tags 字段。${NC}"
 
     validate_shared_configs "structure" || {
         error_log "MCP/Skills 配置存在结构错误，请先修复后再批量配置。"
@@ -2738,9 +2769,9 @@ batch_apply_by_tags() {
 
     local i
     for i in "${!groups[@]}"; do
-        group_opts+=("$(tag_group_icon "${groups[$i]}") ${groups[$i]} (${group_counts[$i]} tags)")
+        group_opts+=("${groups[$i]} (${group_counts[$i]} tags)")
     done
-    group_opts+=("🛠️ 全部分组")
+    group_opts+=(" 全部分组")
 
     local group_res
     group_res=$(menu_select "选择标签分组（可多选）" "true" "true" "" "" "" "${group_opts[@]}")
@@ -2759,8 +2790,8 @@ batch_apply_by_tags() {
     [[ ${#selected_groups[@]} -eq 0 ]] && { warn_log "未选择任何标签分组"; return 1; }
 
     local scoped_tags=() tag_opts=()
-    # 性能优化：一次性批量获取所有 tag → (mcp_count, skill_count) 映射，
-    # 避免对每个 tag 各调用一次 count_items_by_tag（O(tags × files) → O(files)）
+    # 性能优化：一次性批量获取所有 tag  (mcp_count, skill_count) 映射，
+    # 避免对每个 tag 各调用一次 count_items_by_tag（O(tags × files)  O(files)）
     local _mcp_dir="${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/mcp-servers"
     local _skill_dir="${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/skills"
     # 用临时文件实现关联数组降级兼容
@@ -2798,9 +2829,9 @@ batch_apply_by_tags() {
             mcp_count=$(count_items_by_tag "mcp-servers" "$t")
             skill_count=$(count_items_by_tag "skills" "$t")
         fi
-        tag_opts+=("$(tag_icon "$t") $t (MCP:${mcp_count} Skills:${skill_count})")
+        tag_opts+=("$t (MCP:${mcp_count} Skills:${skill_count})")
     done
-    tag_opts+=("🛠️ 全选当前分组标签")
+    tag_opts+=(" 全选当前分组标签")
 
     local tag_res
     tag_res=$(menu_select "选择场景标签（可多选）" "true" "true" "" "" "" "${tag_opts[@]}")
@@ -2824,12 +2855,12 @@ batch_apply_by_tags() {
     local selected_skills=($(find_items_by_tags "skills" "${selected_tags[@]}"))
     merge_skill_dependency_mcps selected_mcps "${selected_skills[@]}"
 
-    echo -e "\n📌 已选标签: ${CYAN}${selected_tags[*]}${NC}"
+    echo -e "\n 已选标签: ${CYAN}${selected_tags[*]}${NC}"
     batch_apply_selected_configs "标签精细配置" "${selected_mcps[@]}" -- "${selected_skills[@]}"
 }
 
 batch_apply_custom_configs() {
-    echo -e "${CYAN}🧩 自定义选择 MCP / Skills${NC}"
+    echo -e "${CYAN} 自定义选择 MCP / Skills${NC}"
 
     validate_shared_configs "structure" || {
         error_log "MCP/Skills 配置存在结构错误，请先修复后再批量配置。"
@@ -2847,7 +2878,7 @@ batch_apply_custom_configs() {
         [[ -f "$file" ]] || continue
         name=$(jq -r '.name // .id' "$file" 2>/dev/null)
         mcp_ids+=("$id")
-        mcp_opts+=("🔧 $name ($id)")
+        mcp_opts+=(" $name ($id)")
     done
 
     skill_ids+=("")
@@ -2856,7 +2887,7 @@ batch_apply_custom_configs() {
         IFS='|' read -r id name desc _ <<< "$s"
         [[ -n "$id" ]] || continue
         skill_ids+=("$id")
-        skill_opts+=("🎯 $name ($id)")
+        skill_opts+=(" $name ($id)")
     done
 
     local selected_mcps=() selected_skills=() res idx
@@ -3030,7 +3061,7 @@ commit_config_file() {
     return 0
 }
 
-# 回滚目标 → 配置文件列表：既接受工具 id/cmd，也接受字面文件路径，all/* 表示全部有备份的目标。
+# 回滚目标  配置文件列表：既接受工具 id/cmd，也接受字面文件路径，all/* 表示全部有备份的目标。
 _resolve_rollback_files() {
     local target="$1" i
     if [[ "$target" == "all" || "$target" == "*" ]]; then
@@ -3066,7 +3097,7 @@ rollback_config_target() {
         candidates=("$f".backup.aihub.*)
         [[ -e "${candidates[0]}" ]] || { warn_log "没有可用备份，跳过: $f"; continue; }
         pick="${candidates[${#candidates[@]} - 1]}"
-        echo -e "  ↩️  $(basename "$f") ← $(basename "$pick")"
+        echo -e "   $(basename "$f") ← $(basename "$pick")"
         if dry_run_skip "回滚 $f"; then
             continue
         fi
@@ -3098,7 +3129,7 @@ _find_python_with_yaml() {
     return 1
 }
 
-# YAML / TOML 的 MCP 配置读写共用一条流程：选解释器 → 加锁 → 生成候选内容 → commit_config_file。
+# YAML / TOML 的 MCP 配置读写共用一条流程：选解释器  加锁  生成候选内容  commit_config_file。
 # 以前四个函数各写一份 lock/备份/落盘，备份命名还和 bash 侧不一致（Python 那份不带 PID，
 # 同秒两次写入会静默覆盖备份）。格式差异留在 Python 里，控制流只留一处。
 # 用法: mcp_config_edit <yaml|toml> <add|remove> <config_file> <payload_file>
@@ -3932,9 +3963,9 @@ manage_mcp_servers_menu() {
         local status_text="未安装"
         if is_mcp_server_installed "$id"; then
             status_text="已安装"
-            opts+=("${GREEN}✅ ${name}${NC} ($id) - $status_text")
+            opts+=("${GREEN}[已安装] ${name}${NC} ($id) - $status_text")
         else
-            opts+=("${YELLOW}⚠️ ${name}${NC} ($id) - $status_text")
+            opts+=("${YELLOW}[未安装] ${name}${NC} ($id) - $status_text")
         fi
         ids+=("$id")
         idx=$((idx + 1))
@@ -3942,7 +3973,7 @@ manage_mcp_servers_menu() {
     [[ ${#opts[@]} -eq 0 ]] && { warn_log "没有可用的 MCP 服务器配置"; return 0; }
 
     local res
-    res=$(menu_select "🔧 MCP 服务器（按需勾选）" "true" "true" "" "" "" "${opts[@]}")
+    res=$(menu_select " MCP 服务器（按需勾选）" "true" "true" "" "" "" "${opts[@]}")
     [[ "$res" == "EXIT" || -z "$res" ]] && return 0
 
     local targets=()
@@ -3982,7 +4013,7 @@ manage_mcp_servers_menu() {
     [[ "$confirm_sync" == "y" || "$confirm_sync" == "Y" ]] || return 0
 
     for i in "${!targets[@]}"; do
-        echo -ne "   ➜ 同步 ${names[$i]} ... "
+        echo -ne "   -> 同步 ${names[$i]} ... "
         if [[ ${#skipped_mcps[@]} -gt 0 ]]; then
             remove_mcp_configs_from_file "${targets[$i]}" "${skipped_mcps[@]}" >/dev/null 2>&1 || true
         fi
@@ -4052,7 +4083,7 @@ uninstall_mcp_server_package() {
     esac
     [[ "$check_found" == "true" ]] || return 0
 
-    info_log "➜ 卸载 MCP 软件包: $pkg"
+    info_log "-> 卸载 MCP 软件包: $pkg"
     eval "$un_cmd"
 }
 
@@ -4115,7 +4146,7 @@ remove_mcp_servers_cli() {
     return 0
 }
 manage_skills() {
-    echo -e "\n${CYAN}🎯 Skills 技能管理${NC}"
+    echo -e "\n${CYAN} Skills 技能管理${NC}"
     local opts=() ids=() idx=0
     local s sid sname sd sc
     for s in "${SKILLS[@]}"; do
@@ -4125,14 +4156,14 @@ manage_skills() {
             local missing_ext
             missing_ext=$(skill_missing_recommended_extension_count "$sid")
             if [[ "$missing_ext" -gt 0 ]]; then
-                opts+=("${GREEN}✅ ${sname}${NC} [$sc] - 已安装，推荐扩展缺失: ${missing_ext}")
+                opts+=("${GREEN}[已安装] ${sname}${NC} [$sc] - 已安装，推荐扩展缺失: ${missing_ext}")
             else
-                opts+=("${GREEN}✅ ${sname}${NC} [$sc] - 已安装")
+                opts+=("${GREEN}[已安装] ${sname}${NC} [$sc] - 已安装")
             fi
         else
             local ext_hint=""
             [[ "$(skill_missing_recommended_extension_count "$sid")" -gt 0 ]] && ext_hint="，含推荐扩展命令"
-            opts+=("${YELLOW}⚠️ ${sname}${NC} [$sc] - 未安装${ext_hint}")
+            opts+=("${YELLOW}[未安装] ${sname}${NC} [$sc] - 未安装${ext_hint}")
         fi
         idx=$((idx + 1))
     done
@@ -4155,6 +4186,181 @@ manage_skills() {
     read -p "按回车返回..."
 }
 
+# 输出格式: 首行 = JSON 里的 group 字段名，之后每行 = 一个组名（按显示顺序）。
+# 查看菜单内置分组顺序（-m/-s）。view_group 未命中这里时按兜底显示，不会丢项。
+# 预取一个配置目录下所有 JSON 的 view_group。
+# 只 fork 一次 jq（而非每个项一次）：bash glob 与 jq 参数同为按字典序展开，
+# 故按下标配对文件名与组名，输出 "文件名|组名"。
+view_group_map() {
+    local dir="$1"
+    [[ -d "$dir" ]] || return 0
+    local -a files=("$dir"/*.json) groups=()
+    [[ -e "${files[0]}" ]] || return 0
+    mapfile -t groups < <(jq -r 'try (.view_group // "其他") catch "其他"' "${files[@]}" 2>/dev/null)
+    local base
+    for base in "${files[@]}"; do
+        base=$(basename "$base" .json)
+        [[ -n "$base" ]] || continue
+        printf '%s|%s\n' "$base" "${groups[0]:-其他}"
+        groups=("${groups[@]:1}")
+    done
+}
+
+known_view_groups() {
+    printf '%s\n' "设计/原型" "图表/架构" "产品/文档" "研发/代码" "测试/QA" "安全/审计" \
+        "上下文/Token" "Agent平台" "研究/知识" "数据/接口" "浏览器/爬虫" "云与运维" \
+        "业务/运营"
+}
+
+# 打印一个分组下的项：已安装 [已安装]，未安装 [未安装]。
+# 打印一个分组下的项：已安装 [已安装]，未安装 [未安装]。无 emoji。
+print_group_items() {
+    local g="$1" installed_fn="$2" items="$3"
+    local id name mark
+    echo -e "${BOLD}${g}${NC}"
+    while IFS='|' read -r id name; do
+        [[ -z "$id" ]] && continue
+        if "$installed_fn" "$id"; then
+            mark="${GREEN}[已安装]${NC}"
+        else
+            mark="${YELLOW}[未安装]${NC}"
+        fi
+        echo -e "  ${mark} ${name} (id: ${id})"
+    done <<< "$items"
+}
+
+# 按内置顺序输出分组内容，最后兜底输出未收录的组（避免静默丢项）。
+# 参数: installed_fn tip group_order...
+print_group_order() {
+    local inst_fn="$1" tip="$2"
+    shift 2
+    local -A printed=()
+    local g
+    for g in "$@"; do
+        [[ -z "${VIEW_GROUP_ITEMS[$g]:-}" ]] && continue
+        printed["$g"]=1
+        print_group_items "$g" "$inst_fn" "${VIEW_GROUP_ITEMS[$g]}"
+    done
+    for g in "${!VIEW_GROUP_ITEMS[@]}"; do
+        [[ -n "${printed[$g]:-}" ]] && continue
+        printed["$g"]=1
+        print_group_items "$g" "$inst_fn" "${VIEW_GROUP_ITEMS[$g]}"
+    done
+    echo -e "\n${YELLOW}${tip}${NC}"
+}
+
+view_mcp_servers() {
+    echo -e "\n${CYAN}MCP 服务器（只读查看，按分组）${NC}"
+    # 预取一次 npm 全局列表到内存，供 41 项 is_mcp_server_installed 内存匹配（避免每项 fork）
+    _get_npm_global_list >/dev/null
+    # 预取一次 MCP 包名映射（单次 jq），检查时不再每项 fork jq
+    _load_mcp_pkg_map
+    local group_order=() _g m id name rest g g_raw _k _v
+    while IFS= read -r _g; do
+        [[ -n "$_g" ]] && group_order+=("$_g")
+    done < <(known_view_groups)
+    local -A gmap=()
+    while IFS='|' read -r _k _v; do
+        [[ -n "$_k" ]] && gmap["$_k"]="${_v:-其他}"
+    done < <(view_group_map "${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/mcp-servers")
+    declare -gA VIEW_GROUP_ITEMS=()
+    for m in "${mcp_servers[@]}"; do
+        id="${m%%:*}"; rest="${m#*:}"; name="${rest%%:*}"
+        g="${gmap[$id]:-其他}"
+        VIEW_GROUP_ITEMS["$g"]+="${id}|${name}"$'\n'
+    done
+    print_group_order is_mcp_server_installed \
+        "提示: 安装/配置请用 ai-hub.sh -m -i [名称]（带名称=直接装，无名称=交互勾选）" \
+        "${group_order[@]}"
+}
+
+view_skills() {
+    echo -e "\n${CYAN}Skills 技能管理（只读查看，按分组）${NC}"
+    local group_order=() _g s sid sname sd sc g g_raw _k _v
+    while IFS= read -r _g; do
+        [[ -n "$_g" ]] && group_order+=("$_g")
+    done < <(known_view_groups)
+    local -A gmap=()
+    while IFS='|' read -r _k _v; do
+        [[ -n "$_k" ]] && gmap["$_k"]="${_v:-其他}"
+    done < <(view_group_map "${CONFIG_DIR_PATH:-$SCRIPT_DIR/conf}/shared/skills")
+    declare -gA VIEW_GROUP_ITEMS=()
+    for s in "${SKILLS[@]}"; do
+        IFS='|' read -r sid sname sd sc <<< "$s"
+        g="${gmap[$sid]:-其他}"
+        VIEW_GROUP_ITEMS["$g"]+="${sid}|${sname}"$'\n'
+    done
+    print_group_order is_skill_installed \
+        "提示: 安装/配置请用 ai-hub.sh -s -i [名称]（带名称=直接装，无名称=交互勾选）" \
+        "${group_order[@]}"
+}
+
+# 非交互安装指定名称的 MCP：按名称或 id 匹配，同步配置到所有目标工具 + 安装包。
+# 用法: ai-hub.sh -m -i <名称或id>
+install_mcp_by_name() {
+    local query="$1"
+    local found_id="" found_name=""
+    local m id name rest
+    for m in "${mcp_servers[@]}"; do
+        id="${m%%:*}"; rest="${m#*:}"; name="${rest%%:*}"
+        if [[ "$id" == "$query" || "$name" == "$query" ]]; then
+            found_id="$id"; found_name="$name"; break
+        fi
+    done
+    if [[ -z "$found_id" ]]; then
+        echo -e "${RED}[失败] 未找到名称/id 为 '$query' 的 MCP 服务器。可用: ai-hub.sh -m${NC}" >&2
+        return 1
+    fi
+
+    local targets=() names=() _cname _cconf
+    while IFS=$'\t' read -r _cname _cconf; do
+        [[ -n "$_cname" && -n "$_cconf" ]] || continue
+        config_path_in_list "$_cconf" "${targets[@]}" && continue
+        targets+=("$_cconf"); names+=("$_cname")
+    done < <(collect_mcp_config_targets)
+    [[ ${#targets[@]} -eq 0 ]] && { echo -e "${RED}[失败] 未发现支持 MCP 写入的工具/profile 配置${NC}" >&2; return 1; }
+
+    local selected_ids=("$found_id")
+    filter_mcps_by_env selected_ids
+    [[ ${#selected_ids[@]} -eq 0 ]] && { echo -e "${RED}[失败] MCP '$found_name' 不适用于当前环境${NC}" >&2; return 1; }
+
+    local selected_configs=() conf
+    for id in "${selected_ids[@]}"; do
+        prepare_mcp_server_if_needed "$id"
+        conf=$(get_server_config "$id")
+        [[ -n "$conf" ]] && selected_configs+=("$id:$conf")
+    done
+    [[ ${#selected_configs[@]} -gt 0 ]] || { echo -e "${RED}[失败] 未匹配到可同步的 MCP 配置${NC}" >&2; return 1; }
+
+    echo -e "${YELLOW}将把 ${#selected_configs[@]} 个 MCP 配置同步到 ${#targets[@]} 个工具/profile 配置，并安装缺失的 MCP 包。${NC}"
+    for i in "${!targets[@]}"; do
+        echo -ne "   -> 同步 ${names[$i]} ... "
+        add_all_mcp_configs_to_file "${targets[$i]}" "${selected_configs[@]}" && echo "成功" || echo "失败"
+    done
+    for id in "${selected_ids[@]}"; do install_mcp_server_package "$id"; done
+    echo -e "${GREEN}[已安装] MCP '$found_name' 安装完成。${NC}"
+}
+
+# 非交互安装指定名称的 Skill：按名称或 id 匹配，安装。
+# 用法: ai-hub.sh -s -i <名称或id>
+install_skill_by_name() {
+    local query="$1"
+    local found_id="" found_name=""
+    local s sid sname sd sc
+    for s in "${SKILLS[@]}"; do
+        IFS='|' read -r sid sname sd sc <<< "$s"
+        if [[ "$sid" == "$query" || "$sname" == "$query" ]]; then
+            found_id="$sid"; found_name="$sname"; break
+        fi
+    done
+    if [[ -z "$found_id" ]]; then
+        echo -e "${RED}[失败] 未找到名称/id 为 '$query' 的 Skill。可用: ai-hub.sh -s${NC}" >&2
+        return 1
+    fi
+    install_skill "$found_id"
+    echo -e "${GREEN}[已安装] Skill '$found_name' 安装完成。${NC}"
+}
+
 manage_ai_docs() { info_log "管理文档功能暂通过交互菜单直接调用库函数"; }
 
 show_help() {
@@ -4170,8 +4376,10 @@ show_help() {
     echo "    $0              # 启动交互式标签页菜单"
     echo ""
     echo "  快捷入口 (非交互式):"
-    echo "    $0 -m, --mcp      # 直接进入 MCP 服务器管理"
-    echo "    $0 -s, --skills   # 直接进入 Skills 技能管理"
+    echo "    $0 -m, --mcp      # 只读查看 MCP 服务器（按分组显示，默认）"
+    echo "    $0 -s, --skills   # 只读查看 Skills 技能（按分组显示，默认）"
+    echo "    $0 -m -i [名称]   # 安装 MCP：带名称=非交互安装指定；无名称=交互勾选"
+    echo "    $0 -s -i [名称]   # 安装 Skill：带名称=非交互安装指定；无名称=交互勾选"
     echo "    $0 -d, --docs     # 直接进入 AI 文档管理"
     echo ""
     echo "  非交互式批量配置:"
@@ -4213,7 +4421,7 @@ show_help() {
     echo -e "${YELLOW}当前可用工具:${NC}"
     for t in "${TOOLS[@]}"; do parse_tool_data "$t" "H"; printf "  - %-18s (%s)\n" "$H_id" "$H_name"; done
     echo ""
-    echo -e "${BLUE}[提示]${NC} 推荐在交互模式下使用 ← / → 切换分类。"
+    echo -e "${BLUE}[提示]${NC} 推荐在交互模式下使用 ← /  切换分类。"
     exit 0
 }
 
@@ -4293,7 +4501,7 @@ non_interactive_install_tools() {
         [[ "$found" == "true" ]] || unknown_targets+=("$requested")
     done
 
-    echo -e "${CYAN}🚀 开始非交互式安装 AI 工具...${NC}"
+    echo -e "${CYAN} 开始非交互式安装 AI 工具...${NC}"
     echo "   请求目标: ${#requested_targets[@]}"
     echo "   有效目标: $(( ${#resolved_indices[@]} + ${#resolved_mcps[@]} )) (CLI/Agent: ${#resolved_indices[@]}, MCP: ${#resolved_mcps[@]})"
     [[ ${#unknown_targets[@]} -gt 0 ]] && echo -e "   ${YELLOW}未知目标: ${unknown_targets[*]}${NC}"
@@ -4334,7 +4542,7 @@ non_interactive_install_tools() {
         fi
     done
 
-    echo -e "\n📊 非交互式安装结果"
+    echo -e "\n 非交互式安装结果"
     echo "   请求: ${#requested_targets[@]}，有效: ${total}，成功: ${install_ok}，失败: ${install_failed}，需手动: ${install_manual}，未知: ${#unknown_targets[@]}"
     [[ ${#successful_ids[@]} -gt 0 ]] && echo -e "   ${GREEN}成功: ${successful_ids[*]}${NC}"
     [[ ${#failed_ids[@]} -gt 0 ]] && echo -e "   ${RED}失败: ${failed_ids[*]}${NC}"
@@ -4348,7 +4556,7 @@ non_interactive_batch() {
     local b_tags="$1"
     local b_targets="$2"
 
-    echo -e "${CYAN}🚀 开始非交互式批量应用配置...${NC}"
+    echo -e "${CYAN} 开始非交互式批量应用配置...${NC}"
 
     acquire_non_interactive_lock "批量应用 MCP/Skills 配置" || return 1
     export AI_HUB_NON_INTERACTIVE=1
@@ -4397,7 +4605,7 @@ non_interactive_batch() {
     merge_skill_dependency_mcps selected_mcps "${selected_skills[@]}"
 
     if [[ ${#selected_mcps[@]} -eq 0 && ${#selected_skills[@]} -eq 0 ]]; then
-        echo -e "${RED}❌ 未找到匹配标签的任何 MCP 或 Skills。${NC}"
+        echo -e "${RED}[失败] 未找到匹配标签的任何 MCP 或 Skills。${NC}"
         return 1
     fi
 
@@ -4418,6 +4626,7 @@ main() {
     trap 'if [[ -n "$BATCH_LOCK_DIR" ]]; then rm -f "$BATCH_LOCK_DIR/pid" 2>/dev/null; rmdir "$BATCH_LOCK_DIR" 2>/dev/null; fi; if [[ -n "$CONFIG_LOCK_DIR" ]]; then rm -f "$CONFIG_LOCK_DIR/pid" 2>/dev/null; rmdir "$CONFIG_LOCK_DIR" 2>/dev/null; fi; [[ -n "$ostty" ]] && stty "$ostty" 2>/dev/null; exit' INT TERM EXIT
 
     local log="quiet"; local dm=""; local op=""; local tgt=""; local want_help=false; local do_validate=false
+    local dm_select=false; local dm_view=false; local install_name=""
     local do_batch=false; local do_install=false; local batch_tags=""; local targets_raw=""
     local remove_mcp_ids=""; local rollback_target=""
     local positional_args=()
@@ -4426,6 +4635,8 @@ main() {
             --log-level=*) log="${1#*=}" ;;
             -m|--mcp) dm="mcp" ;;
             -s|--skills) dm="skills" ;;
+            --select) dm_select=true ;;
+            --view) dm_view=true ;;
             -d|--docs) dm="docs" ;;
             -u|--uninstall) op="uninstall" ;;
             --update) op="update" ;;
@@ -4433,7 +4644,8 @@ main() {
             -c|--config) op="config" ;;
             --remove-mcp) remove_mcp_ids="${2:-}"; shift ;;
             --remove-mcp=*) remove_mcp_ids="${1#*=}" ;;
-            -i|--install) do_install=true ;;
+            -i|--select) dm_select=true; [[ -n "${2:-}" && "${2:0:1}" != "-" ]] && { install_name="$2"; shift; } ;;
+            --install) do_install=true ;;
             --install=*) do_install=true; positional_args+=("${1#*=}") ;;
             -h|--help) want_help=true ;;
             --validate) do_validate=true ;;
@@ -4510,7 +4722,7 @@ main() {
 
     if [[ "$do_validate" == true ]]; then
         validate_shared_configs "warn" || exit 1
-        echo -e "${GREEN}✅ 所有配置校验通过！${NC}"
+        echo -e "${GREEN}[已安装] 所有配置校验通过！${NC}"
         exit 0
     fi
 
@@ -4533,7 +4745,32 @@ main() {
             exit 1
         fi
     elif [[ -n "$dm" ]]; then
-        case $dm in "mcp") manage_mcp_servers_menu ;; "skills") manage_skills ;; "docs") manage_ai_docs ;; esac
+        case $dm in
+            "mcp")
+                if [[ -n "$install_name" ]]; then
+                    install_mcp_by_name "$install_name" || exit 1
+                elif [[ "$dm_select" == true ]]; then
+                    manage_mcp_servers_menu
+                else
+                    view_mcp_servers
+                fi ;;
+            "skills")
+                if [[ -n "$install_name" ]]; then
+                    install_skill_by_name "$install_name" || exit 1
+                elif [[ "$dm_select" == true ]]; then
+                    manage_skills
+                else
+                    view_skills
+                fi ;;
+            "docs") manage_ai_docs ;;
+        esac
+    elif [[ "$dm_select" == true && -z "$install_name" ]]; then
+        # -i 无 -m/-s：保持原 --install 语义（装工具）
+        do_install=true
+        if [[ "$do_install" == true ]]; then
+            non_interactive_install_tools "$targets_raw"
+            exit $?
+        fi
     else select_tool_interactive; fi
     save_cache
 }

@@ -29,6 +29,7 @@
   "tips": "Claude 官方出品，设计质量有保障。适合需要快速生成高质量前端界面的场景，特别是 MVP 开发和原型设计。",
   "homepage": "https://github.com/anthropics/skills",
   "repository": "https://github.com/anthropics/skills",
+  "view_group": "浏览器/爬虫",
   "tags": [
     "前端",
     "UI",

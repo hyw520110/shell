@@ -43,6 +43,7 @@
       "command": "rea --version 2>/dev/null || echo 'rea 未安装'"
     }
   ],
+  "view_group": "安全/审计",
   "tags": [
     "逆向工程",
     "二进制分析",

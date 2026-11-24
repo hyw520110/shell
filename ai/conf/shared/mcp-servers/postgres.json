@@ -56,6 +56,7 @@
     }
   ],
   "notes": "使用前需设置 DATABASE_URL 环境变量或在本地启动 PostgreSQL 服务",
+  "view_group": "数据/接口",
   "tags": [
     "数据库",
     "PostgreSQL",

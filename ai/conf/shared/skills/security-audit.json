@@ -26,6 +26,7 @@
     "safety": "默认只读和低影响；禁止 DoS、资源耗尽、高并发爆破、真实敏感数据导出、删除/修改业务数据、持久化、提权、横向移动、反弹 Shell 和绕过访问控制。公网验证只使用明确授权的 allowlist、限速、超时和最小请求。",
     "anti_hallucination": "必须用源代码、配置、请求响应或其他可复核证据支撑结论。无法独立复现的结果只能标记为 candidate 或 needs_validation，不得写成 confirmed。"
   },
+  "view_group": "安全/审计",
   "tags": [
     "安全审计",
     "漏洞扫描",

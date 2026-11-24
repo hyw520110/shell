@@ -932,8 +932,11 @@ auto_detect_checksum() {
     local checksum_url=""
     local checksum_type=""
 
-    # 尝试检测常见的校验和文件
-    for ext in .sha256 .sha256sum .SHA256SUMS .md5 .md5sum; do
+    # 尝试检测常见的校验和文件。
+    # 只探测 SHA256 系：verify_sha256 只接受 64 位 hex，.md5/.md5sum 的 32 位
+    # hex 必然被拒然后走 ADL_SHA256_AUTO=1 分支"跳过校验"——白白浪费最多
+    # 3 次探活（每次 --max-time 10）却永远校验不了，是死代码，已移除。
+    for ext in .sha256 .sha256sum .SHA256SUMS; do
         local candidate="${base_url}/${filename}${ext}"
         if curl -fL --max-redirs 5 --connect-timeout 5 --max-time 10 \
             -o /dev/null -s "$candidate" 2>/dev/null; then
@@ -969,10 +972,9 @@ auto_detect_checksum() {
             expected=$(echo "$checksum_content" | awk '{print $1}' | head -1)
             ;;
         SHA256SUMS|sha256sums)
-            expected=$(echo "$checksum_content" | grep -F "$filename" | awk '{print $1}' | head -1)
-            ;;
-        md5|md5sum)
-            expected=$(echo "$checksum_content" | awk '{print $1}' | head -1)
+            # 目录级 SHA256SUMS 常列出 "./dist/app.zip" 这类相对路径，grep -F 精确
+            # 匹配 "$filename" 会漏检；改为匹配路径末尾的文件名。
+            expected=$(echo "$checksum_content" | grep -E "(^|[[:space:]/])$(basename "$filename")[[:space:]]*$" | awk '{print $1}' | head -1)
             ;;
     esac
 
@@ -1308,6 +1310,38 @@ adl_read_hex_at() {
     return 0
 }
 
+# 读取文件尾部 N 字节（十六进制）——用于识别尾部固定签名的格式（如 UDIF dmg 的 koly 块）
+adl_read_tail_hex() {
+    local file="$1" count="$2" size="" out=""
+    size=$(get_file_size_bytes "$file")
+    [[ -n "$size" && "$size" -gt 0 ]] || return 1
+    [[ "$size" -ge "$count" ]] || count="$size"
+    # od 用 -v 禁止重复行折叠成 "*"，否则大段相同字节会被压缩为省略标记，
+    # 导致 koly 签名被吞掉、尾部 hex 长度远小于预期。
+    out=$(LC_ALL=C od -An -v -tx1 -j "$((size - count))" -N "$count" "$file" 2>/dev/null | tr -d ' \n')
+    [[ -n "$out" ]] || return 1
+    printf '%s' "$out"
+    return 0
+}
+
+# 检测 UDIF dmg 尾部 koly 块（0x6b6f6c79 = "koly"）
+# 所有 UDIF 磁盘镜像（含 zlib/bzip2 压缩的 .dmg）文件末尾固定有 koly 块，
+# 而经典 BKTR（Koly block type record）头只在未压缩/特定编码的 dmg 出现。
+# 这里扫描最后 8KB，容错尾部可能带额外填充的情况。
+adl_is_udif_dmg() {
+    local file="$1" tail="" i=0 hex=""
+    tail=$(adl_read_tail_hex "$file" 8192 2>/dev/null) || return 1
+    # 在尾部 hex 流里找 koly (6b6f6c79)，且通常落在 512 字节块边界（允许 ±512B 容错）
+    for (( i=0; i<${#tail}-7; i+=2 )); do
+        hex="${tail:$i:8}"
+        if [[ "$hex" == "6b6f6c79" ]]; then
+            return 0
+        fi
+        # koly 块通常从 512 字节块末尾往前，扫描到即可
+    done
+    return 1
+}
+
 # 读取压缩流解压后的指定偏移字节（用于校验 tar.gz / tar.xz 的内层 tar 头）
 # 压缩工具缺失或解压失败时返回空串，调用方按"未能确认"处理，不误判为失败。
 adl_decompressed_hex() {
@@ -1344,6 +1378,13 @@ adl_is_tar_signature() {
 adl_magic_name() {
     local file="$1" head="" at4="" at8=""
     head=$(adl_file_head_hex "$file" 16) || { echo "unknown"; return 0; }
+
+    # UDIF dmg 优先：压缩型 UDIF 镜像（zlib/bzip2/xz 头）会被下面的压缩魔数提前匹配，
+    # 因此必须在所有压缩格式分支之前先检查尾部 koly 块。
+    # koly 块是 UDIF 磁盘镜像的固定尾部签名，真实压缩文件无此签名，不会误判。
+    if adl_is_udif_dmg "$file"; then
+        echo "dmg"; return 0
+    fi
 
     case "$head" in
         # 归档压缩（优先）
@@ -1384,6 +1425,9 @@ adl_magic_name() {
     if [[ "$(adl_read_hex_at "$file" 32769 5)" == "4344303031" ]]; then echo "iso"; return 0; fi
     # tar 没有文件头魔数，ustar 签名固定在偏移 257
     if adl_is_tar_signature "$(adl_read_hex_at "$file" 257 6)"; then echo "tar"; return 0; fi
+    # UDIF dmg：头可能被压缩（zlib/bzip2）而不含 BKTR 头，但尾部固定有 koly 块。
+    # 这是识别压缩型 .dmg 的最可靠方式（兼容 OpenIDEA 等用 UDIF 压缩编码的镜像）。
+    if adl_is_udif_dmg "$file"; then echo "dmg"; return 0; fi
     echo "unknown"
     return 0
 }
@@ -1433,6 +1477,26 @@ adl_expected_format() {
     return 0
 }
 
+# 从 URL 提取后缀格式（如 https://x/y.zip -> zip；无后缀或带 query 时返回空）
+# 用于与文件名后缀交叉验证，以及 URL 后缀无已知格式时退回文件头魔数验证。
+adl_url_format() {
+    local url="$1" path
+    # 去掉 query/fragment
+    path="${url%%\?*}"
+    path="${path%%\#*}"
+    # 取最后一个路径段
+    path="${path##*/}"
+    [[ -n "$path" ]] || { echo ""; return 0; }
+    # 去掉查询里的分号等，只留后缀
+    local ext
+    ext="${path##*.}"
+    if [[ "$ext" == "$path" ]]; then
+        echo ""; return 0
+    fi
+    echo "$ext"
+    return 0
+}
+
 # 服务端错误页特征：把 HTML/JSON 当文件返回，落盘后后缀照样像模像样
 adl_looks_like_error_page() {
     local file="$1" sample=""
@@ -1449,7 +1513,8 @@ ADL_FORMAT_DETECTED=""
 
 # 下载完成后的文件格式校验；返回 1 表示内容与后缀声明不符
 verify_file_format() {
-    local file="$1" expected detected="" result=0
+    local file="$1" url="${2:-}" expected detected="" result=0
+    local url_ext="" expected_url="" expected_file=""
     ADL_FORMAT_DETECTED=""
 
     if [[ "${ADL_FORMAT_CHECK:-1}" == "0" ]]; then
@@ -1464,7 +1529,30 @@ verify_file_format() {
         return 0
     fi
 
-    expected=$(adl_expected_format "$(basename "$file")")
+    # 期望格式优先取 URL 后缀（更权威），无 URL 后缀时退回文件名后缀
+    expected_file=$(adl_expected_format "$(basename "$file")")
+    if [[ -n "$url" ]]; then
+        url_ext=$(adl_url_format "$url")
+        if [[ -n "$url_ext" ]]; then
+            expected_url=$(adl_expected_format "x.$url_ext")
+            # URL 后缀无已知格式（如 .bin/.tar）时：不当作期望，退回文件名后缀
+            if [[ "$expected_url" != "unknown" && "$expected_url" != "none" ]]; then
+                expected="$expected_url"
+                # URL 后缀与文件后缀不一致：警告（文件名可能是调用方自定义的），
+                # 但以 URL 后缀为准继续——内容魔数才是实质校验。
+                if [[ "$expected_url" != "$expected_file" ]]; then
+                    log_warn "URL 后缀($url_ext)与文件名后缀(${expected_file})不一致，以 URL 后缀为准"
+                fi
+            else
+                expected="$expected_file"
+            fi
+        else
+            expected="$expected_file"
+        fi
+    else
+        expected="$expected_file"
+    fi
+
     detected=$(adl_magic_name "$file" 2>/dev/null || echo "unknown")
 
     # 无后缀文件无从判断期望格式：ai-hub.sh 的 curl 包装器用 mktemp 生成
@@ -1995,7 +2083,8 @@ do_download() {
                 fi
 
                 # 文件格式校验：拦下"服务端把错误页/错类型内容当成文件落盘"
-                if verify_file_format "$local_file"; then
+                # 传入当前生效 URL（try_url），使期望格式优先取 URL 后缀
+                if verify_file_format "$local_file" "$try_url"; then
                     :
                 else
                     if [[ "${ADL_RETRY_ON_CHECKSUM:-0}" == "1" ]]; then
@@ -2375,16 +2464,28 @@ main() {
         exit $?
     fi
 
-    # 无参数或仅 --help 时，显示帮助
-    if [[ "$show_help" = true ]] || [[ $# -lt 3 ]]; then
+    if [[ "$show_help" = true ]]; then
         show_help
-        [[ "$show_help" = true ]] && exit 0 || exit 1
+        exit 0
     fi
 
     local url="$1"
-    local dir="$2"
-    local filename="$3"
-    shift 3 || true
+    local dir="" filename=""
+    if [[ $# -ge 3 ]]; then
+        # 形式 A（原有约定）: URL DIR FILENAME
+        dir="$2"
+        filename="$3"
+        shift 3 || true
+    elif [[ $# -eq 2 && -n "${ADL_OUTPUT_DIR:-}" ]]; then
+        # 形式 B（-o/--output 提供目录）: URL FILENAME
+        dir="$ADL_OUTPUT_DIR"
+        filename="$2"
+        shift 2 || true
+    else
+        log_error "缺少参数: 需要 URL 与输出目录/文件名（可用 -o/--output 提供目录）"
+        show_help
+        exit 1
+    fi
 
     # 合并位置参数镜像到镜像列表
     if [[ $# -gt 0 ]]; then

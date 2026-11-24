@@ -3,6 +3,7 @@
   "name": "Hallmark Design",
   "description": "Anti-AI-slop 设计技能，帮助 AI 工具生成看起来不像 AI 生成的 UI 设计。提供 22 种主题，支持新建页面、审计、重新设计和从设计参考中提取 DNA。彻底摆脱 AI 作图的廉价感，生成独特且富有创意的界面。",
   "category": "design",
+  "view_group": "设计/原型",
   "tags": [
     "设计",
     "UI",

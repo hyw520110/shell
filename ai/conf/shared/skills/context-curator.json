@@ -22,6 +22,7 @@
   "docs": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequential-thinking",
   "install_check": "true",
   "tips": "在进行大规模功能开发前，先运行 'architectural-map'。当你觉得 AI 开始胡言乱语或变慢时，运行 'prune-context' 往往能立即见效。",
+  "view_group": "上下文/Token",
   "tags": [
     "上下文优化",
     "Token优化",

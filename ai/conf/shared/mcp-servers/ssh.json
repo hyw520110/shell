@@ -64,6 +64,7 @@
     }
   ],
   "notes": "默认使用 @aiondadotcom/mcp-ssh。它会读取 ~/.ssh/config 和 ~/.ssh/known_hosts，适合多主机管理；如需单主机显式配置，可设置 SSH_HOST/SSH_USER 后由 ai-hub 写入环境变量。",
+  "view_group": "云与运维",
   "tags": [
     "SSH",
     "远程连接",

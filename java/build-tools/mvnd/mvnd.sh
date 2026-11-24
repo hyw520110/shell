@@ -23,7 +23,7 @@ find_adl() {
     return 1
 }
 
-# ADL下载函数 - 优先使用adl工具
+# ADL下载函数 - 优先使用adl工具，失败回退curl/wget
 download_with_adl() {
     local url="$1"
     local output="$2"
@@ -35,16 +35,20 @@ download_with_adl() {
 
     local adl_path
     if adl_path=$(find_adl); then
-        "$adl_path" "$url" "$output_dir" "$filename"
-    else
-        if command -v curl >/dev/null 2>&1; then
-            curl -L --fail -o "$output" "$url"
-        elif command -v wget >/dev/null 2>&1; then
-            wget -O "$output" "$url"
-        else
-            echo "错误: 未找到可用下载工具，请安装 adl、curl 或 wget"
-            return 1
+        print_info "使用 adl 下载..."
+        if "$adl_path" "$url" "$output_dir" "$filename"; then
+            return 0
         fi
+        print_warning "adl 下载失败，回退到 curl/wget"
+    fi
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -L --fail -o "$output" "$url"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -O "$output" "$url"
+    else
+        print_error "未找到可用下载工具，请安装 adl、curl 或 wget"
+        return 1
     fi
 }
 
@@ -95,6 +99,7 @@ UNINSTALL_MODE=false
 SKIP_SHELL_CONFIG=false
 FORCE_REINSTALL=false
 INTERACTIVE=true
+UPGRADE_MODE=false
 
 normalize_install_dir() {
     local input="${1:-$MVND_DIR}"
@@ -203,6 +208,7 @@ Maven Daemon 是 Apache Maven 的守护进程版本，提供更快的构建速�
     --uninstall                 卸载mvnd
     --skip-shell-config         跳过shell配置文件修改
     --force                     强制重新安装，即使已安装
+    -u, --upgrade               升级到最新版本（自动检测最新版本并安全升级，新版验证通过后才删除旧版）
     --non-interactive           非交互模式，自动确认所有操作
 
 镜像源说明:
@@ -300,6 +306,10 @@ parse_arguments() {
                 FORCE_REINSTALL=true
                 shift
                 ;;
+            -u|--upgrade)
+                UPGRADE_MODE=true
+                shift
+                ;;
             --non-interactive)
                 INTERACTIVE=false
                 shift
@@ -381,25 +391,48 @@ install_dependencies() {
 }
 
 # === 获取最新版本 ===
+# 优先 GitHub API；限流/失败时回退到"下载 URL 存在性探测"（从已知版本往上找）
 get_latest_version() {
     local GITHUB_REPO="https://api.github.com/repos/apache/maven-mvnd/releases/latest"
 
     local json_response
-    json_response=$(curl -sL -H "Accept: application/vnd.github.v3+json" -H "User-Agent: Mozilla/5.0" "${GITHUB_REPO}")
+    json_response=$(curl -sL -H "Accept: application/vnd.github.v3+json" -H "User-Agent: Mozilla/5.0" "${GITHUB_REPO}" 2>/dev/null)
 
-    if [ -z "${json_response}" ] || echo "${json_response}" | grep -q "API rate limit exceeded"; then
-        return 1
+    if [[ -n "$json_response" ]] && ! echo "$json_response" | grep -q "API rate limit exceeded"; then
+        local latest_version
+        latest_version=$(echo "$json_response" | jq -r '.tag_name' 2>/dev/null | sed 's/^maven-mvnd-//' | sed 's/^v//')
+        if [[ -n "$latest_version" ]] && [[ "$latest_version" != "null" ]]; then
+            echo "$latest_version"
+            return 0
+        fi
     fi
 
-    local latest_version
-    latest_version=$(echo "${json_response}" | jq -r '.tag_name' | sed 's/^maven-mvnd-//' | sed 's/^v//')
+    # 回退：GitHub API 限流/失败时，从已知版本向上探测下载 URL 是否存在
+    # （release-assets 重定向 302=存在；404=不存在）
+    local os_type arch_type platform_name
+    os_type=$(detect_os)
+    arch_type=$(detect_architecture)
+    case "$os_type" in
+        darwin) platform_name="darwin-${arch_type}" ;;
+        linux)  platform_name="linux-${arch_type}" ;;
+        windows) platform_name="windows-${arch_type}" ;;
+        *) return 1 ;;
+    esac
 
-    if [[ -z "$latest_version" ]] || [[ "$latest_version" == "null" ]]; then
-        return 1
+    local base="https://github.com/apache/maven-mvnd/releases/download"
+    local candidate=""
+    for candidate in 1.0.7 1.0.8 1.1.0 1.1.1 1.2.0 2.0.0; do
+        if curl -sIL --max-time 8 "$base/${candidate}/maven-mvnd-${candidate}-${platform_name}.tar.gz" 2>/dev/null | grep -qi "release-assets"; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    # 都不存在：用 1.0.6 作为当前已知最新（若 1.0.6 存在）
+    if curl -sIL --max-time 8 "$base/1.0.6/maven-mvnd-1.0.6-${platform_name}.tar.gz" 2>/dev/null | grep -qi "release-assets"; then
+        echo "1.0.6"
+        return 0
     fi
-
-    echo "$latest_version"
-    return 0
+    return 1
 }
 
 # === 检测 mvnd 是否已安装 ===
@@ -819,6 +852,122 @@ uninstall_mvnd() {
     print_info "请重启终端或执行: source $config_file"
 }
 
+# === 升级 mvnd（自动检测最新版本 + 安全升级）===
+# 1) 自动检测最新版本（get_latest_version，API 限流回退 URL 探测）
+# 2) 若当前已是最新，直接提示退出
+# 3) 否则下载新版、解压到临时目录、验证 mvnd 可用、通过才替换旧版并删除旧版；失败回滚
+do_upgrade() {
+    print_info "检测 mvnd 最新版本..."
+
+    local latest_version=""
+    if ! latest_version=$(get_latest_version); then
+        print_error "无法获取 mvnd 最新版本（GitHub API 限流且 URL 探测失败）"
+        return 1
+    fi
+    print_info "最新版本: $latest_version"
+
+    local current_version=""
+    current_version=$(check_mvnd_installed --quiet)
+    if [[ -z "$current_version" ]]; then
+        print_info "未检测到已安装的 mvnd，执行安装..."
+        MVND_VERSION="$latest_version"
+        download_mvnd "$latest_version"
+        install_mvnd "$latest_version"
+        configure_maven_mirror
+        configure_shell
+        verify_installation
+        return 0
+    fi
+
+    print_info "当前版本: $current_version"
+
+    if [[ "$current_version" == "$latest_version" ]]; then
+        print_success "mvnd 已是最新版本 ($latest_version)，无需升级"
+        return 0
+    fi
+
+    print_info "正在升级 mvnd 从 $current_version 到 $latest_version ..."
+
+    # 下载新版
+    MVND_VERSION="$latest_version"
+    download_mvnd "$latest_version" || { print_error "下载新版本失败"; return 1; }
+
+    # 解压新版到临时目录，先验证再替换（安全升级：确认新版无误后才删旧版）
+    local os_type arch_type platform_name
+    os_type=$(detect_os)
+    arch_type=$(detect_architecture)
+    case "$os_type" in
+        darwin) platform_name="darwin-${arch_type}" ;;
+        linux)  platform_name="linux-${arch_type}" ;;
+        windows) platform_name="windows-${arch_type}" ;;
+        *) print_error "不支持的系统"; return 1 ;;
+    esac
+
+    local filename="maven-mvnd-${latest_version}-${platform_name}.tar.gz"
+    local download_file="$DOWNLOAD_DIR/$filename"
+    local staging="$INSTALL_DIR.mvnd-upgrade-staging"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        print_info "[试运行] 将下载 $filename 并解压到 $staging，验证通过后替换 $INSTALL_DIR"
+        return 0
+    fi
+
+    # 清理残留 staging
+    rm -rf "$staging"
+    mkdir -p "$staging"
+
+    print_info "解压新版本到临时目录验证..."
+    if ! tar -xzf "$download_file" -C "$staging" --strip-components=1; then
+        print_error "解压新版本失败"
+        rm -rf "$staging"
+        return 1
+    fi
+
+    # 添加执行权限
+    if [[ -f "$staging/bin/mvnd" ]]; then
+        chmod +x "$staging/bin/mvnd"
+    else
+        local found_mvnd
+        found_mvnd=$(find "$staging" -type f -name mvnd | head -1)
+        if [[ -n "$found_mvnd" ]]; then
+            chmod +x "$found_mvnd"
+        else
+            print_error "新版本中未找到 mvnd 可执行文件"
+            rm -rf "$staging"
+            return 1
+        fi
+    fi
+
+    # 验证新版可用（关键：确认新版无误后才删旧版）
+    print_info "验证新版本 mvnd 可用性..."
+    if ! "$staging/bin/mvnd" --version >/dev/null 2>&1; then
+        print_error "新版本验证失败，回滚（保留旧版）"
+        rm -rf "$staging"
+        return 1
+    fi
+    print_success "新版本验证通过"
+
+    # 备份旧版，替换
+    local backup="$INSTALL_DIR.mvnd-upgrade-backup"
+    rm -rf "$backup"
+    if [[ -d "$INSTALL_DIR" ]]; then
+        mv "$INSTALL_DIR" "$backup"
+    fi
+    mv "$staging" "$INSTALL_DIR"
+    rm -rf "$backup"
+
+    # 清理下载文件（装后删包约定）
+    rm -f "$download_file"
+
+    # 更新 shell 配置（MVND_HOME 指向新目录）和镜像
+    configure_shell
+    configure_maven_mirror
+    verify_installation
+
+    print_success "mvnd 已升级到 $latest_version"
+    return 0
+}
+
 # === 主函数 ===
 main() {
     # 先解析参数，因为可能在参数处理中就需要退出
@@ -833,6 +982,12 @@ main() {
     # 卸载模式
     if [[ "$UNINSTALL_MODE" == true ]]; then
         uninstall_mvnd
+        exit 0
+    fi
+
+    # 升级模式
+    if [[ "$UPGRADE_MODE" == true ]]; then
+        do_upgrade
         exit 0
     fi
 

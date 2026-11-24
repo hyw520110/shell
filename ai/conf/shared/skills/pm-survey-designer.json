@@ -15,6 +15,7 @@
   "install_check": "true",
   "tips": "每道题都必须对应一个研究假设，输出包含偏差审查报告和分析框架",
   "notes": "原名 SPACE-survey-designer，从调研目标到高质量问卷",
+  "view_group": "产品/文档",
   "tags": [
     "问卷",
     "用户研究",

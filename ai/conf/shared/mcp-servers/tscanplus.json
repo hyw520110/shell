@@ -16,18 +16,33 @@
   },
   "config": {
     "command": "tscanplus-mcp",
-    "args": ["mcp"],
+    "args": [
+      "mcp"
+    ],
     "transportType": "stdio"
   },
-  "required_tools": ["tscanplus-mcp"],
+  "required_tools": [
+    "tscanplus-mcp"
+  ],
   "status_check": [
     {
       "name": "检查 TscanPlus MCP 启动器",
       "command": "command -v tscanplus-mcp >/dev/null 2>&1 && echo 'TscanPlus MCP 已安装' || echo 'TscanPlus MCP 未安装'"
     }
   ],
-  "tags": ["安全", "资产侦察", "漏洞扫描", "MCP", "TscanPlus", "article-2026-security"],
-  "scenarios": ["security", "qa-testing"],
+  "view_group": "安全/审计",
+  "tags": [
+    "安全",
+    "资产侦察",
+    "漏洞扫描",
+    "MCP",
+    "TscanPlus",
+    "article-2026-security"
+  ],
+  "scenarios": [
+    "security",
+    "qa-testing"
+  ],
   "default_enabled": false,
   "optional": true,
   "experimental": true,

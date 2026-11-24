@@ -44,6 +44,7 @@
       "description": "发送 HTTP DELETE 请求"
     }
   ],
+  "view_group": "数据/接口",
   "tags": [
     "网络请求",
     "API",

@@ -43,6 +43,7 @@
     }
   ],
   "notes": "该 MCP 用于对接乘云数字(DataBuff)及 OpenOcta 开源平台的后端运维数据。",
+  "view_group": "云与运维",
   "tags": [
     "AIOps",
     "运维",

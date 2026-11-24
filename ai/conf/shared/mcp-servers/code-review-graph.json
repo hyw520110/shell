@@ -31,6 +31,7 @@
       "command": "code-review-graph --version 2>/dev/null || echo '未安装'"
     }
   ],
+  "view_group": "研发/代码",
   "tags": [
     "代码智能",
     "图谱",

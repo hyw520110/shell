@@ -31,6 +31,7 @@
   "homepage": "https://github.com/affaan-m/ECC",
   "repository": "https://github.com/affaan-m/ECC",
   "documentation": "https://github.com/affaan-m/ECC/blob/main/README.zh-CN.md",
+  "view_group": "上下文/Token",
   "tags": [
     "上下文优化",
     "Token优化",

@@ -86,14 +86,14 @@ validate_config() {
     # 显示校验结果
     if [[ "$silent_mode" != "true" ]]; then
         if [[ ${#errors[@]} -gt 0 || ${#warnings[@]} -gt 0 ]]; then
-            echo -e "${YELLOW}⚠️  $tool_name 配置校验结果:${NC}"
+            echo -e "${YELLOW}[警告]  $tool_name 配置校验结果:${NC}"
             
             for error in "${errors[@]}"; do
-                echo -e "  ${RED}❌ $error${NC}"
+                echo -e "  ${RED}[失败] $error${NC}"
             done
             
             for warning in "${warnings[@]}"; do
-                echo -e "  ${YELLOW}⚠️  $warning${NC}"
+                echo -e "  ${YELLOW}[警告]  $warning${NC}"
             done
         fi
     fi

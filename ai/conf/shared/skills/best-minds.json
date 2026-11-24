@@ -28,6 +28,7 @@
   "tips": "适合需要深度思考和专家视角的场景。可以让 Claude 模拟商业专家、技术专家、设计专家等不同领域的思维方式。",
   "homepage": "https://github.com/anthropics/skills",
   "repository": "https://github.com/anthropics/skills",
+  "view_group": "研究/知识",
   "tags": [
     "思维模式",
     "专家系统",

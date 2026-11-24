@@ -15,6 +15,7 @@
   "install_check": "true",
   "tips": "使用5-Why归因方法，每条行动项必须有明确的owner和截止日期",
   "notes": "适用于版本上线复盘、事故复盘、OKR复盘、季度复盘",
+  "view_group": "产品/文档",
   "tags": [
     "复盘",
     "文档",

@@ -26,6 +26,7 @@
   "tips": "安装后按仓库说明选择 `/setup-matt-pocock-skills`，并配置 issue tracker、标签和文档输出位置。",
   "homepage": "https://github.com/mattpocock/skills",
   "repository": "https://github.com/mattpocock/skills",
+  "view_group": "研发/代码",
   "tags": [
     "工程实践",
     "TypeScript",

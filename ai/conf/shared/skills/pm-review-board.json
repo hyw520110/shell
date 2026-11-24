@@ -14,6 +14,7 @@
   "install_check": "true",
   "tips": "适用于需求评审会前的预审、方案可行性检查、查漏补缺",
   "notes": "原名 SPACE-review-board，模拟6个角色同时评审需求",
+  "view_group": "产品/文档",
   "tags": [
     "评审",
     "文档评审",

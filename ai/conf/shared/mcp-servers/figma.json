@@ -47,6 +47,7 @@
     }
   ],
   "notes": "必须设置 FIGMA_ACCESS_TOKEN 环境变量才能访问非公开文件。在 Figma 账号设置 -> Personal access tokens 中生成。",
+  "view_group": "设计/原型",
   "tags": [
     "设计",
     "Figma",

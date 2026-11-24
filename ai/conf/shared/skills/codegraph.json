@@ -43,6 +43,7 @@
     }
   ],
   "tips": "CodeGraph 支持 19+ 种语言：TypeScript, JavaScript, Python, Go, Rust, Java, C#, PHP, Ruby, C, C++, Swift, Kotlin, Dart, Svelte, Liquid, Pascal/Delphi",
+  "view_group": "研发/代码",
   "tags": [
     "代码分析",
     "代码图",

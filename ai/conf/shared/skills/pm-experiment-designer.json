@@ -15,6 +15,7 @@
   "install_check": "true",
   "tips": "输出可视化HTML实验方案文档，包含样本量计算器等交互功能",
   "notes": "原名 SPACE-experiment-designer，输出完整的A/B实验方案",
+  "view_group": "设计/原型",
   "tags": [
     "实验设计",
     "A/B 测试",

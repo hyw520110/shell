@@ -20,6 +20,7 @@
   "docs": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequential-thinking",
   "install_check": "true",
   "tips": "对于涉及用户数据、支付或公共 API 的项目，这是必装技能。它能显著弥补 LLM 偶尔为了'简洁'而忽略安全性带来的隐患。",
+  "view_group": "安全/审计",
   "tags": [
     "安全",
     "审计",

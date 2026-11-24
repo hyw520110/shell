@@ -12,6 +12,7 @@
   },
   "required_tools": [],
   "status_check": [],
+  "view_group": "测试/QA",
   "tags": [
     "QA",
     "自动化测试",

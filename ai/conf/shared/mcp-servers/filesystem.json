@@ -1,8 +1,14 @@
 {
   "id": "filesystem",
   "name": "File System MCP",
-  "description": "智能文件管理工具，安全的文件系统访问，智能文件搜索和目录结构分析",
+  "view_group": "数据/接口",
+  "tags": [
+    "文件系统",
+    "文件管理",
+    "数据存储"
+  ],
   "category": "utility",
+  "description": "智能文件管理工具，安全的文件系统访问，智能文件搜索和目录结构分析",
   "install": {
     "type": "npm",
     "command": "npm install -g @modelcontextprotocol/server-filesystem"
@@ -21,11 +27,6 @@
       "name": "检查安装",
       "command": "npm list -g @modelcontextprotocol/server-filesystem --depth=0"
     }
-  ],
-  "tags": [
-    "文件系统",
-    "文件管理",
-    "数据存储"
   ],
   "scenarios": [
     "productivity",

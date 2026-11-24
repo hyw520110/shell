@@ -3,8 +3,16 @@
   "name": "Open Design MCP",
   "description": "Open Design 的 MCP 服务，为 AI 客户端提供原型、图标、图片和设计系统能力。",
   "category": "design",
-  "tags": ["设计", "原型", "MCP"],
-  "scenarios": ["design-prototype", "productivity"],
+  "view_group": "设计/原型",
+  "tags": [
+    "设计",
+    "原型",
+    "MCP"
+  ],
+  "scenarios": [
+    "design-prototype",
+    "productivity"
+  ],
   "default_enabled": false,
   "optional": true,
   "experimental": false,
@@ -16,10 +24,15 @@
   },
   "config": {
     "command": "od",
-    "args": ["mcp", "serve"],
+    "args": [
+      "mcp",
+      "serve"
+    ],
     "transportType": "stdio"
   },
-  "required_tools": ["od"],
+  "required_tools": [
+    "od"
+  ],
   "status_check": [
     {
       "name": "检查 Open Design MCP",

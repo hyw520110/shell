@@ -26,15 +26,38 @@
     "原子化校验 - 交付前 Schema/布局/HTML/SVG/路由/标签全关卡校验，失败保留已知良好输出"
   ],
   "dependencies": {
-    "platforms": ["claude-code", "cursor", "codex", "opencode", "gemini"],
-    "system_commands": ["node", "npx"]
+    "platforms": [
+      "claude-code",
+      "cursor",
+      "codex",
+      "opencode",
+      "gemini"
+    ],
+    "system_commands": [
+      "node",
+      "npx"
+    ]
   },
   "tips": "触发词：用 archify 画架构图/流程图/时序图。描述用 'Browser -> API -> Redis cache -> PostgreSQL fallback' 这类箭头语法即可。无需 Node 源仓库也能从描述出图。可通过 ARCHIFY_UPDATE_CHECK_DISABLED=1 关闭更新提醒。",
   "notes": "安装后 agent 将具备把技术意图转化为可验证交付物（交互式 HTML 图）的能力。产物是自包含单文件 HTML，便于在 README/评审/发布中复用。",
   "homepage": "https://github.com/tt-a1i/archify",
   "repository": "https://github.com/tt-a1i/archify",
-  "tags": ["架构图", "流程图", "时序图", "可视化", "系统设计", "HTML"],
-  "scenarios": ["productivity", "product-docs", "diagramming", "architecture", "coding"],
+  "view_group": "图表/架构",
+  "tags": [
+    "架构图",
+    "流程图",
+    "时序图",
+    "可视化",
+    "系统设计",
+    "HTML"
+  ],
+  "scenarios": [
+    "productivity",
+    "product-docs",
+    "diagramming",
+    "architecture",
+    "coding"
+  ],
   "default_enabled": true,
   "optional": false,
   "experimental": false,

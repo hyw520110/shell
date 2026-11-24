@@ -33,6 +33,7 @@
   "tips": "安装后直接在 Claude Code/Cursor 等 agent 中使用自然语言描述设计需求。支持品牌资产协议，避免 AI slop 视觉",
   "homepage": "https://github.com/alchaincyf/huashu-design",
   "repository": "https://github.com/alchaincyf/huashu-design",
+  "view_group": "设计/原型",
   "tags": [
     "UI",
     "交互设计",

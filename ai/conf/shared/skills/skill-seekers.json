@@ -8,6 +8,7 @@
     "agent-workbench",
     "research"
   ],
+  "view_group": "Agent平台",
   "tags": [
     "Skills",
     "RAG",

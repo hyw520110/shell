@@ -35,6 +35,7 @@
       "command": "command -v chrome-devtools-mcp >/dev/null || echo '未安装'"
     }
   ],
+  "view_group": "浏览器/爬虫",
   "tags": [
     "浏览器",
     "调试",

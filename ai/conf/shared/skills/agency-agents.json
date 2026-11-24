@@ -40,6 +40,7 @@
   "homepage": "https://github.com/mstarzewski/agency-agents",
   "repository": "https://github.com/mstarzewski/agency-agents",
   "stars": "80,000+",
+  "view_group": "Agent平台",
   "tags": [
     "AI 代理",
     "多代理",

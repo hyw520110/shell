@@ -23,8 +23,20 @@
     "evidence": "必须给出真实文件路径、行号、调用链、触发条件、影响边界和置信度；没有动态证据时明确标记为候选。",
     "codex": "长任务可分轮执行并合并报告，但必须去重，列出已覆盖项、未覆盖项和审计盲区。"
   },
-  "tags": ["安全", "代码审计", "Java", ".NET", "PHP", "白盒", "article-2026-security"],
-  "scenarios": ["security", "code-review"],
+  "view_group": "安全/审计",
+  "tags": [
+    "安全",
+    "代码审计",
+    "Java",
+    ".NET",
+    "PHP",
+    "白盒",
+    "article-2026-security"
+  ],
+  "scenarios": [
+    "security",
+    "code-review"
+  ],
   "default_enabled": false,
   "optional": true,
   "experimental": false,

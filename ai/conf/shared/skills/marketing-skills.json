@@ -25,6 +25,7 @@
   "tips": "适合营销落地任务。可用 `npx skills add coreyhaines31/marketingskills --list` 查看并按需安装具体 skills。",
   "homepage": "https://github.com/coreyhaines31/marketingskills",
   "repository": "https://github.com/coreyhaines31/marketingskills",
+  "view_group": "业务/运营",
   "tags": [
     "营销",
     "CRO",

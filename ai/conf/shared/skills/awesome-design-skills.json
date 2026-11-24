@@ -30,6 +30,7 @@
   "tips": "所有风格安装到同一个 design-system/ 子目录，拉取新风格会覆盖旧风格。可用 --dry-run 预览。支持 DESIGN.md (项目根目录) 和 SKILL.md (Agent 目录) 两种输出格式。",
   "homepage": "https://www.typeui.sh",
   "repository": "https://github.com/bergside/awesome-design-skills",
+  "view_group": "设计/原型",
   "tags": [
     "UI",
     "设计系统",

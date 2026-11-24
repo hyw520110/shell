@@ -243,7 +243,7 @@ check_dependencies() {
     done
 
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
-        echo -e "${YELLOW}⚠️  缺失必要依赖: ${missing_deps[*]}${NC}"
+        echo -e "${YELLOW}[警告]  缺失必要依赖: ${missing_deps[*]}${NC}"
         
         # 尝试自动安装：使用数组执行，避免 eval。
         local install_desc=""
@@ -269,7 +269,7 @@ check_dependencies() {
 
         if [[ ${#install_cmd[@]} -gt 0 ]]; then
             if [[ "${AI_HUB_NON_INTERACTIVE:-0}" == "1" ]]; then
-                echo -e "${RED}❌ 非交互模式缺少必要依赖: ${missing_deps[*]}${NC}"
+                echo -e "${RED}[失败] 非交互模式缺少必要依赖: ${missing_deps[*]}${NC}"
                 echo -e "${YELLOW}请先执行: ${install_desc}${NC}"
                 exit 1
             fi
@@ -280,12 +280,12 @@ check_dependencies() {
                     sudo apt-get update || true
                 fi
                 if "${install_cmd[@]}"; then
-                    echo -e "${GREEN}✅ 依赖安装成功${NC}"
+                    echo -e "${GREEN}[OK] 依赖安装成功${NC}"
                 else
-                    echo -e "${RED}❌ 依赖安装失败${NC}"
+                    echo -e "${RED}[失败] 依赖安装失败${NC}"
                 fi
             else
-                echo -e "${RED}❌ 错误: 缺少必要依赖: ${missing_deps[*]}${NC}"
+                echo -e "${RED}[失败] 错误: 缺少必要依赖: ${missing_deps[*]}${NC}"
                 echo -e "${YELLOW}请手动安装这些工具后再试：${NC}"
                 [[ "$OS" == "macOS" ]] && echo -e "  brew install ${missing_deps[*]}"
                 [[ "$OS" == "Linux" ]] && echo -e "  ${install_desc:-sudo apt-get install ${missing_deps[*]}}"

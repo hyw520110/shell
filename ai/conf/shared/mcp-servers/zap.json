@@ -25,7 +25,9 @@
     ],
     "transportType": "stdio"
   },
-  "required_tools": ["curl"],
+  "required_tools": [
+    "curl"
+  ],
   "status_check": [
     {
       "name": "检查 ZAP MCP 服务",
@@ -54,8 +56,18 @@
       "description": "生成本地扫描报告"
     }
   ],
-  "tags": ["安全", "Web", "漏洞扫描", "MCP", "DAST"],
-  "scenarios": ["security", "qa-testing"],
+  "view_group": "安全/审计",
+  "tags": [
+    "安全",
+    "Web",
+    "漏洞扫描",
+    "MCP",
+    "DAST"
+  ],
+  "scenarios": [
+    "security",
+    "qa-testing"
+  ],
   "default_enabled": false,
   "optional": true,
   "experimental": true,

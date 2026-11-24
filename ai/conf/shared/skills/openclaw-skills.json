@@ -1,18 +1,19 @@
 {
   "id": "openclaw-skills",
   "name": "OpenClaw Skills",
-  "description": "在 CI/CD 场景中创建 code-reviewer、security-scanner 等 Skill，结合 GitHub Actions 打造自动化流水线。",
-  "category": "automation",
-  "scenarios": [
-    "automation",
-    "ops",
-    "code-review"
-  ],
+  "view_group": "研发/代码",
   "tags": [
     "CI/CD",
     "自动化",
     "审查",
     "流水线"
+  ],
+  "category": "automation",
+  "description": "在 CI/CD 场景中创建 code-reviewer、security-scanner 等 Skill，结合 GitHub Actions 打造自动化流水线。",
+  "scenarios": [
+    "automation",
+    "ops",
+    "code-review"
   ],
   "default_enabled": true,
   "optional": false,

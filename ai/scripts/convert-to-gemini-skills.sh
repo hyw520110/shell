@@ -17,7 +17,7 @@ echo ""
 
 # 检查源目录
 if [[ ! -d "$AI_HUB_SKILLS_DIR" ]]; then
-    echo "❌ 错误: 找不到 ai-hub Skills 目录: $AI_HUB_SKILLS_DIR"
+    echo "[失败] 错误: 找不到 ai-hub Skills 目录: $AI_HUB_SKILLS_DIR"
     exit 1
 fi
 
@@ -44,7 +44,7 @@ for json_file in "$AI_HUB_SKILLS_DIR"/*.json; do
     [[ -z "$name" ]] && name="$skill_id"
     [[ -z "$description" ]] && description="$name Skill"
     
-    echo "🔄 转换: $skill_id"
+    echo "转换: $skill_id"
     
     # 创建 Skill 目录
     mkdir -p "$skill_dir"
@@ -115,7 +115,7 @@ EOF
     cp "$json_file" "$skill_dir/ai-hub-config.json"
     
     ((converted++))
-    echo "   ✅ 已创建: $skill_dir/"
+    echo "   [OK] 已创建: $skill_dir/"
 done
 
 echo ""

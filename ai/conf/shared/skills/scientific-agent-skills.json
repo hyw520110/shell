@@ -3,6 +3,7 @@
   "name": "Scientific Agent Skills",
   "description": "138 个即用型科学研究技能集合，覆盖生物信息学、化学信息学、药物发现、蛋白质组学、临床研究、医学影像、机器学习、地理空间科学等领域。支持 100+ 科学数据库访问，70+ Python 包优化技能。将 AI Agent 转化为 AI Scientist。",
   "category": "knowledge",
+  "view_group": "研究/知识",
   "tags": [
     "科研",
     "研究",

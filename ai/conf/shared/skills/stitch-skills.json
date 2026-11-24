@@ -32,6 +32,7 @@
   "tips": "包含 3 个插件包：stitch-design (6 个技能)、stitch-build (4 个技能)、stitch-utilities (4 个技能)。使用前需配置 Stitch MCP Server: https://stitch.withgoogle.com/docs/mcp/setup/",
   "homepage": "https://stitch.withgoogle.com",
   "repository": "https://github.com/google-labs-code/stitch-skills",
+  "view_group": "设计/原型",
   "tags": [
     "UI",
     "设计系统",

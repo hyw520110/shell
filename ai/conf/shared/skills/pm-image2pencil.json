@@ -17,6 +17,7 @@
   "install_check": "true",
   "tips": "必须安装并配置pencil MCP服务器，双产出：设计图+设计文档",
   "notes": "原名 image2pencil，依赖pencil MCP工具",
+  "view_group": "设计/原型",
   "tags": [
     "原型",
     "草图",

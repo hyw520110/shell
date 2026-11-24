@@ -3,6 +3,7 @@
   "name": "网络安全专家 (Anthropic Cybersecurity Skills)",
   "description": "集成了 754 个结构化的 AI 安全专家技能。将您的 AI 助手升级为具备 MITRE ATT&CK 和 NIST CSF 2.0 框架知识的高级安全分析师。涵盖云安全、威胁猎捕、恶意软件分析和事件响应等 26 个领域。",
   "category": "coding-best-practices",
+  "view_group": "安全/审计",
   "tags": [
     "安全",
     "Cybersecurity",

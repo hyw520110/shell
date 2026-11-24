@@ -3,6 +3,7 @@
   "name": "Ponytail - AI 代码精简引擎 (Lazy Ladder)",
   "description": "40.9K Star 爆款技能。AI Agent 代码精简引擎，通过 6 级「懒惰阶梯」决策模型让 AI 在写代码前逐级自问：真的需要存在吗？→ 标准库能做吗？→ 原生平台特性覆盖了吗？→ 已安装依赖能解吗？→ 能一行搞定吗？→ 最后才写最少能工作的代码。效果：代码量减少 80-94%、延迟降低 3-6x、成本降低 42-75%。与 karpathy-guidelines（控制代码质量）和 Caveman（控制对话 Token）互补。",
   "category": "coding-best-practices",
+  "view_group": "研发/代码",
   "tags": [
     "代码精简",
     "YAGNI",

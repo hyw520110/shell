@@ -1,0 +1,115 @@
+{
+  "id": "kiro",
+  "name": "Kiro CLI",
+  "description": "AWS Kiro CLI - agentic AI 编码助手（IDE/CLI/Web 统一），基于 Amazon Bedrock，免费层含 50 积分/月 + 开放权重模型/Claude Sonnet 4.5",
+  "category": "ai-coding",
+  "sort_key": "Kiro CLI",
+  "tags": [
+    "ai",
+    "coding",
+    "cli",
+    "aws",
+    "bedrock",
+    "agent"
+  ],
+  "install": {
+    "methods": [
+      {
+        "name": "adl 下载安装 (推荐, 多线程+代理测速)",
+        "type": "custom",
+        "command": "set -e; ARCH=\"$(uname -m)\"; [ \"$ARCH\" = \"arm64\" ] && KIRO_ZIP=kirocli-universal-darwin.zip || KIRO_ZIP=kirocli-universal-darwin.zip; KIRO_URL=\"https://prod.download.cli.kiro.dev/stable/latest/${KIRO_ZIP}\"; KIRO_DIR=\"${TMPDIR:-/tmp}/kiro-adl-$$.d\"; mkdir -p \"$KIRO_DIR\"; if command -v adl >/dev/null 2>&1; then echo '[INFO] 使用 adl 下载（多线程+断点续传+代理测速）'; adl \"$KIRO_URL\" \"$KIRO_DIR\" \"$KIRO_ZIP\"; else echo '[WARN] adl 不可用，回退 curl'; curl -fsSL \"$KIRO_URL\" -o \"$KIRO_DIR/$KIRO_ZIP\"; fi; [ -s \"$KIRO_DIR/$KIRO_ZIP\" ] || { echo '[ERROR] 下载产物为空'; exit 1; }; mkdir -p \"$KIRO_DIR/extract\"; unzip -q \"$KIRO_DIR/$KIRO_ZIP\" -d \"$KIRO_DIR/extract\"; mkdir -p \"$HOME/.local/bin\"; install -m 755 \"$KIRO_DIR/extract/kirocli/bin/kiro-cli\" \"$HOME/.local/bin/kiro-cli\"; rm -rf \"$KIRO_DIR\"; echo '安装完成: kiro-cli 已装到 ~/.local/bin'; kiro-cli --version",
+        "check": "command -v kiro-cli >/dev/null 2>&1 && kiro-cli --version",
+        "uninstall": [
+          "rm -f $HOME/.local/bin/kiro-cli $HOME/.local/bin/kiro-cli-chat $HOME/.local/bin/kiro-cli-term",
+          "rm -rf $HOME/.kiro"
+        ]
+      },
+      {
+        "name": "Homebrew 安装 (macOS)",
+        "type": "brew",
+        "command": "brew install --cask kiro-cli",
+        "check": "command -v kiro-cli >/dev/null 2>&1 && kiro-cli --version",
+        "uninstall": [
+          "brew uninstall --cask kiro-cli"
+        ],
+        "platform": "darwin"
+      },
+      {
+        "name": "官方脚本安装 (curl | bash)",
+        "type": "custom",
+        "command": "curl -fsSL https://cli.kiro.dev/install | bash",
+        "check": "command -v kiro-cli >/dev/null 2>&1 && kiro-cli --version",
+        "uninstall": [
+          "rm -f $HOME/.local/bin/kiro-cli $HOME/.local/bin/kiro-cli-chat $HOME/.local/bin/kiro-cli-term",
+          "rm -rf $HOME/.kiro"
+        ]
+      }
+    ],
+    "default_method": 0
+  },
+  "update": {
+    "command": "set -e; KIRO_URL=\"https://prod.download.cli.kiro.dev/stable/latest/kirocli-universal-darwin.zip\"; KIRO_DIR=\"${TMPDIR:-/tmp}/kiro-update-$$.d\"; mkdir -p \"$KIRO_DIR\"; if command -v adl >/dev/null 2>&1; then adl \"$KIRO_URL\" \"$KIRO_DIR\" \"kirocli-universal-darwin.zip\"; else curl -fsSL \"$KIRO_URL\" -o \"$KIRO_DIR/kirocli-universal-darwin.zip\"; fi; mkdir -p \"$KIRO_DIR/extract\"; unzip -q \"$KIRO_DIR/kirocli-universal-darwin.zip\" -d \"$KIRO_DIR/extract\"; install -m 755 \"$KIRO_DIR/extract/kirocli/bin/kiro-cli\" \"$HOME/.local/bin/kiro-cli\"; rm -rf \"$KIRO_DIR\"; echo 'Kiro CLI 更新完成'; kiro-cli --version",
+    "check": "kiro-cli --version"
+  },
+  "config": {
+    "path": "$HOME/.kiro",
+    "operations": {
+      "view": "ls -la $HOME/.kiro 2>/dev/null || echo '配置目录不存在（未登录）'",
+      "edit": "echo 'Kiro 配置通过 kiro-cli 子命令管理，或编辑 ~/.kiro 下配置文件'",
+      "reset": [
+        "echo 'Kiro 登录信息删除请执行: kiro-cli logout'"
+      ]
+    }
+  },
+  "commands": {
+    "start": "kiro-cli",
+    "version": "kiro-cli --version",
+    "login": "kiro-cli login --license free --use-device-flow",
+    "login-google": "kiro-cli login --social google",
+    "whoami": "kiro-cli whoami",
+    "logout": "kiro-cli logout",
+    "usage": "kiro-cli usage",
+    "update": "kiro-cli update"
+  },
+  "status_check": [
+    {
+      "name": "检查版本",
+      "command": "kiro-cli --version 2>/dev/null || echo '未安装'"
+    },
+    {
+      "name": "检查登录状态",
+      "command": "kiro-cli whoami 2>/dev/null || echo '未登录'"
+    },
+    {
+      "name": "检查配置目录",
+      "command": "ls -la $HOME/.kiro 2>/dev/null || echo '配置目录不存在'"
+    }
+  ],
+  "mcp_servers": {},
+  "skills": {},
+  "references": {
+    "shared_mcp_servers": [],
+    "shared_skills": []
+  },
+  "notes": "Kiro CLI 免费层：$0/月，50 积分/月，开放权重模型 + Claude Sonnet 4.5（有额度限制）。登录用免费层：Google/GitHub 社交登录或 AWS Builder ID（无需自己的 AWS 账户）。安装后必须先 kiro-cli login --license free --use-device-flow 才能发起对话。Kiro CLI 3.0+ 是单一 standalone kiro-cli 二进制，装到 ~/.local/bin（需在 PATH）。",
+  "post_install": [
+    "echo ''",
+    "echo '========================================'",
+    "echo '  Kiro CLI 安装成功！'",
+    "echo '========================================'",
+    "echo ''",
+    "echo 'Kiro CLI 免费层可用（$0/月，50 积分/月）。'",
+    "echo '安装后必须先登录才能发起对话：'",
+    "echo '  kiro-cli login --license free --use-device-flow   # 免费层（Google/GitHub 社交登录或 AWS Builder ID）'",
+    "echo '  kiro-cli whoami                                   # 确认登录'",
+    "echo ''",
+    "echo '常用命令：'",
+    "echo '  kiro-cli              # 启动对话'",
+    "echo '  kiro-cli login --social google   # Google 社交登录'",
+    "echo '  kiro-cli usage        # 查看积分用量'",
+    "echo '  kiro-cli update       # 自更新'",
+    "echo ''",
+    "kiro-cli --version 2>/dev/null || echo ''"
+  ],
+  "post_uninstall": []
+}

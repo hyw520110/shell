@@ -21,6 +21,7 @@
   "install_check": "which node && which npm",
   "tips": "需要Node.js和npm环境，需要Chrome MCP支持以读取网页",
   "notes": "原名 web-prototype，输出完整的Next.js项目",
+  "view_group": "设计/原型",
   "tags": [
     "原型",
     "URL 转原型",

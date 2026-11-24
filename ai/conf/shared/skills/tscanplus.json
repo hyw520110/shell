@@ -15,8 +15,12 @@
     "MCP/CLI 参数和结果的报告化整理"
   ],
   "dependencies": {
-    "mcp_servers": ["tscanplus"],
-    "system_commands": ["tscanclient"]
+    "mcp_servers": [
+      "tscanplus"
+    ],
+    "system_commands": [
+      "tscanclient"
+    ]
   },
   "instructions": {
     "authorization": "没有明确书面授权时拒绝远程扫描；不得把公益 SRC 页面本身或搜索到的资产当作自动授权。",
@@ -28,8 +32,19 @@
     ],
     "mcp": "优先使用 ip_scan、url_scan、js_scan；只有在授权实验室和用户明确指定时才讨论 poc_scan，且不把它作为默认流水线。"
   },
-  "tags": ["安全", "资产侦察", "Web", "MCP", "TscanPlus", "article-2026-security"],
-  "scenarios": ["security", "qa-testing"],
+  "view_group": "安全/审计",
+  "tags": [
+    "安全",
+    "资产侦察",
+    "Web",
+    "MCP",
+    "TscanPlus",
+    "article-2026-security"
+  ],
+  "scenarios": [
+    "security",
+    "qa-testing"
+  ],
   "default_enabled": false,
   "optional": true,
   "experimental": false,

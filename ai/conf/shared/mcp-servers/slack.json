@@ -29,6 +29,7 @@
       "command": "node --version 2>/dev/null || echo 'Node.js 未安装'"
     }
   ],
+  "view_group": "业务/运营",
   "tags": [
     "Slack",
     "社区运营",

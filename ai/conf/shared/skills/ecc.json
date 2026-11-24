@@ -75,6 +75,7 @@
   "homepage": "https://github.com/affaan-m/ECC",
   "repository": "https://github.com/affaan-m/ECC",
   "documentation": "https://github.com/affaan-m/ECC/blob/main/README.md",
+  "view_group": "Agent平台",
   "tags": [
     "Agent工作台",
     "Skill 集合",

@@ -7,6 +7,7 @@
     "type": "custom",
     "command": "mkdir -p ~/.gemini/skills/app-qa-automation"
   },
+  "view_group": "测试/QA",
   "tags": [
     "QA",
     "移动端",

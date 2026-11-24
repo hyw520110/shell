@@ -35,6 +35,7 @@
   "tips": "安装依赖：macOS: brew install librsvg, Ubuntu: sudo apt install librsvg2-bin。触发词：画图/生成图/架构图/流程图/可视化一下",
   "homepage": "https://github.com/yizhiyanhua-ai/fireworks-tech-graph",
   "repository": "https://github.com/yizhiyanhua-ai/fireworks-tech-graph",
+  "view_group": "图表/架构",
   "tags": [
     "技术图",
     "架构图",

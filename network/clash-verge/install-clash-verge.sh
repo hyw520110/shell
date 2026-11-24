@@ -50,6 +50,7 @@ ACTION（缺省时交互式询问）:
   --install      安装 Clash Verge Rev（如已安装会提示先卸载/更新）
   --update       强制更新到最新版（先卸载旧版本）
   --uninstall    卸载当前安装的 Clash Verge Rev
+  --check        只做本机体检（macOS 兼容性 + 内核版本/anytls 支持），不下载不安装
 
 OPTIONS:
   --download-dir <DIR>  指定下载缓存目录（默认: ~/Downloads）
@@ -82,11 +83,13 @@ while [ $# -gt 0 ]; do
     --install)     ACTION="install" ;;
     --update)      ACTION="update" ;;
     --uninstall)   ACTION="uninstall" ;;
+    --check)       ACTION="check" ;;
     --download-dir) shift; DOWNLOAD_DIR="$1" ;;
     --install-dir)  shift; INSTALL_DIR="$1" ;;
     --no-aria2)    NO_ARIA2=1 ;;
     --use-aria2)   FORCE_ARIA2=1 ;;
     --force)       FORCE=1 ;;
+    --no-color)    NC='' ; RED='' ; GREEN='' ; YELLOW='' ; BLUE='' ; CYAN='' ; BOLD='' ;;
     --help|-h)     usage; exit 0 ;;
     *)
       error "未知参数: $1"
@@ -187,6 +190,32 @@ PY
 
 # 下载文件
 # $1: URL   $2: 目标文件路径
+# ---------------------------------------------------------------------------
+# 下载产物格式校验
+# adl 已内置魔数+SHA256 校验 (失败返回非零), 所以 adl 成功路径无需重复校验;
+# 但 curl / aria2 回退路径没有 adl 的校验, 必须自己验 (本次事故: adl 从坏镜像
+# 拿回 374B HTML 错误页仍返回 0, 无校验就会继续装坏包)。
+# 支持: DMG (kPFK 6b50464b / PKZip 504b0304), deb (!<arch>), rpm (ed ab ee db)
+# ---------------------------------------------------------------------------
+validate_archive() {
+  local file="$1"
+  local magic
+
+  [ -s "$file" ] || { warn "产物为空: $file"; return 1; }
+
+  magic=$(head -c 4 "$file" | xxd -p 2>/dev/null)
+  case "$magic" in
+    6b50464b) ok "格式校验通过: DMG (kPFK)"; return 0 ;;   # DMG
+    504b0304) ok "格式校验通过: ZIP/PKZip"; return 0 ;;    # zip 容器 (含 dmg)
+    213c6172) ok "格式校验通过: deb (!<arch>)"; return 0 ;; # Debian 包
+    edabeedb) ok "格式校验通过: rpm"; return 0 ;;          # RPM
+    *)
+      warn "格式校验失败: 魔数 ${magic:-未知} (可能是 HTML 错误页或坏包)"
+      return 1
+      ;;
+  esac
+}
+
 download_file() {
   local url="$1" dest="$2"
   mkdir -p "$(dirname "$dest")"
@@ -212,10 +241,16 @@ download_file() {
 
   if [ "$use_adl" -eq 1 ]; then
     info "使用 adl 下载（多线程 + 断点续传 + 代理测速）"
-    adl "$url" "$(dirname "$dest")" "$(basename "$dest")" || {
-      warn "adl 下载失败，回退到 curl ..."
-      curl -L --progress-bar --continue-at - -o "$dest" "$url"
-    }
+    # adl 已内置魔数+SHA256 校验; 只需确认产物非空
+    # (adl 对空文件是跳过校验的)
+    if adl "$url" "$(dirname "$dest")" "$(basename "$dest")" && [ -s "$dest" ]; then
+      ok "adl 下载完成并校验通过"
+      return 0
+    fi
+    warn "adl 下载失败或产物异常，回退到 curl ..."
+    rm -f "$dest"
+    curl -fL --retry 3 --connect-timeout 20 -o "$dest" "$url" || return 1
+    validate_archive "$dest" || return 1
   elif [ "$use_aria2" -eq 1 ]; then
     info "使用 aria2c 多线程下载（5 连接）"
     aria2c \
@@ -229,11 +264,14 @@ download_file() {
       --dir="$(dirname "$dest")" \
       "$url" || {
         warn "aria2c 下载失败，回退到 curl ..."
-        curl -L --progress-bar --continue-at - -o "$dest" "$url"
+        rm -f "$dest"
+        curl -fL --retry 3 --connect-timeout 20 -o "$dest" "$url" || return 1
       }
+    validate_archive "$dest" || return 1
   else
     info "使用 curl 下载（安装 aria2 可提速: brew install aria2）"
-    curl -L --progress-bar --continue-at - -o "$dest" "$url"
+    curl -fL --retry 3 --connect-timeout 20 -o "$dest" "$url" || return 1
+    validate_archive "$dest" || return 1
   fi
 
   [ -s "$dest" ] || { error "下载文件为空: $dest"; return 1; }
@@ -285,6 +323,197 @@ detect_installed_version() {
 }
 
 # ---------------------------------------------------------------------------
+# macOS 兼容性预检 + 内置 Mihomo 内核体检
+# 本次事故教训: ClashX Meta 从 v1.4.46 起 LSMinimumSystemVersion 升到 13.0,
+# macOS 12 上装完 open 直接报 "Unable to find application named ..."。
+# 必须安装前读新包 Info.plist 的 LSMinimumSystemVersion 并对比本机系统。
+# ---------------------------------------------------------------------------
+macos_major() {
+  sw_vers -productVersion 2>/dev/null | cut -d. -f1 || echo 99
+}
+macos_full() {
+  sw_vers -productVersion 2>/dev/null || echo "0.0.0"
+}
+
+# 比较两个点分版本号, 返回 0 表示 $1 >= $2; $1/$2 形如 "13.0"/"12.7.6"
+compare_macos_version_ge() {
+  local left="$1" right="$2"
+  [ -z "$left" ] || [ -z "$right" ] && return 0
+  awk -v l="$left" -v r="$right" 'BEGIN {
+    n1 = split(l, a, "."); n2 = split(r, b, ".");
+    for (i = 1; i <= 3; i++) {
+      x = (i <= n1 && a[i] != "") ? a[i] + 0 : 0;
+      y = (i <= n2 && b[i] != "") ? b[i] + 0 : 0;
+      if (x > y) { exit 0 }
+      if (x < y) { exit 1 }
+    }
+    exit 0
+  }'
+}
+
+# 读取给定 .app 的 Info.plist 里 LSMinimumSystemVersion; 空 = 未声明
+app_min_system() {
+  local app="$1"
+  local plist="${app}/Contents/Info.plist"
+  [ -f "$plist" ] || return 1
+  /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist" 2>/dev/null || echo ""
+}
+
+# 安装前校验: 新包要求的最低 macOS 是否被本机满足; 不满足返回 1
+check_app_macos_compat() {
+  local app="$1"
+  local plist="${app}/Contents/Info.plist"
+  local min_sys cur
+
+  if [ ! -f "$plist" ]; then
+    warn "未找到 Info.plist, 跳过系统兼容性检查"
+    return 0
+  fi
+
+  min_sys=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist" 2>/dev/null || echo "")
+  if [ -z "$min_sys" ]; then
+    info "该版本未声明 LSMinimumSystemVersion, 跳过检查"
+    return 0
+  fi
+
+  cur=$(macos_full)
+  if ! compare_macos_version_ge "$cur" "$min_sys"; then
+    error "系统不兼容: App 要求 macOS ${min_sys}+, 本机为 macOS ${cur}"
+    error "这个版本装上也无法启动 (open 会报 Unable to find application)"
+    error "请改用支持本系统的版本, 或升级 macOS"
+    return 1
+  fi
+
+  info "系统兼容性检查通过: 要求 macOS ${min_sys}+, 本机 ${cur}"
+  return 0
+}
+
+# 从二进制里提取 Mihomo 内核版本 (静态分析, 绝不用裸抓 v1.x.y)
+# 实测: ClashX 的 helper 二进制以 root 拉起, 无 TTY 下会挂住终端;
+# go version -m 拿不到 (devel), 裸抓 v1.x.y 会误抓依赖库版本 (protobuf v1.34.2 96次)。
+# 完整内核二进制里只有格式串 "Mihomo Meta %s %s %s", 版本号运行时才填入,
+# 所以静态只能确认"这是 mihomo"; 可靠版本需运行 "$bin -v"。
+# Clash Verge 的内核 (verge-mihomo) 是完整二进制, -v 立即返回 (实测 0.29s),
+# 但仍用超时保护防意外 (bash 无 timeout, 用后台+kill 实现)。
+extract_mihomo_version() {
+  local binary="$1" v="" out="" pid=""
+  [ -f "$binary" ] || return 1
+
+  # 1) 静态: 确认是 mihomo 并尝试提取格式串里的版本 (多为空)
+  v=$(strings -a "$binary" 2>/dev/null | grep -oE 'Mihomo[ ]?[Mm]eta v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+  if [ -n "$v" ]; then printf '%s\n' "$v"; return 0; fi
+
+  # 2) 运行 -v (超时保护: 后台跑, 5s 后 kill; 完整内核立即返回)
+  out=""
+  "$binary" -v >/tmp/verge_v.out 2>&1 &
+  pid=$!
+  ( sleep 5; kill "$pid" 2>/dev/null ) &
+  local watchdog=$!
+  wait "$pid" 2>/dev/null
+  kill "$watchdog" 2>/dev/null
+  out=$(cat /tmp/verge_v.out 2>/dev/null)
+  rm -f /tmp/verge_v.out
+  v=$(printf '%s' "$out" | grep -oE '[Mm]ihomo( [Mm]eta)? v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+  if [ -n "$v" ]; then printf '%s\n' "$v"; return 0; fi
+
+  return 1
+}
+
+# 版本解析为 "M m p 0"; 供 core_version_ge 比较
+parse_mihomo_version() {
+  local raw="$1" num
+  num=$(printf '%s\n' "$raw" | grep -oE '[vV]?[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true)
+  if [ -z "$num" ]; then echo "0 0 0 0"; return 1; fi
+  num="${num#v}"; num="${num#V}"
+  awk -v v="$num" 'BEGIN {
+    n = split(v, p, ".");
+    for (i = 1; i <= 4; i++) {
+      val = (i <= n && p[i] != "") ? p[i] : 0;
+      printf "%s ", val + 0;
+    }
+    printf "\n";
+  }'
+}
+
+# 内核版本 >= 目标版本? $1="M m p 0" $2="1.19.3"
+mihomo_version_ge() {
+  local nums="$1" target maj1 min1 pat1 maj2 min2 pat2
+  local IFS_SAVE="$IFS"
+  target=$(parse_mihomo_version "$2")
+  # 脚本头部设了 IFS=$'\n\t' (不含空格), read 会按 IFS 拆字段;
+  # 临时设 IFS=' ' 确保按空格拆分 "1 19 33 0"。
+  IFS=' '
+  read -r maj1 min1 pat1 _ <<< "$nums"
+  read -r maj2 min2 pat2 _ <<< "$target"
+  IFS="$IFS_SAVE"
+  maj1=${maj1:-0}; min1=${min1:-0}; pat1=${pat1:-0}
+  maj2=${maj2:-0}; min2=${min2:-0}; pat2=${pat2:-0}
+  if [ "$maj1" -lt "$maj2" ]; then return 1; fi
+  if [ "$maj1" -gt "$maj2" ]; then return 0; fi
+  if [ "$min1" -lt "$min2" ]; then return 1; fi
+  if [ "$min1" -gt "$min2" ]; then return 0; fi
+  [ "$pat1" -ge "$pat2" ]
+}
+
+# 安装后体检: 从已安装的 .app 里找内置 Mihomo 内核并报告版本与 anytls 支持
+# Clash Verge Rev 把内核放在 Contents/MacOS/ (verge-mihomo, verge-mihomo-alpha)
+# 而不是 Resources; 两个位置都搜。
+report_mihomo_core() {
+  local app="$1"
+  local base_macos="${app}/Contents/MacOS"
+  local base_res="${app}/Contents/Resources"
+  local bin=""
+  local found=""
+  local ver=""
+
+  # Clash Verge Rev 内核通常叫 verge-mihomo / verge-mihomo-alpha
+  # ClashX 类叫 clash-meta / clash / mihomo
+  for name in "verge-mihomo" "verge-mihomo-alpha" "clash-meta" "clash" "mihomo"; do
+    for base in "$base_macos" "$base_res"; do
+      local c="${base}/${name}"
+      if [ -x "$c" ] || [ -f "$c" ]; then
+        bin="$c"
+        if found=$(extract_mihomo_version "$bin" 2>/dev/null); then
+          ver="$found"
+          break 2
+        fi
+      fi
+    done
+  done
+
+  if [ -z "$ver" ]; then
+    # 再搜 .gz (内核以压缩形式打包)
+    local gz
+    for gz in "$base"/*.gz; do
+      [ -f "$gz" ] || continue
+      local tmpd
+      tmpd=$(mktemp -d "${TMPDIR:-/tmp}/verge-core.XXXXXX")
+      if gunzip -c "$gz" > "$tmpd/core" 2>/dev/null && [ -s "$tmpd/core" ]; then
+        if found=$(extract_mihomo_version "$tmpd/core" 2>/dev/null); then
+          ver="$found"; bin="$gz"; rm -rf "$tmpd"; break
+        fi
+      fi
+      rm -rf "$tmpd"
+    done
+  fi
+
+  if [ -z "$ver" ]; then
+    warn "未检测到内置 Mihomo 内核 (客户端启动后会自行解压)"
+    return 1
+  fi
+
+  info "内置内核: ${ver}"
+  local nums
+  nums=$(parse_mihomo_version "$ver")
+  if mihomo_version_ge "$nums" "1.19.3"; then
+    ok "内核支持 anytls (>= v1.19.3)"
+  else
+    warn "内核低于 v1.19.3, 无法解析 anytls 节点"
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # 核心动作：安装、更新、卸载
 # ---------------------------------------------------------------------------
 install_clash_verge() {
@@ -316,6 +545,11 @@ install_clash_verge() {
     else
       local app_name="$(basename "$app_src")"
       info "将 '${app_name}' 复制到 ${target_dir}/"
+      # 安装前校验: 新包要求的最低 macOS 是否被本机满足 (本次事故根因)
+      check_app_macos_compat "$app_src" || {
+        hdiutil detach "$mount_point" -force -quiet >/dev/null 2>&1 || true
+        return 1
+      }
       # 如已存在旧版本，先备份再替换
       if [ -d "${target_dir}/${app_name}" ]; then
         warn "检测到旧版安装，将被替换（若正在运行，请先退出应用）"
@@ -330,6 +564,8 @@ install_clash_verge() {
       xattr -dr com.apple.quarantine "${target_dir}/${app_name}" 2>/dev/null || true
       ok "已复制到 ${target_dir}/${app_name}"
       info "提示：首次启动若提示『无法验证开发者』，请右键 → 打开"
+      # 安装后体检: 内置 Mihomo 内核版本与 anytls 支持
+      report_mihomo_core "${target_dir}/${app_name}" || true
     fi
     # 卸载 DMG
     hdiutil detach "$mount_point" -force -quiet >/dev/null 2>&1 || true
@@ -432,6 +668,42 @@ main() {
     info "已安装: ${INSTALLED_VERSION}"
   else
     info "未检测到已安装版本"
+  fi
+
+  # 0) --check: 只做本机体检, 不下载不安装
+  if [ "$ACTION" = "check" ]; then
+    info "▶ 本机体检模式"
+    if [ "$OS" = "macOS" ]; then
+      local installed_app="${INSTALL_DIR:-/Applications}/Clash Verge.app"
+      if [ -d "$installed_app" ]; then
+        info "应用已安装: $installed_app"
+        # 安装后体检: 内置 Mihomo 内核版本与 anytls 支持
+        report_mihomo_core "$installed_app" || true
+      else
+        warn "Clash Verge.app 未安装"
+      fi
+      # 系统兼容性预检 (针对最新版, 用当前已装 app 或直接报告本机)
+      local cur min_sys
+      cur=$(macos_full)
+      info "本机 macOS: ${cur}"
+      if [ -d "$installed_app" ]; then
+        min_sys=$(app_min_system "$installed_app")
+        info "已装应用要求 macOS: ${min_sys:-未声明}"
+        if [ -n "$min_sys" ] && ! compare_macos_version_ge "$cur" "$min_sys"; then
+          warn "当前系统 ${cur} 低于已装应用要求 ${min_sys}, 可能无法启动"
+        fi
+      fi
+      # 检测下载工具
+      for t in adl aria2c curl; do
+        if command -v "$t" >/dev/null 2>&1; then
+          info "下载工具: $t ✓"
+        else
+          info "下载工具: $t ✗ (未安装)"
+        fi
+      done
+    fi
+    echo ""
+    exit 0
   fi
 
   # 2) 获取最新 release 信息

@@ -7,6 +7,7 @@
     "type": "custom",
     "command": "mkdir -p ~/.gemini/skills/legal-advisor"
   },
+  "view_group": "业务/运营",
   "tags": [
     "法务合规",
     "开源协议",

@@ -26,6 +26,7 @@
       "command": "npm list -g @leonardsellem/n8n-mcp-server --depth=0"
     }
   ],
+  "view_group": "业务/运营",
   "tags": [
     "自动化运营",
     "RPA",

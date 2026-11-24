@@ -113,12 +113,38 @@ normalize_install_dir() {
 }
 
 get_latest_version() {
+    # 优先从镜像目录枚举全部版本并取最大（最可靠，不依赖 download.cgi 的 HTML 结构）；
+    # 失败时回退 maven.apache.org/download.cgi；再失败回退默认版本。
+    local versions=() v html
+    local mirror
+    for mirror in \
+        "https://mirrors.huaweicloud.com/apache/maven/maven-3" \
+        "https://mirrors.aliyun.com/apache/maven/maven-3" \
+        "https://mirrors.tuna.tsinghua.edu.cn/apache/maven/maven-3"; do
+        html=$(curl -s --max-time 10 "$mirror/" 2>/dev/null) || continue
+        versions=()
+        while read -r v; do
+            [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && versions+=("$v")
+        done < <(printf '%s' "$html" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+/' | tr -d '/')
+        if [[ ${#versions[@]} -gt 0 ]]; then
+            # 数字版本排序取最大
+            if command -v python3 >/dev/null 2>&1; then
+                printf '%s\n' "${versions[@]}" | python3 -c 'import sys; vs=sorted({l.strip() for l in sys.stdin if l.strip()}, key=lambda s: tuple(map(int,s.split(".")))); print(vs[-1])'
+            else
+                printf '%s\n' "${versions[@]}" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1
+            fi
+            return 0
+        fi
+    done
+
+    # 回退：download.cgi 只列最新稳定版
     local url="https://maven.apache.org/download.cgi"
     if command -v curl >/dev/null 2>&1; then
-        curl -s "$url" 2>/dev/null | grep -o 'apache-maven-[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*-bin' | head -1 | sed 's/apache-maven-//;s/-bin//' || echo "$DEFAULT_MAVEN_VERSION"
-    else
-        echo "$DEFAULT_MAVEN_VERSION"
+        local from_cgi
+        from_cgi=$(curl -s --max-time 10 "$url" 2>/dev/null | grep -o 'apache-maven-[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*-bin' | head -1 | sed 's/apache-maven-//;s/-bin//')
+        [[ -n "$from_cgi" ]] && { echo "$from_cgi"; return 0; }
     fi
+    echo "$DEFAULT_MAVEN_VERSION"
 }
 
 get_current_version() {
@@ -165,19 +191,27 @@ install_maven() {
     local filename="apache-maven-${version}-bin.tar.gz"
     local extract_dir="$INSTALL_DIR/apache-maven-$version"
     local skip_extract=false
-    
+    local old_version=""
+    local old_dir=""
+
+    # 记录当前激活的旧版本（升级时用于"验证新版无误后才删除"）
+    if [[ -L "$INSTALL_DIR/current" ]]; then
+        old_dir=$(readlink "$INSTALL_DIR/current")
+        old_version=$(basename "$old_dir" | sed 's/apache-maven-//')
+    fi
+
     if [[ -d "$extract_dir" ]]; then
         if [[ -L "$INSTALL_DIR/current" && "$(readlink "$INSTALL_DIR/current")" == "$extract_dir" ]]; then
-            warn "Maven $version already installed and active, skipping..."
+            warn "Maven $version 已安装且为当前激活版本，跳过..."
             return 0
         fi
-        warn "Maven $version is already extracted but not active, will set as current..."
+        warn "Maven $version 已解压但未激活，将设为当前版本..."
         skip_extract=true
     fi
 
     if [[ "$DRY_RUN" == true ]]; then
-        info "[Dry-run] Would extract $DOWNLOAD_DIR/$filename to $INSTALL_DIR"
-        info "[Dry-run] Would link $INSTALL_DIR/current -> $extract_dir"
+        info "[Dry-run] 将解压 $DOWNLOAD_DIR/$filename 到 $INSTALL_DIR"
+        info "[Dry-run] 将链接 $INSTALL_DIR/current -> $extract_dir"
         return 0
     fi
     
@@ -194,16 +228,38 @@ install_maven() {
     
     # 迁移并备份全局配置文件
     if [[ -f "$INSTALL_DIR/current/conf/settings.xml" ]]; then
-        info "Backing up and migrating global settings.xml to new version..."
+        info "备份并迁移全局 settings.xml 到新版本..."
         local backup_name="settings.xml.backup.$(date +%Y%m%d_%H%M%S)"
         $use_sudo cp "$INSTALL_DIR/current/conf/settings.xml" "$INSTALL_DIR/current/conf/$backup_name"
         $use_sudo cp -a "$INSTALL_DIR/current/conf/settings.xml" "$extract_dir/conf/settings.xml"
-        success "Migrated global settings.xml"
+        success "已迁移全局 settings.xml"
     fi
 
     $use_sudo ln -sfn "$extract_dir" "$INSTALL_DIR/current"
     
-    success "Maven $version installed to $extract_dir"
+    # ===== 升级安全流程：验证新版可用后才删除旧版 =====
+    # 仅在"确实从旧版升级"且旧版是独立目录（非新版本目录）时执行。
+    if [[ -n "$old_version" && "$old_dir" != "$extract_dir" && -d "$old_dir" ]]; then
+        info "验证新版本 Maven $version 可用性..."
+        local verify_ok=false
+        if [[ -x "$extract_dir/bin/mvn" ]]; then
+            if "$extract_dir/bin/mvn" -v >/dev/null 2>&1; then
+                verify_ok=true
+            fi
+        fi
+
+        if [[ "$verify_ok" == true ]]; then
+            info "新版本验证通过，删除旧版本 $old_version ..."
+            $use_sudo rm -rf "$old_dir"
+            success "旧版本已删除: $old_dir"
+        else
+            error "新版本 Maven $version 验证失败，回滚到旧版本 $old_version"
+            $use_sudo ln -sfn "$old_dir" "$INSTALL_DIR/current"
+            return 1
+        fi
+    fi
+
+    success "Maven $version 安装到 $extract_dir"
 }
 
 configure_maven_settings() {
@@ -388,27 +444,27 @@ uninstall_maven() {
 }
 
 show_help() {
-    echo "Maven Installer"
+    echo "Maven 安装器"
     echo ""
-    echo "Usage: $0 [OPTIONS]"
+    echo "用法: $0 [选项]"
     echo ""
-    echo "Options:"
-    echo "  -v, --version VERSION    Specify Maven version"
-    echo "  -d, --dir DIR            Install parent or actual install directory (default: $DEFAULT_INSTALL_DIR)"
-    echo "  -r, --repo DIR           Maven local repository (default: $DEFAULT_LOCAL_REPO)"
-    echo "  -m, --mirror MIRROR      Maven dependency mirror (aliyun|tencent|huawei|official)"
-    echo "  -l, --latest             Install latest version"
-    echo "  -u, --upgrade            Upgrade to the latest version if a newer one is available"
-    echo "  --skip-settings          Do not write ~/.m2/settings.xml"
-    echo "  --dry-run                Show planned actions without writing files"
-    echo "  --uninstall              Uninstall Maven"
-    echo "  -h, --help              Show this help"
+    echo "选项:"
+    echo "  -v, --version VERSION    指定 Maven 版本"
+    echo "  -d, --dir DIR            安装父目录或实际安装目录（默认: $DEFAULT_INSTALL_DIR）"
+    echo "  -r, --repo DIR           Maven 本地仓库（默认: $DEFAULT_LOCAL_REPO）"
+    echo "  -m, --mirror MIRROR      Maven 依赖镜像（aliyun|tencent|huawei|official）"
+    echo "  -l, --latest             安装最新版本"
+    echo "  -u, --upgrade            升级到最新版本（自动检测最新版本并更新环境变量）"
+    echo "  --skip-settings          不写入 ~/.m2/settings.xml"
+    echo "  --dry-run                显示计划操作而不写入文件"
+    echo "  --uninstall              卸载 Maven"
+    echo "  -h, --help               显示此帮助"
     echo ""
-    echo "Mirror defaults:"
-    echo "  aliyun   $MAVEN_MIRROR_ALIYUN [default]"
+    echo "镜像默认值:"
+    echo "  aliyun   $MAVEN_MIRROR_ALIYUN [默认]"
     echo "  tencent  $MAVEN_MIRROR_TENCENT"
     echo "  huawei   $MAVEN_MIRROR_HUAWEI"
-    echo "  official no mirror"
+    echo "  official 不使用镜像"
 }
 
 main() {

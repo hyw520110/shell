@@ -7,6 +7,7 @@
     "type": "custom",
     "command": "mkdir -p ~/.gemini/skills/financial-analyst"
   },
+  "view_group": "业务/运营",
   "tags": [
     "财务分析",
     "定价策略",

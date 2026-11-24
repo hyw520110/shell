@@ -8,6 +8,7 @@
     "coding",
     "context-optimizer"
   ],
+  "view_group": "上下文/Token",
   "tags": [
     "上下文优化",
     "Token优化",

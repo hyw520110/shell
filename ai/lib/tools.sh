@@ -157,7 +157,7 @@ detect_tool_status() {
     [[ "$limit" -le 32 ]] || limit=32
     local i=0 j pid status
     local pids=()
-    [[ ${#pending[@]} -gt 0 ]] && echo -e "${CYAN}🚀 正在检测工具状态...${NC}" >&2
+    [[ ${#pending[@]} -gt 0 ]] && echo -e "${CYAN}正在检测工具状态...${NC}" >&2
     for idx in "${pending[@]}"; do
         (_check_single_tool_fast "${TOOLS[$idx]}" "$npm_root" > "$tmp_dir/$idx") &
         pids+=("$!")
@@ -384,17 +384,17 @@ build_tool_menu_options() {
 
             local _g_disp_name="${BT_name% (*}"
             [[ "$_g_disp_name" == "$BT_name" ]] && _g_disp_name="$BT_name"
-            local g_status_icon="${YELLOW}⚠️ ${NC}"
+            local g_status_icon="${YELLOW}[警告] ${NC}"
             local g_extra="未安装"
             if [[ $_g_installed -gt 0 ]]; then
-                g_status_icon="${GREEN}✅ ${NC}"
+                g_status_icon="${GREEN}[OK] ${NC}"
                 if [[ $_g_installed -lt $_g_count ]]; then
                     g_extra="${_g_installed}/${_g_count}已安装"
                 else
                     g_extra="全部已安装"
                 fi
             fi
-            display_text="${g_status_icon}${badge}${_g_disp_name} 📦${_g_count}版本${NC} - ${g_extra}"
+            display_text="${g_status_icon}${badge}${_g_disp_name} ${_g_count}版本${NC} - ${g_extra}"
             add=true
         fi
         # === 变体工具合并处理结束 ===
@@ -406,11 +406,11 @@ build_tool_menu_options() {
                     if declare -F get_tool_display_status >/dev/null 2>&1; then
                         status_text=$(get_tool_display_status "$i")
                     fi
-                    display_text="${GREEN}✅ ${badge}${BT_name}${NC} - ${status_text}"; add=true
+                    display_text="${GREEN}[OK] ${badge}${BT_name}${NC} - ${status_text}"; add=true
                 fi
             else
                 if [[ "$filter" != "installed" ]]; then
-                    display_text="${YELLOW}⚠️ ${badge}${BT_name}${NC} - 未安装"; add=true
+                    display_text="${YELLOW}[警告] ${badge}${BT_name}${NC} - 未安装"; add=true
                 fi
             fi
         fi

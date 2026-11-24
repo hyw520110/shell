@@ -32,6 +32,7 @@
       "command": "npm list -g @modelcontextprotocol/server-sequential-thinking --depth=0 2>/dev/null || echo '未安装'"
     }
   ],
+  "view_group": "研究/知识",
   "tags": [
     "推理",
     "逻辑",

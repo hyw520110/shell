@@ -7,6 +7,7 @@
     "coding",
     "context-optimizer"
   ],
+  "view_group": "Agent平台",
   "tags": [
     "Claude Code",
     "上下文记忆",

@@ -3,6 +3,7 @@
   "name": "AnySearch - 跨 Agent 统一实时搜索引擎",
   "description": "3.1K Star。跨 Agent 平台的统一实时搜索引擎 Skill，支持通用网页搜索、垂直领域搜索、并行批量搜索和全页面内容提取。输出直接为 Markdown 格式，Agent 可直接消费。兼容 Claude Code、OpenCode、Cursor、Codex、OpenClaw、Hermes 六大平台。",
   "category": "research",
+  "view_group": "研究/知识",
   "tags": [
     "搜索",
     "网络搜索",

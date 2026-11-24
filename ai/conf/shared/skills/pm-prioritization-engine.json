@@ -15,6 +15,7 @@
   "install_check": "true",
   "tips": "支持多模型评分和分歧标记，适合资源约束下的理性决策",
   "notes": "原名 SPACE-prioritization-engine，多模型需求优先级引擎",
+  "view_group": "产品/文档",
   "tags": [
     "优先级",
     "需求管理",

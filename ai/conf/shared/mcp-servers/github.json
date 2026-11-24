@@ -33,6 +33,7 @@
       "command": "npm list -g @modelcontextprotocol/server-github --depth=0"
     }
   ],
+  "view_group": "研发/代码",
   "tags": [
     "GitHub",
     "Git",

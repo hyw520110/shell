@@ -29,6 +29,7 @@
   "homepage": "https://github.com/anthropics/skills",
   "repository": "https://github.com/anthropics/skills",
   "use_case": "与 reasoning-skill 等配合使用，组成连招：planning-with-files(做计划) → reasoning-skill(执行)",
+  "view_group": "产品/文档",
   "tags": [
     "规划",
     "项目管理",

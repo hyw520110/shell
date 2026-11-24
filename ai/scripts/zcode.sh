@@ -66,7 +66,7 @@ resolve_compatible_version() {
   major=$(macos_major)
   # macOS 主版本 <= 12 时强制用兼容版 (3.14.0 实测支持 macOS 12; 3.17.2 要求 macOS 13)
   if [[ "$major" != "99" ]] && (( major <= ZCODE_COMPAT_MAX_MAJOR )); then
-    _log "⚠️  macOS $(macos_full) <= 12.x, 使用兼容版 v${ZCODE_COMPAT_VERSION} (最新版要求 macOS 13+)" >&2
+    _log "[警告]  macOS $(macos_full) <= 12.x, 使用兼容版 v${ZCODE_COMPAT_VERSION} (最新版要求 macOS 13+)" >&2
     printf '%s\n' "$ZCODE_COMPAT_VERSION"
     return 1
   fi
@@ -81,20 +81,20 @@ resolve_compatible_version() {
 safe_rm_zcode_app() {
   local target="$1" base parent
   # 1) 空值 / 绝对根 / 目录本身 —— 一律拒绝
-  [[ -z "$target" ]] && { _log "⚠️  跳过空路径删除"; return 0; }
+  [[ -z "$target" ]] && { _log "[警告]  跳过空路径删除"; return 0; }
   case "$target" in
-    /|"/"|"."|".."|/*/) _log "⚠️  拒绝删除目录本身: $target"; return 0 ;;
+    /|"/"|"."|".."|/*/) _log "[警告]  拒绝删除目录本身: $target"; return 0 ;;
   esac
   # 2) basename 必须非空且不是 "/"
   base=$(basename "$target")
-  [[ -z "$base" || "$base" == "/" ]] && { _log "⚠️  basename 为空或 '/'，拒绝删除: $target"; return 0; }
+  [[ -z "$base" || "$base" == "/" ]] && { _log "[警告]  basename 为空或 '/'，拒绝删除: $target"; return 0; }
   # 3) 父目录必须是 /Applications
   parent=$(dirname "$target")
-  [[ "$parent" != "/Applications" ]] && { _log "⚠️  父目录非 /Applications，拒绝删除: $target"; return 0; }
+  [[ "$parent" != "/Applications" ]] && { _log "[警告]  父目录非 /Applications，拒绝删除: $target"; return 0; }
   # 4) basename 必须匹配 ZCode 应用，防止误删其他软件
   case "$base" in
     ZCode*|zcode*) ;;
-    *) _log "⚠️  非 ZCode 应用，拒绝删除: $target"; return 0 ;;
+    *) _log "[警告]  非 ZCode 应用，拒绝删除: $target"; return 0 ;;
   esac
   rm -rf "$target" 2>/dev/null || sudo rm -rf "$target"
 }
@@ -236,41 +236,41 @@ do_install() {
   local ZC_ARCH url_code url dmg vol app installed
   ZC_ARCH=$(uname -m | grep -q arm && echo 'mac-arm64' || echo 'mac-x64')
 
-  _log "🔍 检测 ZCode 兼容版本 (${ZC_ARCH})..."
+  _log "检测 ZCode 兼容版本 (${ZC_ARCH})..."
   local ZC_VER
   ZC_VER=$(resolve_compatible_version "$ZC_ARCH") || true
   url_code=$(build_url "$ZC_VER" "$ZC_ARCH")
-  _log "🔽 正在下载 ZCode v${ZC_VER} (${ZC_ARCH})..."
+  _log "[下载] 正在下载 ZCode v${ZC_VER} (${ZC_ARCH})..."
   _log "   ${url_code}"
 
   local dl_ok=0
   if [[ -x "$ADL_BIN" ]]; then
-    _log "🔽 使用 adl 下载 (优先级高)..."
+    _log "[下载] 使用 adl 下载 (优先级高)..."
     dmg="$DOWNLOAD_DIR/ZCode-${ZC_VER}-${ZC_ARCH}.dmg"
     rm -f "$dmg"
     if "$ADL_BIN" "$url_code" "$DOWNLOAD_DIR" "$(basename "$dmg")" >/dev/null 2>&1; then
       dl_ok=1
     else
-      _log "⚠️  adl 下载失败，回退 curl..."
+      _log "[警告]  adl 下载失败，回退 curl..."
     fi
   fi
   if (( ! dl_ok )); then
     dmg=$(mktemp /tmp/zcode.XXXXXX)
     if ! curl -fL# --retry 3 --connect-timeout 10 --max-time 0 "$url_code" -o "$dmg"; then
-      _log '❌ 下载失败，请手动下载: ' "$HOME_PAGE"
+      _log '[失败] 下载失败，请手动下载: ' "$HOME_PAGE"
       rm -f "$dmg"
       return 1
     fi
   fi
 
   _log ''
-  _log '📦 正在挂载 DMG...'
+  _log '正在挂载 DMG...'
   vol=$(hdiutil attach "$dmg" -nobrowse 2>/dev/null | awk '/Volumes/ {print $3}' | head -1)
   if [[ -z "$vol" ]] || [[ ! -d "$vol" ]]; then
     vol=$(ls -d /Volumes/ZCode* 2>/dev/null | head -1)
   fi
   if [[ -z "$vol" ]] || [[ ! -d "$vol" ]]; then
-    _log '❌ 挂载 DMG 失败'
+    _log '[失败] 挂载 DMG 失败'
     rm -f "$dmg"
     return 1
   fi
@@ -278,13 +278,13 @@ do_install() {
 
   app=$(ls -d "$vol"/*.app 2>/dev/null | head -1)
   if [[ -z "$app" ]]; then
-    _log '❌ DMG 中未找到 .app'
+    _log '[失败] DMG 中未找到 .app'
     hdiutil detach "$vol" -force 2>/dev/null || true
     rm -f "$dmg"
     return 1
   fi
 
-  _log "📦 正在安装 $(basename "$app") 到 /Applications..."
+  _log "正在安装 $(basename "$app") 到 /Applications..."
   local _existing="/Applications/$(basename "$app")"
   if [[ -n "$app" ]] && [[ -d "$_existing" ]]; then
     _log '   覆盖已有版本...'
@@ -292,18 +292,18 @@ do_install() {
   fi
   cp -R "$app" /Applications/ 2>/dev/null || sudo cp -R "$app" /Applications/
 
-  _log '🧹 正在清理...'
+  _log '正在清理...'
   hdiutil detach "$vol" 2>/dev/null || hdiutil detach "$vol" -force 2>/dev/null || true
   rm -f "$dmg"
 
   installed=$(ls -d $APP_GLOB 2>/dev/null | head -1)
   if [[ -n "$installed" ]]; then
-    _log "✅ ZCode 安装完成！版本 v$(installed_version)"
-    _log "📌 应用路径: ${installed}"
-    _log '📌 首次启动: 1) 注册/登录智谱账号  2) 配置 AI 供应商 (BigModel/Z.ai/自定义 API Key)  3) 选择模型'
-    _log '📌 第三方 API: 设置 → 模型设置 → 添加供应商 → 填入 token173 等 API 地址和 Key'
+    _log "[OK] ZCode 安装完成！版本 v$(installed_version)"
+    _log "应用路径: ${installed}"
+    _log '首次启动: 1) 注册/登录智谱账号  2) 配置 AI 供应商 (BigModel/Z.ai/自定义 API Key)  3) 选择模型'
+    _log '第三方 API: 设置 → 模型设置 → 添加供应商 → 填入 token173 等 API 地址和 Key'
   else
-    _log '❌ 安装失败，请尝试手动安装: ' "$HOME_PAGE"
+    _log '[失败] 安装失败，请尝试手动安装: ' "$HOME_PAGE"
     return 1
   fi
 }
@@ -328,18 +328,18 @@ cmd_status() {
   app=$(installed_path)
   if [[ -n "$app" ]]; then
     ver=$(defaults read "$app/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo "未知")
-    _log "✅ 已安装 v${ver}"
+    _log "[OK] 已安装 v${ver}"
     _log "   路径: ${app}"
   else
-    _log "❌ 未安装"
+    _log "[失败] 未安装"
   fi
   if [[ -d "$ZC_CFG_DIR" ]]; then
-    _log "✅ 配置目录: ${ZC_CFG_DIR} (已初始化)"
+    _log "[OK] 配置目录: ${ZC_CFG_DIR} (已初始化)"
   else
-    _log "⚠️  配置目录未初始化 (首次启动后创建)"
+    _log "[警告]  配置目录未初始化 (首次启动后创建)"
   fi
   latest_url=$(get_latest_version "$(uname -m | grep -q arm && echo 'mac-arm64' || echo 'mac-x64')")
-  _log "🌐 最新版本: v${latest_url} (${HOME_PAGE})"
+  _log "最新版本: v${latest_url} (${HOME_PAGE})"
 }
 
 # ─── 配置管理 ───────────────────────────────────────────────────────────
@@ -352,17 +352,17 @@ cmd_config() {
       ;;
     edit)
       if command -v open >/dev/null 2>&1; then
-        open -a ZCode 2>/dev/null && _log '请在 ZCode → 设置 (⌘,) 中修改配置' || _log 'ZCode 未安装'
+        open -a ZCode 2>/dev/null && _log '请在 ZCode → 设置 (Command+,) 中修改配置' || _log 'ZCode 未安装'
       else
         _log 'ZCode 未安装'
       fi
       ;;
     reset)
-      printf '⚠️  确认重置 ZCode 所有配置？[y/N] '
+      printf '[警告]  确认重置 ZCode 所有配置？[y/N] '
       read -r _reset || return 0
       [[ "$_reset" == "y" ]] || { _log '已取消'; return 0; }
       rm -rf "$ZC_CFG_DIR" "$ZC_CFG_DIR2" 2>/dev/null || true
-      _log '✅ ZCode 配置已重置 (重启 ZCode 后生效)'
+      _log '[OK] ZCode 配置已重置 (重启 ZCode 后生效)'
       ;;
     *)
       _log "用法: $0 config view|edit|reset"
@@ -373,7 +373,7 @@ cmd_config() {
 
 # ─── 卸载 ───────────────────────────────────────────────────────────────
 cmd_uninstall() {
-  _log '🗑️  正在卸载 ZCode...'
+  _log '[卸载]  正在卸载 ZCode...'
   local apps app
   apps=$(ls -d $APP_GLOB 2>/dev/null || true)
   if [[ -n "$apps" ]]; then
@@ -387,7 +387,7 @@ cmd_uninstall() {
   if [[ "$_ans" == "y" ]]; then
     rm -rf "$ZC_CFG_DIR" "$ZC_CFG_DIR2" 2>/dev/null || true
   fi
-  _log '✅ ZCode 已卸载'
+  _log '[OK] ZCode 已卸载'
 }
 
 # ─── 入口 ───────────────────────────────────────────────────────────────

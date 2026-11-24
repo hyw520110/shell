@@ -15,6 +15,7 @@
   "install_check": "true",
   "tips": "输出可视化HTML路线图，包含甘特图样式的时间轴和依赖关系图",
   "notes": "原名 SPACE-roadmap-planner，输出可执行的版本路线图",
+  "view_group": "产品/文档",
   "tags": [
     "路线图",
     "产品规划",

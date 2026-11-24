@@ -25,6 +25,7 @@
   "tips": "该仓库包含多个 skill。仓库 README 建议按需安装，避免一次性加载过多上下文。",
   "homepage": "https://github.com/JimLiu/baoyu-skills",
   "repository": "https://github.com/JimLiu/baoyu-skills",
+  "view_group": "Agent平台",
   "tags": [
     "Skill 集合",
     "内容创作",

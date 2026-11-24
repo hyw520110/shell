@@ -3,6 +3,7 @@
   "name": "高级架构图生成 (Architecture Diagram Generator)",
   "description": "基于 Cocoon AI 的高保真架构图生成技能。专门用于生成具有专业美感的暗黑风格（Dark Mode）系统架构图。支持导出为 HTML/SVG，能自动处理 Mermaid 渲染和布局优化。",
   "category": "diagramming",
+  "view_group": "图表/架构",
   "tags": [
     "架构图",
     "设计",

@@ -45,6 +45,7 @@
     }
   ],
   "notes": "需要提供 SENTRY_AUTH_TOKEN（在 Sentry 账户设置的 API Keys 中生成）以及 SENTRY_ORG_SLUG（组织缩写）。",
+  "view_group": "云与运维",
   "tags": [
     "Sentry",
     "监控",

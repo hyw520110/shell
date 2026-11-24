@@ -31,6 +31,7 @@
   "tips": "安装后无需复杂配置，Claude 会自动判断何时调用 NotebookLM。适合需要知识管理和内容分析的场景。",
   "homepage": "https://github.com/anthropics/skills",
   "repository": "https://github.com/anthropics/skills",
+  "view_group": "研究/知识",
   "tags": [
     "笔记",
     "知识管理",

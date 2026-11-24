@@ -52,6 +52,7 @@
       "command": "rm -f \"$(command -v officecli 2>/dev/null)\" 2>/dev/null || true"
     }
   ],
+  "view_group": "产品/文档",
   "tags": [
     "Office",
     "Word",

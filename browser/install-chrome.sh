@@ -62,6 +62,11 @@ version_ge() {
     [[ "$lowest" == "$2" ]]
 }
 
+# 主版本号：150.0.7871.124 -> 150
+version_major() {
+    printf '%s\n' "${1%%.*}"
+}
+
 detect_arch() {
     case "$(uname -m)" in
         x86_64|amd64)  echo "amd64" ;;
@@ -1359,11 +1364,21 @@ cmd_status() {
         if [[ -n "${installed:-}" ]]; then
             if [[ "$installed" == "$latest" ]]; then
                 success "当前已是最新版本"
-            elif [[ "$os" == "macOS" && -d "$CFT_APP_PATH" ]]; then
-                local newest_min
+            elif [[ "$os" == "macOS" ]]; then
+                local newest_min cur_mac compat compat_ver
+                cur_mac=$(macos_version)
                 newest_min=$(cft_newest_min_os 2>/dev/null || true)
-                if [[ -n "$newest_min" ]] && ! version_ge "$(macos_version)" "$newest_min"; then
-                    info "官方最新版要求 macOS ${newest_min}，当前系统不支持，已使用兼容版本 ${installed}"
+                if [[ -n "$newest_min" ]] && ! version_ge "$cur_mac" "$newest_min"; then
+                    compat=$(cft_find_compatible_version 2>/dev/null || true)
+                    compat_ver=$(printf '%s\n' "$compat" | awk '{print $1}')
+                    info "官方最新版要求 macOS ${newest_min}，当前系统不支持"
+                    if [[ -n "$compat_ver" ]]; then
+                        if [[ "$(version_major "$installed")" == "$(version_major "$compat_ver")" ]]; then
+                            success "已安装当前系统可用的最高版本 (${installed})"
+                        else
+                            warn "当前系统可用的最高版本为 ${compat_ver}，可运行 install 升级"
+                        fi
+                    fi
                 else
                     warn "检测到更新: $installed -> $latest"
                 fi

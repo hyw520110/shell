@@ -33,6 +33,7 @@
   ],
   "tools": [],
   "notes": "由于 Pixso 目前暂未像 Figma/Penpot 那样提供标准的官方 npm MCP 包，该通道为预留扩展位。用户可以自行配置本地代理插件的路径。",
+  "view_group": "设计/原型",
   "tags": [
     "设计",
     "Pixso",

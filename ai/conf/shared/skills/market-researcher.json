@@ -7,6 +7,7 @@
     "type": "custom",
     "command": "mkdir -p ~/.gemini/skills/market-researcher"
   },
+  "view_group": "业务/运营",
   "tags": [
     "市场分析",
     "竞品分析",

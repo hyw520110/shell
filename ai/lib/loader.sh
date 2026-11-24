@@ -14,7 +14,7 @@ fi
 
 # 检查模块目录
 if [[ ! -d "$LIB_DIR" ]]; then
-    echo "❌ 错误: 模块目录不存在: $LIB_DIR"
+    echo "[失败] 错误: 模块目录不存在: $LIB_DIR"
     exit 1
 fi
 
@@ -39,7 +39,7 @@ for module in "${modules[@]}"; do
         source "$module_path"
         debug_log "已加载模块: $module"
     else
-        echo "❌ 错误: 模块文件不存在: $module_path"
+        echo "[失败] 错误: 模块文件不存在: $module_path"
         exit 1
     fi
 done

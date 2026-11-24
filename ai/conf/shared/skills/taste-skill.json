@@ -3,6 +3,7 @@
   "name": "Taste Skill (高级审美增强)",
   "description": "Anti-Slop 审美框架。通过强制执行高水准的布局、字体、间距和动画（GSAP）标准，彻底消除 AI 生成界面的'廉价感'。支持极简、粗犷、柔和等多种风格。",
   "category": "design",
+  "view_group": "设计/原型",
   "tags": [
     "审美",
     "UI",

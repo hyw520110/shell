@@ -23,8 +23,19 @@
     "anti_hallucination": "报告前必须用文件读取/搜索工具确认路径和行号；无法从真实源码和运行证据确认的内容只能列为候选。",
     "workflow": "侦察 → 候选发现 → 最小验证 → 影响边界 → 去重 → Markdown 报告。"
   },
-  "tags": ["安全", "代码审计", "SAST", "OWASP", "白盒", "article-2026-security"],
-  "scenarios": ["security", "code-review"],
+  "view_group": "安全/审计",
+  "tags": [
+    "安全",
+    "代码审计",
+    "SAST",
+    "OWASP",
+    "白盒",
+    "article-2026-security"
+  ],
+  "scenarios": [
+    "security",
+    "code-review"
+  ],
   "default_enabled": false,
   "optional": true,
   "experimental": false,

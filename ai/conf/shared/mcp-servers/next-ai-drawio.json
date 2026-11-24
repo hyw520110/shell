@@ -28,6 +28,7 @@
     }
   ],
   "notes": "需要先安装 Node.js 18+。使用时图表会在浏览器中实时显示。支持 Claude、Cursor、VS Code 等 MCP 客户端。",
+  "view_group": "图表/架构",
   "tags": [
     "流程图",
     "架构图",

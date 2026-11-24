@@ -33,6 +33,7 @@
     "credentials": "Twitter、小红书等 Cookie 登录建议使用专用/小号账号。不要要求用户提供主账号 Cookie，除非用户明确接受风险。",
     "workflow": "先安全安装或检查，再运行 doctor，再根据用户选择启用渠道。"
   },
+  "view_group": "业务/运营",
   "tags": [
     "调研",
     "互联网",

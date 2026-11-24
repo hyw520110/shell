@@ -126,7 +126,7 @@ success_log() {
 }
 
 success_msg() {
-    echo -e "${GREEN}✅ $*${NC}"
+    echo -e "${GREEN}[OK] $*${NC}"
 }
 
 # 错误日志函数
@@ -223,7 +223,7 @@ cleanup() {
 }
 
 handle_interrupt() {
-    echo -e "\n${YELLOW}⚠️ 操作已取消${NC}"
+    echo -e "\n${YELLOW}[警告] 操作已取消${NC}"
     cleanup
     [[ -n "$original_tty_settings" ]] && stty "$original_tty_settings" 2>/dev/null
     exit 130

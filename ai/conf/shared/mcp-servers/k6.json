@@ -30,6 +30,7 @@
       "command": "k6 version 2>/dev/null || echo 'k6 未安装'"
     }
   ],
+  "view_group": "测试/QA",
   "tags": [
     "性能测试",
     "压测",

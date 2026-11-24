@@ -49,6 +49,7 @@
     }
   ],
   "notes": "该服务器需要 Python 3.11+ 和 uv 包管理器。npm 目前没有可用的 browser-use MCP 包；macOS Intel/x86-64 可使用，但依赖安装和首次浏览器下载可能耗时。",
+  "view_group": "浏览器/爬虫",
   "tags": [
     "浏览器",
     "自动化",

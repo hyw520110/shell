@@ -3,6 +3,7 @@
   "name": "draw.io Markdown 交付流程",
   "description": "维护 .drawio 可编辑源文件，并将其工程化导出为 Markdown/PRD/方案文档可预览的 SVG/PNG。适用于架构图、产品方案图、流程图的交付与评审。",
   "category": "documentation",
+  "view_group": "图表/架构",
   "tags": [
     "draw.io",
     "Markdown",

@@ -22,6 +22,7 @@
   "install_check": "true",
   "tips": "这些准则由 Andrej Karpathy 总结并被业界广泛采用（如 multica-ai/andrej-karpathy-skills）。它们能显著提升 AI 在大型复杂项目中的变更安全性。适用于 Claude Code, Cursor, Aider 等所有 AI 编码工具。",
   "notes": "核心哲学：AI 的力量在于执行力，但其风险在于'自动驾驶'。这些准则为 AI 加上了必要的安全带和减速器。",
+  "view_group": "研发/代码",
   "tags": [
     "编程",
     "最佳实践",

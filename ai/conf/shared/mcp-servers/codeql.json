@@ -22,7 +22,10 @@
     ],
     "transportType": "stdio"
   },
-  "required_tools": ["node", "codeql"],
+  "required_tools": [
+    "node",
+    "codeql"
+  ],
   "status_check": [
     {
       "name": "检查 Node.js",
@@ -51,8 +54,18 @@
       "description": "管理 QL 查询包与依赖"
     }
   ],
-  "tags": ["安全", "代码审计", "查询语言", "MCP", "SAST"],
-  "scenarios": ["security", "code-review"],
+  "view_group": "安全/审计",
+  "tags": [
+    "安全",
+    "代码审计",
+    "查询语言",
+    "MCP",
+    "SAST"
+  ],
+  "scenarios": [
+    "security",
+    "code-review"
+  ],
   "default_enabled": false,
   "optional": true,
   "experimental": false,

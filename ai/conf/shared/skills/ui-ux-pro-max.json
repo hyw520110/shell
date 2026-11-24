@@ -31,6 +31,7 @@
   "tips": "安装 CLI 后运行 uipro init --ai <assistant> 部署到具体 AI 编码助手。搜索引擎依赖 Python 3。支持 18 种 AI 编码助手，可用 --ai all 一键全部安装。",
   "homepage": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
   "repository": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+  "view_group": "设计/原型",
   "tags": [
     "UI",
     "UX",

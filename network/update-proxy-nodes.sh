@@ -13,11 +13,11 @@
 #   「没用过」的新面孔只进手动菜单，不进自动测速组（免得客户端成倍多发探针）
 #   同一国家默认最多先排 --per-country 个（超出的补在本层末尾，不丢节点），--prefer 可点名提权
 # - 默认（standalone）生成一份独立 profile free-nodes.yaml，国内流量全部直连；
-#   --proxy-only 改为白名单：只有非大陆域名和点名的类别走节点，其余 DIRECT
+#   --proxy-only 改为精确白名单：只有 --extra-proxy 点名的域名 + github/google/openai 走节点，其余 DIRECT
 # - --inject 只往主配置里写 marker 包裹的托管区块 + 独立节点文件，
 #   自建节点、DNS、TUN、分流规则原样保留
 # - 落盘前用 mihomo -t 校验，原子写入并保留时间戳备份
-# - --install-schedule / --remove-schedule 设置或取消定时刷新（launchd，不留日志文件）
+# - --install-schedule / --remove-schedule 设置或取消定时刷新（launchd，日志落 ~/.net_proxy/logs/）
 # -----------------------------------------------------------------------------
 # 用法:
 #   ./update-proxy-nodes.sh                       # 生成独立 profile free-nodes.yaml
@@ -31,11 +31,30 @@
 set -euo pipefail
 
 RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'; BLUE=$'\033[0;34m'; NC=$'\033[0m'
-info()    { echo -e "${BLUE}[信息]${NC} $*"; }
-success() { echo -e "${GREEN}[成功]${NC} $*"; }
-warn()    { echo -e "${YELLOW}[警告]${NC} $*"; }
-error()   { echo -e "${RED}[错误]${NC} $*" >&2; }
+# launchd 日志里每一轮都追加进同一个文件，没有绝对时间就没法区分是哪一轮；
+# 所以由 SCHEDULE_LOG_PREFIX 统一加时间戳，交互运行时留空，终端观感不变
+# 参数: 颜色 标签 消息...
+log_line() {
+    local color="$1" label="$2" to_err="$3"; shift 3
+    local msg="$*"
+    local ts=""
+    if [[ -n "$SCHEDULE_LOG_PREFIX" ]]; then
+        ts="$(date '+%F %T' 2>/dev/null || echo '?') "
+    fi
+    if [[ "$to_err" == 1 ]]; then
+        echo -e "${ts}${color}[${label}]${NC} ${msg}" >&2
+    else
+        echo -e "${ts}${color}[${label}]${NC} ${msg}"
+    fi
+}
+info()    { log_line "$BLUE"   "信息" 0 "$*"; }
+success() { log_line "$GREEN"  "成功" 0 "$*"; }
+warn()    { log_line "$YELLOW" "警告" 0 "$*"; }
+error()   { log_line "$RED"    "错误" 1 "$*"; }
 die()     { error "$*"; exit 1; }
+
+# 定时任务跑时给每行加时间戳；交互运行不设，终端输出保持原样
+SCHEDULE_LOG_PREFIX="${PROXY_NODES_SCHEDULE_LOG:-}"
 
 DEFAULT_SOURCES=(
     "https://raw.githubusercontent.com/zhuhaiuk/free-nodes/main/clash_config.yaml"
@@ -62,6 +81,7 @@ SELECT_GROUP="节点选择"
 PROVIDER_NAME="free-nodes"
 MIXED_PORT="${PROXY_NODES_MIXED_PORT:-${CLASH_META_MIXED_PORT:-7890}}"
 SOURCES=()
+INTEGRATE_LOCAL="${INTEGRATE_LOCAL:-0}"
 # 名额按层级从上往下填（测通 → 本轮不判 → 暂时不通 → 源没拉到 → 没用过）。放宽到 3 天删除后
 # 「暂时不通」一层会多占位置，60 个会把新面孔挤光，所以默认给到 120：保住几成新的候选
 MAX_NODES="${MAX_NODES:-120}"
@@ -78,7 +98,18 @@ TEST_URL=""
 # 测活地址必须选「只有出了境才连得上」的：用 cp.cloudflare.com 时，免费池里那些中国出口节点
 # （广东省广州市+华为云 这类）也能拿到 204 被判「测通」，选中后 Google/OpenAI 一个都打不开。
 # google 的 204 才是这台机器真正的用途（agy/codex），过不了它的节点就没资格进菜单
-HEALTH_URL="${PROXY_NODES_HEALTH_URL:-https://www.google.com/generate_204}"
+# OpenAI 可达性：google 204 能过 ≠ OpenAI 能过（OpenAI/Cloudflare 对数据中心 IP 风控更严，
+# 数据中心 IP 常是 google 通但 chatgpt.com/api.openai.com 403）。codex 走 chatgpt.com，
+# 所以入选测活要同时过 google 和 OpenAI 两个，只过 google 的节点进菜单后 codex 仍会 403。
+# OPENAI_TEST_URL 留空 = 不做 OpenAI 检测（向后兼容）；默认非空即启用。
+OPENAI_TEST_URL="${PROXY_NODES_OPENAI_TEST_URL:-https://chatgpt.com/backend-api/codex/models}"
+# HEALTH_URL = 写入配置的 url-test/fallback 运行时探测地址。它决定「节点是否活着」，
+# 与入选测活（TEST_URL）是两回事：入选用 google 过滤掉中国出口节点（只有真能上
+# Google/OpenAI 的才进菜单），运行时用 cp.cloudflare.com 探测这些已入选的境外节点谁还
+# 活着——因为入选节点都是境外节点，Cloudflare 对它们都能通，不会像 google 那样因为
+# 免费节点普遍连不通 google 而让 url-test 恒失败（那等于没有自动切换）。
+# 若你希望 url-test 也严格按 google 判活，把这里改回 google 即可。
+HEALTH_URL="${PROXY_NODES_HEALTH_URL:-http://cp.cloudflare.com/generate_204}"
 PROVIDER_INTERVAL="${PROVIDER_INTERVAL:-43200}"
 KEEP_BACKUPS=5
 CLASH_API="${CLASH_API:-}"                          # 留空则按探测到的客户端决定
@@ -87,7 +118,8 @@ MIHOMO_BIN="${MIHOMO_BIN:-}"
 EXTRA_DIRECT=()                                     # 额外指定直连的域名后缀
 NO_PROXY_FILE="${PROXY_NODES_NO_PROXY_FILE:-$HOME/.net_proxy/no_proxy}"   # 与 net_proxy.sh 共用的例外清单
 EXTRA_PROXY=()                                      # 额外指定走节点的域名后缀
-PROXY_ONLY="${PROXY_NODES_PROXY_ONLY:-0}"           # 1 = 只有点名的类别走节点，其余直连
+PROXY_FILE="${PROXY_NODES_PROXY_FILE:-$HOME/.net_proxy/proxy_domains}"   # 白名单模式下走代理的精确域名后缀清单
+PROXY_ONLY="${PROXY_NODES_PROXY_ONLY:-1}"           # 1 = 精确白名单（默认，大部分直连），0 = 黑名单（默认走节点）
 PER_COUNTRY="${PROXY_NODES_PER_COUNTRY:-5}"         # 同一国家最多排几个，0 为不限
 PREFER="${PROXY_NODES_PREFER:-}"                    # 点名要排在最前的国家（ISO 码）
 DO_TEST=1
@@ -96,11 +128,15 @@ FORCE=0
 SET_DEFAULT=0
 DO_RELOAD=0
 
-# 定时任务：launchd 比 cron 好在到点若在睡眠，唤醒后会补跑一次；输出全丢 /dev/null，不留日志
+# 定时任务：launchd 比 cron 好在到点若在睡眠，唤醒后会补跑一次；输出落 ~/.net_proxy/logs/
 SCHEDULE_LABEL="com.mac.proxy-nodes-refresh"
 SCHEDULE_LEGACY_LABEL="com.mac.clash-meta-refresh"
 SCHEDULE_HOURS=6
 SCHEDULE_ACTION=""                                  # install | remove | status
+# launchd 输出默认全丢 /dev/null，定时任务跑失败只能看到退出码，完全没法排障。
+# 现在落到固定文件，由 PROXY_NODES_SCHEDULE_LOG=1 告诉日志函数加时间戳
+# （交互运行不设这个变量，输出照旧不带时间戳，不改变终端观感）。
+SCHEDULE_LOG="${PROXY_NODES_SCHEDULE_LOG:-$HOME/.net_proxy/logs/proxy-nodes-refresh.log}"
 
 MARK_BEGIN='# proxy-nodes-refresh:begin'
 MARK_END='# proxy-nodes-refresh:end'
@@ -136,6 +172,11 @@ mihomo(Clash) 系客户端的免费节点订阅刷新脚本（ClashX Meta / Clas
 订阅来源:
   --source URL          订阅地址，可重复；一旦使用即取代内置默认源
                         Clash YAML 和 ss:// vmess:// vless:// trojan:// 等链接列表都能吃
+  --integrate-local     整合同目录其他配置文件（如自建节点 yuanhang.yaml）的节点一起测活；
+                        只有过 google+OpenAI 检测的才入选。当订阅源里可用节点太少/全是
+                        国内节点时用它，能访问 codex 的节点会优先入选
+  --openai-test-url URL 覆盖 OpenAI 可达性检测地址（默认 chatgpt.com/backend-api/codex/models）。
+                        留空则不做 OpenAI 检测（只按 google 判活）
   --max-nodes N         最多写入的节点数，0 为不限。默认: $MAX_NODES
   --min-nodes N         入选节点不足 N 时放弃本轮写入，保留上一份配置。默认: $MIN_NODES
 
@@ -162,8 +203,8 @@ mihomo(Clash) 系客户端的免费节点订阅刷新脚本（ClashX Meta / Clas
                          让「国内但 GEOSITE 没认出来」的域名（qoder.sh、deepseek.com 这类）不必绕道节点
   --extra-proxy DOMAIN  点名要走节点的域名后缀，可重复；排在 cn 直连规则之前，
                         所以 .cn 里想代理的站也能拉回节点隧道
-  --proxy-only          白名单模式：只有 geolocation-!cn（非大陆域名）和 google/github/
-                        telegram/openai 几个大类走节点，其余一律直连（默认是全局走节点）
+  --proxy-only          精确白名单模式：走节点的只有 --extra-proxy 点名的精确域名后缀，
+                        加 github/google/openai 保险类别，其余一律直连（默认是全局走节点）
 
 菜单排序:
   本轮测通 > 本轮不判（出网骤降）> 观察期（暂时不通）> 源没拉到暂留 > 新面孔（从没用过）；
@@ -180,7 +221,7 @@ mihomo(Clash) 系客户端的免费节点订阅刷新脚本（ClashX Meta / Clas
   --dry-run             打印将要发生的变化，不写任何文件
   -h, --help            显示帮助
 
-定时刷新（launchd，到点在睡眠则唤醒后补跑；输出全进 /dev/null，不留日志文件）:
+定时刷新（launchd，到点在睡眠则唤醒后补跑；输出落 ${SCHEDULE_LOG}）:
   --install-schedule    安装定时任务，默认每 $SCHEDULE_HOURS 小时一次
   --remove-schedule     取消并删除定时任务
   --schedule-status     查看是否已安装、执行路径与计划时间
@@ -239,6 +280,9 @@ schedule_write_plist() {
         echo '  <array>'
         echo '    <string>/bin/bash</string>'
         echo "    <string>${SELF_PATH}</string>"
+        # 定时跑同步完配置后主动重载内核。Verge 的激活 profile 已由 apply_changes 同步，
+        # reload_client 会 PUT /configs 指向激活 profile；不重载的话内核还在读旧 runtime 配置
+        echo '    <string>--reload</string>'
         echo '  </array>'
         echo '  <key>EnvironmentVariables</key>'
         echo '  <dict>'
@@ -249,6 +293,8 @@ schedule_write_plist() {
         # 脚本自己放弃写入，上一份配置原样保留，不会把好配置清空
         echo "    <key>HTTP_PROXY</key><string>http://127.0.0.1:${MIXED_PORT}</string>"
         echo "    <key>HTTPS_PROXY</key><string>http://127.0.0.1:${MIXED_PORT}</string>"
+        # 定时跑时日志函数给每行加绝对时间戳（同一文件跨轮追加，没有时间戳分不清是哪一轮）
+        echo '    <key>PROXY_NODES_SCHEDULE_LOG</key><string>1</string>'
         echo '  </dict>'
         echo '  <key>StartCalendarInterval</key>'
         echo '  <array>'
@@ -258,9 +304,10 @@ schedule_write_plist() {
             h=$((h + SCHEDULE_HOURS))
         done
         echo '  </array>'
-        # 不要日志文件：输出全部丢弃，要看过程就在终端手动跑脚本
-        echo '  <key>StandardOutPath</key><string>/dev/null</string>'
-        echo '  <key>StandardErrorPath</key><string>/dev/null</string>'
+        # 输出全丢 /dev/null 的旧做法让定时任务失败后只剩一个退出码，没法定位。
+        # 现在落到固定文件，--schedule-status 直接告诉你去哪看、最新一轮是什么
+        echo "  <key>StandardOutPath</key><string>${SCHEDULE_LOG}</string>"
+        echo "  <key>StandardErrorPath</key><string>${SCHEDULE_LOG}</string>"
         echo '</dict>'
         echo '</plist>'
     } > "$out"
@@ -283,6 +330,8 @@ schedule_bootout() {
 schedule_install() {
     schedule_check_hours
     [[ -d "$HOME/Library/LaunchAgents" ]] || mkdir -p "$HOME/Library/LaunchAgents"
+    # 日志落盘，目录要先建好（launchd 不会替你建，不存在就静默收不到输出）
+    mkdir -p "$(dirname "$SCHEDULE_LOG")" || warn "创建日志目录失败: $(dirname "$SCHEDULE_LOG")"
     # 改名前用旧 label 装过的先清掉，否则同一个脚本会被两份任务错开时间各跑一遍
     if [[ -f "$SCHEDULE_LEGACY_PLIST" ]]; then
         info "检测到旧版定时任务，一并迁移"
@@ -300,7 +349,8 @@ schedule_install() {
     success "已安装定时任务: $SCHEDULE_LABEL"
     info "脚本: $SELF_PATH"
     info "每 ${SCHEDULE_HOURS} 小时一次（$(schedule_times)），睡眠错过会在唤醒后补跑"
-    info "输出: /dev/null，不留日志文件；跑完仍需手动在客户端点一次重载"
+    info "日志: ${SCHEDULE_LOG#"$HOME"/}（--schedule-status 会直接显示最近一轮的尾部）"
+    info "定时任务里不会提示重载，跑完请在客户端里重新点一次该配置"
 }
 
 schedule_remove() {
@@ -325,6 +375,32 @@ schedule_status() {
         fi
         info "计划时间: $(schedule_times)（间隔 ${SCHEDULE_HOURS} 小时）"
     fi
+    # 定时任务的退出码只能告诉你「挂了」，得给最近一轮的实际输出才能定位
+    schedule_show_last_run
+}
+
+# 显示定时任务最近一轮的收尾输出。launchd 本身不记退出码以外的东西，
+# 全靠脚本自己把日志写进 SCHEDULE_LOG。
+schedule_show_last_run() {
+    local log="$SCHEDULE_LOG" mtime tail_text line
+    if [[ ! -f "$log" ]]; then
+        info "日志: ${log#"$HOME"/}（还没有任何一轮跑过，或 plist 还没重装成新版）"
+        return 0
+    fi
+    mtime=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$log" 2>/dev/null || echo '?')
+    # 变量名后紧跟中文全角标点时，bash 会把 UTF-8 字节当成变量名的延续字节，
+    # 于是报「未绑定的变量」——所以必须用 ${mtime} 花括号界定
+    info "日志: ${log#"$HOME"/}（最后写入 ${mtime}，$(wc -l <"$log" 2>/dev/null | tr -d ' ') 行）"
+    # 只看尾部几行通常就够判断这一轮成没成；完整过程直接翻日志文件。
+    # 日志里混着生成的 YAML 预览（缩进的空格开头），所以按时间戳前缀只留日志行，
+    # 否则尾部全被配置内容占掉，看不到成败。
+    # 注意：循环用的变量必须和装文本的变量分开 —— 循环一跑就把文本清成最后一行
+    tail_text=$(grep -E '^[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} ' "$log" 2>/dev/null \
+        | tail -n 10 | sed -e 's/^[[:space:]]*//' -e 's/\x1b\[[0-9;]*m//g')
+    [[ -z "$tail_text" ]] && return 0
+    while IFS= read -r line; do
+        info "  $line"
+    done <<< "$tail_text"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -337,6 +413,8 @@ while [[ $# -gt 0 ]]; do
         --standalone)     MODE=standalone; shift ;;
         --inject)         MODE=inject; shift ;;
         --source)         SOURCES+=("$2"); shift 2 ;;
+        --integrate-local) INTEGRATE_LOCAL=1; shift ;;
+        --openai-test-url) OPENAI_TEST_URL="$2"; shift 2 ;;
         --max-nodes)      MAX_NODES="$2"; shift 2 ;;
         --min-nodes)      MIN_NODES="$2"; shift 2 ;;
         --test-url)       TEST_URL="$2"; shift 2 ;;
@@ -401,14 +479,43 @@ client_target() {
     return 0
 }
 
+# 判断某个客户端当前是否在跑。auto 探测用它挑「正在用的那个」，
+# 而不是「目录存在的那几个里排第一的」。
+client_is_running() {
+    case "$1" in
+        meta)   pgrep -f "ClashX Meta" >/dev/null 2>&1 || pgrep -f "com.metacubex.ClashX" >/dev/null 2>&1 ;;
+        verge)  pgrep -f "verge-mihomo|Clash Verge\.app" >/dev/null 2>&1 ;;
+        mihomo) pgrep -x "mihomo" >/dev/null 2>&1 ;;
+        *) return 1 ;;
+    esac
+}
+
 if [[ "$CLIENT" == auto ]]; then
+    # 探测不能只看「目录在不在」：ClashX Meta 和 Clash Verge 可以同时装好，
+    # 目录都在，按 meta 优先取第一个就永远写进 clash.meta/free-nodes.yaml，
+    # 而实际在跑的是 Clash Verge，它读的是自己 profiles/ 下的那份副本 ——
+    # 定时刷新就一直在更新一个没人读的文件。
+    # 所以先认「正在运行的」，跑起来的那个才是当前客户端。
     for probe in meta verge mihomo; do
         client_target "$probe"
         [[ -d "$CLIENT_DIR" ]] || continue
-        CLIENT="$probe"
-        break
+        if client_is_running "$probe"; then
+            CLIENT="$probe"
+            break
+        fi
     done
+    # 没有客户端在跑时退回旧行为：按 meta > verge > mihomo 找第一个存在的
+    if [[ "$CLIENT" == auto ]]; then
+        for probe in meta verge mihomo; do
+            client_target "$probe"
+            [[ -d "$CLIENT_DIR" ]] || continue
+            CLIENT="$probe"
+            break
+        done
+    fi
     [[ "$CLIENT" != auto ]] || die "没找到 mihomo 系客户端的配置目录，请用 --client 或 --config 指定"
+    [[ "$CLIENT" == meta || "$CLIENT" == verge ]] && \
+        info "客户端: ${CLIENT_NAME}（${CLIENT_DIR}）"
 else
     client_target "$CLIENT" || die "未知客户端: ${CLIENT}（支持 meta / verge / mihomo / auto）"
 fi
@@ -454,6 +561,14 @@ while IFS= read -r d; do
 done < <(load_domain_file "$NO_PROXY_FILE")
 if [[ ${#EXTRA_DIRECT[@]} -gt 0 ]]; then
     info "直连例外: ${#EXTRA_DIRECT[@]} 条域名后缀（含 ${NO_PROXY_FILE}）"
+fi
+while IFS= read -r d; do
+    [[ -n "$d" ]] || continue
+    case " ${EXTRA_PROXY[*]-} " in *" $d "*) continue ;; esac
+    EXTRA_PROXY+=("$d")
+done < <(load_domain_file "$PROXY_FILE")
+if [[ ${#EXTRA_PROXY[@]} -gt 0 ]]; then
+    info "走代理例外: ${#EXTRA_PROXY[@]} 条域名后缀（含 ${PROXY_FILE}）"
 fi
 # 域名后缀要能安全拼进规则行，空格和斜杠之类会让分流规则变形
 for d in ${EXTRA_DIRECT[@]+"${EXTRA_DIRECT[@]}"} ${EXTRA_PROXY[@]+"${EXTRA_PROXY[@]}"}; do
@@ -532,7 +647,17 @@ if [[ -z "$TEST_URL" && "$MODE" == inject && -f "$CONFIG_FILE" ]]; then
     # 不用 heredoc：/bin/bash 3.2 解析不了 $() 里套 heredoc，而 launchd 跑的就是 3.2
     TEST_URL=$(sed -n 's/^[[:space:]]*test-url:[[:space:]]*//p' "$CONFIG_FILE" | head -n 1 | tr -d '\"\047 \t\r')
 fi
-[[ -n "$TEST_URL" ]] || TEST_URL="$HEALTH_URL"
+# 入选测活（TEST_URL）与 url-test 运行时探测（HEALTH_URL）必须分开：
+# - standalone 入选用 google 过滤（只有真能上 Google/OpenAI 的节点才进菜单），
+#   不能跟随 HEALTH_URL（Cloudflare）——否则中国出口节点也被判测通（见上方注释）。
+# - inject 沿用宿主配置的 test-url 或 HEALTH_URL。
+if [[ -z "$TEST_URL" ]]; then
+    if [[ "$MODE" == standalone ]]; then
+        TEST_URL="${PROXY_NODES_TEST_URL:-https://www.google.com/generate_204}"
+    else
+        TEST_URL="$HEALTH_URL"
+    fi
+fi
 
 info "内核: ${CORE:-未找到}"
 info "客户端: ${CLIENT_NAME}（${CLIENT}）"
@@ -543,7 +668,7 @@ if [[ "$MODE" == inject ]]; then
 else
     info "代理组: ${SELECT_GROUP} -> ${GROUP_NAME}（最多 ${MAX_NODES} 个节点，0 为不限）"
     if [[ "$PROXY_ONLY" == 1 ]]; then
-        info "分流: 白名单模式，只有非大陆域名和点名的类别走节点，其余 DIRECT"
+        info "分流: 精确白名单模式，只有 --extra-proxy 点名的域名和 github/google/openai 走节点，其余 DIRECT"
     else
         info "分流: 内网和国内直连，其余走节点"
     fi
@@ -610,6 +735,37 @@ fetch_sources() {
     if [[ $SOURCE_FAILED -gt 0 ]]; then
         info "有 ${SOURCE_FAILED} 个订阅源本轮没拉到，其节点按履历保留（不计为失败）"
     fi
+}
+
+# --- 1b. 整合同目录其他配置（--integrate-local） ------------------------------
+# 当订阅源里可用节点太少/全是国内节点时，把同目录其他 Clash 配置（如自建节点 yuanhang）
+# 的节点也拉进来一起测活。只有过了 google+OpenAI 检测的才入选，付费锁定的配置
+# （XSHIP182/星链）会被 localize() 过滤为国内或直接无法解析，自然进不了最终菜单。
+integrate_local_sources() {
+    [[ "$INTEGRATE_LOCAL" == 1 ]] || return 0
+    local dir="$CONFIG_DIR" base="$CONFIG_BASE" n=0 skip
+    [[ -n "$dir" && -d "$dir" ]] || { warn "整合本地配置: 配置目录不存在 $dir"; return 0; }
+    info "整合本地配置: 扫描 $dir 下其他配置文件"
+    while IFS= read -r f; do
+        [[ -f "$f" ]] || continue
+        # 跳过当前生成的配置、备份、状态/履历文件、以及非 Clash 配置
+        skip=""
+        case "$(basename "$f")" in
+            "$base.yaml"|"$base"*".bak"*|"$base"*".state.json"|"$base"*".providers.yaml"|*".state.json"|*.bak*|config.yaml|config.yml)
+                skip=1 ;;
+        esac
+        [[ -n "$skip" ]] && continue
+        # 只吃看起来像 Clash 配置的（含 proxies: 或 proxy-providers:）
+        if ! grep -qE '^[[:space:]]*(proxies|proxy-providers):' "$f" 2>/dev/null; then
+            continue
+        fi
+        n=$((n + 1))
+        local out="$WORK/src_local_$n.yaml"
+        cp "$f" "$out" 2>/dev/null || continue
+        printf 'local://%s\t%s\n' "$(basename "$f")" "$out" >> "$WORK/sources.jsonl"
+        info "  整合: $(basename "$f")"
+    done < <(find "$dir" -maxdepth 1 -name '*.yaml' -o -maxdepth 1 -name '*.yml' 2>/dev/null | sort)
+    [[ $n -gt 0 ]] && info "已整合 $n 个本地配置文件作为额外测活源" || info "同目录无可整合的配置文件"
 }
 
 # --- 2. 抽取 + 去重 ----------------------------------------------------------
@@ -1057,9 +1213,14 @@ PY
         [[ $waited -gt 60 ]] && die "测活内核启动超时"
     done
 
-    local enc_url a pids=()
+    local enc_url enc_openai a pids=() google_ok
     enc_url=$("$PY" -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$TEST_URL")
+    local do_openai=0
+    [[ -n "$OPENAI_TEST_URL" ]] && do_openai=1
+    local enc_openai_url=""
+    [[ $do_openai -eq 1 ]] && enc_openai_url=$("$PY" -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$OPENAI_TEST_URL")
     : > "$WORK/raw_delays.tsv"
+    : > "$WORK/raw_openai.tsv"
     for a in $("$PY" -c "import json; print(' '.join(json.load(open('$WORK/nodes.alias.json'))))"); do
         (
             r=$(curl_local -sS -m $((TEST_TIMEOUT / 1000 + 8)) "http://127.0.0.1:${ec}/proxies/$a/delay?url=$enc_url&timeout=${TEST_TIMEOUT}" 2>/dev/null || true)
@@ -1070,6 +1231,33 @@ PY
         while [[ "$(jobs -rp | wc -l | tr -d ' ')" -ge "$((CONCURRENCY + 1))" ]]; do sleep 0.2; done
     done
     for a in "${pids[@]}"; do wait "$a" 2>/dev/null || true; done
+
+    # 两阶段：只有 google 通（delay>0）的节点才值得测 OpenAI。多数免费节点连 google 都
+    # 不通，跳过它们能省下一半测活时间（每个失败节点省一个超时周期）。
+    if [[ $do_openai -eq 1 ]]; then
+        google_ok=$(WORK="$WORK" "$PY" -c "
+import json, os, re
+work = os.environ['WORK']
+ok = []
+for ln in open(os.path.join(work, 'raw_delays.tsv'), encoding='utf-8', errors='replace'):
+    a, _, body = ln.rstrip('\n').partition('\t')
+    m = re.search(r'\"delay\"\s*:\s*(\d+)', body)
+    if m and int(m.group(1)) > 0:
+        ok.append(a)
+print(' '.join(ok))" )
+        pids=()
+        if [[ -n "$google_ok" ]]; then
+            for a in $google_ok; do
+                (
+                    ro=$(curl_local -sS -m $((TEST_TIMEOUT / 1000 + 8)) "http://127.0.0.1:${ec}/proxies/$a/delay?url=$enc_openai_url&timeout=${TEST_TIMEOUT}" 2>/dev/null || true)
+                    printf '%s\t%s\n' "$a" "${ro//$'\n'/ }" >> "$WORK/raw_openai.tsv"
+                ) &
+                pids+=("$!")
+                while [[ "$(jobs -rp | wc -l | tr -d ' ')" -ge "$((CONCURRENCY + 1))" ]]; do sleep 0.2; done
+            done
+            for a in "${pids[@]}"; do wait "$a" 2>/dev/null || true; done
+        fi
+    fi
 
     kill "$PROBE_PID" 2>/dev/null || true
     wait "$PROBE_PID" 2>/dev/null || true
@@ -1084,6 +1272,25 @@ for ln in open(os.path.join(work, 'raw_delays.tsv'), encoding='utf-8', errors='r
     m = re.search(r'"delay"\s*:\s*(\d+)', body) or re.search(r'^\[\["[^"]*",\s*(\d+)\]\]$', body.strip())
     if m and int(m.group(1)) > 0:
         delays[alias] = int(m.group(1))
+# OpenAI 检测：有 OpenAI 检测结果时，以 OpenAI 为准（OpenAI 通即入选）。
+# 理由：codex 走 chatgpt.com，能访问 OpenAI 的节点才是 codex 能用的；google 检测会误杀
+# 「openai 通但 google 超时」的节点（如 BY_23、p209 台湾中华电信——它们能访问 OpenAI）。
+# 国内节点访问 OpenAI 会超时，OpenAI 检测天然排除大陆出口，无需再靠 google 过滤。
+# delay API 握手：即使返回 403/404 也算「通」（能到达服务器），只有超时/连接失败才不算。
+openai_ok = set()
+openai_path = os.path.join(work, 'raw_openai.tsv')
+openai_used = False
+if os.path.exists(openai_path):
+    for ln in open(openai_path, encoding='utf-8', errors='replace'):
+        alias, _, body = ln.rstrip('\n').partition('\t')
+        m = re.search(r'"delay"\s*:\s*(\d+)', body) or re.search(r'^\[\["[^"]*",\s*(\d+)\]\]$', body.strip())
+        if m and int(m.group(1)) > 0:
+            openai_ok.add(alias)
+    # 有 OpenAI 检测结果时以 OpenAI 为准：重建 delays 为 OpenAI 通的节点
+    if openai_ok:
+        delays = {a: d for a, d in delays.items() if a in openai_ok}
+        openai_used = True
+# 无 OpenAI 检测（或 OpenAI 全不通）时回退到 google 结果
 alive = sorted(delays.items(), key=lambda kv: kv[1])
 with open(os.path.join(work, 'alive.tsv'), 'w', encoding='utf-8') as f:
     for alias, d in alive:
@@ -1421,7 +1628,8 @@ for n in nodes:
         lines.append('    ' + extra)
 
 lines += ['proxy-groups:', f'- name: {json.dumps(sel, ensure_ascii=False)}', '  type: select', '  proxies:',
-          f'    - {json.dumps(group, ensure_ascii=False)}']
+          f'    - {json.dumps(group, ensure_ascii=False)}',
+          f'    - {json.dumps(group + "_backup", ensure_ascii=False)}']
 # 菜单里直接列出每个节点，可手动固定；最后一项 DIRECT 作直连兜底
 lines += [f'    - {json.dumps(n["name"], ensure_ascii=False)}' for n in nodes]
 lines += ['    - DIRECT']
@@ -1429,6 +1637,12 @@ lines += [f'- name: {json.dumps(group, ensure_ascii=False)}', '  type: url-test'
 # 自动测速组只放验证过的节点：客户端会按 interval 反复探测组内每个节点，
 # 把几百个「没用过」的候选也塞进去等于每天多发几倍探针，它们只留在上面的菜单里供手动挑
 tested = [n for n in nodes if not n.get('untested')] or nodes
+lines += [f'    - {json.dumps(n["name"], ensure_ascii=False)}' for n in tested]
+lines += [f'  url: {json.dumps(health, ensure_ascii=False)}', '  interval: 300', '  tolerance: 50', '  lazy: false']
+# 兜底组：url-test 快（interval 300 内反复测速切换），fallback 慢但保命——url-test 里所有
+# 成员都超时后，fallback 会依次切到下一个成员继续测活，不会卡死在「最后一个也死了」。
+# 节点选择里两个组都列出，用户可手动切；fallback 引用与 url-test 相同的已验证节点集合。
+lines += [f'- name: {json.dumps(group + "_backup", ensure_ascii=False)}', '  type: fallback', '  proxies:']
 lines += [f'    - {json.dumps(n["name"], ensure_ascii=False)}' for n in tested]
 lines += [f'  url: {json.dumps(health, ensure_ascii=False)}', '  interval: 300', '  tolerance: 50', '  lazy: false']
 # 分流：国内/内网一律直连，节点死活只影响境外流量。域名规则在前（fake-ip 模式下 GEOIP
@@ -1441,10 +1655,11 @@ rules += ['  - DOMAIN-SUFFIX,%s,%s' % (d, sel) for d in extra_proxy]
 rules += ['  - GEOSITE,cn,DIRECT', '  - GEOIP,CN,DIRECT']
 rules += ['  - DOMAIN-SUFFIX,%s,DIRECT' % d for d in extra_direct]
 if os.environ['PROXY_ONLY'] == '1':
-    # 白名单模式：只有点名的类别走节点，其余直连。geolocation-!cn 是「非大陆域名」全集，
-    # 后面几个大类是冗余保险；类别名由内核在 mihomo -t 阶段校验，缺失会直接报错不会静默失效
-    rules += ['  - GEOSITE,%s,%s' % (c, sel) for c in
-              ('geolocation-!cn', 'google', 'github', 'telegram', 'openai', 'category-ai-!cn')]
+    # 精确白名单：走节点的 = --extra-proxy 点名的精确域名后缀（已在上面 extra_proxy 展开成
+    # DOMAIN-SUFFIX）加下面几个保险类别（只匹配这些域，不误伤其他），其余一律直连。
+    # 注意：不要加 geolocation-!cn / category-ai-!cn —— 它们会吞掉全部非大陆域名，
+    # 与「大部分直连」相悖；类别名由内核在 mihomo -t 阶段校验，缺失会直接报错不会静默失效
+    rules += ['  - GEOSITE,%s,%s' % (c, sel) for c in ('github', 'google', 'openai')]
     rules += ['  - MATCH,DIRECT']
 else:
     rules += ['  - MATCH,%s' % sel]
@@ -1623,6 +1838,20 @@ apply_changes() {
     else
         success "已生成独立 profile: $CONFIG_FILE"
     fi
+
+    # Verge Rev 不读 CLIENT_DIR/free-nodes.yaml，只读 profiles/<激活uid>.yaml。
+    # 成品要再同步进激活 profile，否则刷新完界面还停在旧配置（今天 07:39 的定时刷新
+    # 就写到了 Application Support/free-nodes.yaml，而激活 profile 还停在 11-02）。
+    if [[ "$CLIENT" == verge ]]; then
+        local vp
+        vp="$(verge_active_profile || true)"
+        if [[ -n "$vp" ]]; then
+            cp "$CONFIG_FILE" "$vp.tmp" && mv "$vp.tmp" "$vp"
+            success "已同步到激活 profile: $(basename "$vp")"
+        else
+            warn "未找到 Verge 激活 profile（profiles.yaml 无 current），请手动点一次该配置"
+        fi
+    fi
     if [[ -f "$WORK/state.new.json" ]]; then
         cp "$WORK/state.new.json" "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
         info "已更新履历: $(basename "$STATE_FILE")（$(grep -c '"fp":' "$STATE_FILE") 个节点）"
@@ -1659,21 +1888,92 @@ api_secret() {
     return 0
 }
 
+# Verge Rev 默认不开 TCP API 端口，只留一个 unix socket。这个路径有两层坑：
+# 一是客户端落盘配置里的 external-controller-unix 指向会话临时目录，内核重装后就失效；
+# 二是真正在用的那个由内核命令行 -ext-ctl-unix 直接给出，且路径里可能带空格
+# （/Library/Application Support/...），按空格切命令行会把它截断。
+# 所以优先信命令行，配置只作退回。
+verge_unix_socket() {
+    local pid proc_args sock=""
+    # 1) 最权威：内核自己带出来的 -ext-ctl-unix
+    #    取标志位之后的「剩余整行」而不是第一个空白前的片段 —— 路径里可能带空格
+    #    （/Library/Application Support/...），按空白截断会把真实路径截掉。
+    for pid in $(pgrep -f 'verge-mihomo' 2>/dev/null | head -n 3 || true); do
+        proc_args=$(ps -p "$pid" -o args= 2>/dev/null || true)
+        [[ "$proc_args" == *verge-mihomo* && "$proc_args" == *-ext-ctl-unix* ]] || continue
+        sock=$(printf '%s' "$proc_args" | sed -n 's/.*-ext-ctl-unix[[:space:]]\{1,\}//p')
+        sock="${sock%"${sock##*[![:space:]]}"}"
+        if [[ -n "$sock" && -S "$sock" ]]; then
+            printf '%s' "$sock"
+            return 0
+        fi
+    done
+    # 2) 退回：客户端落盘配置里的声明（内核重启后可能已失效）
+    local dir="${CLIENT_DIR:-}" p
+    [[ -n "$dir" ]] || return 1
+    for p in "$dir/clash-verge.yaml" "$dir/verge.yaml"; do
+        [[ -f "$p" ]] || continue
+        while IFS= read -r sock; do
+            sock="${sock#"${sock%%[![:space:]]*}"}"; sock="${sock%"${sock##*[![:space:]]}"}"
+            [[ -z "$sock" || ! -S "$sock" ]] && continue
+            printf '%s' "$sock"
+            return 0
+        done < <(sed -n 's/^[[:space:]]*external-controller-unix:[[:space:]]*//p' "$p" | tr -d "'\"")
+    done
+    return 1
+}
+
+# Verge Rev 的「当前激活的 profile」——就是 profiles.yaml 里 current 指向的那个 uid。
+# 脚本写的 CONFIG_FILE（CLIENT_DIR/free-nodes.yaml）只是落盘副本，Verge 根本不读它，
+# 内核实际加载的是 profiles/<uid>.yaml 合并生成的 runtime 配置。要真正让 Verge 用上，
+# 必须把成品同步进激活 profile，否则定时刷新一直在更新一份没人读的文件。
+verge_active_profile() {
+    local dir="${CLIENT_DIR:-}" uid
+    [[ -n "$dir" ]] || return 1
+    uid=$(sed -n 's/^current:[[:space:]]*//p' "$dir/profiles.yaml" 2>/dev/null | head -n 1 | tr -d '"' | tr -d ' ')
+    [[ -n "$uid" ]] || return 1
+    printf '%s' "$dir/profiles/$uid.yaml"
+    return 0
+}
+
 reload_client() {
-    local secret auth url body http via
+    local secret auth url body http via live_sock=""
     secret="$(api_secret)"
     auth=""
     [[ -z "$secret" ]] || auth="Authorization: Bearer $secret"
 
+    # 客户端写死在 CLIENT_SOCK 的路径往往早就失效了，重载前现探一次真实 socket
+    [[ "$CLIENT" == verge ]] && live_sock="$(verge_unix_socket || true)"
+
     via="tcp"
     if curl_local -fsS -m 3 "$CLASH_API/version" ${auth:+-H "$auth"} >/dev/null 2>&1; then
         url="$CLASH_API"
-    elif [[ -n "$CLIENT_SOCK" && -S "$CLIENT_SOCK" ]] &&
+    elif [[ -n "$CLIENT_SOCK" && -S "$CLIENT_SOCK" ]] &&\
         curl_local -fsS -m 3 --unix-socket "$CLIENT_SOCK" "http://localhost/version" ${auth:+-H "$auth"} >/dev/null 2>&1; then
         url="$CLIENT_SOCK"
         via="unix"
+    elif [[ -n "$live_sock" ]] &&\
+        curl_local -fsS -m 3 --unix-socket "$live_sock" "http://localhost/version" ${auth:+-H "$auth"} >/dev/null 2>&1; then
+        url="$live_sock"
+        via="unix"
+        info "内核 API: ${CLIENT_NAME} 的 socket 在 ${live_sock}"
     else
         warn "内核 API 不可达（${CLASH_API}${CLIENT_SOCK:+，也没有 ${CLIENT_SOCK}}），请在 ${CLIENT_NAME} 里重新点一次该配置"
+        return 0
+    fi
+
+    # 重要事实（实测验证）：Verge 内核只接受 PUT /configs 的 path 落在它自己的
+    # home 目录（/Library/Application Support/clash-verge-service/users/501/runtime）内，
+    # 之外的路径一律 400「path is not subpath of home directory」。而那个 runtime 目录
+    # root 所有、无 sudo 密码，脚本根本写不进去。所以对 verge 做 PUT 重载必然失败，
+    # 唯一可靠途径是把成品同步进激活 profile 后由用户在 GUI 里点一次该配置
+    # （Verge 会重新合并生成 runtime/config.yaml）。ClashX Meta 才用 API PUT 重载。
+    if [[ "$CLIENT" == verge ]]; then
+        local vp
+        vp="$(verge_active_profile || true)"
+        if [[ -n "$vp" && -f "$vp" ]]; then
+            info "${CLIENT_NAME} 的激活 profile 已更新，请在窗口里重新点一次该配置以合并生效"
+        fi
         return 0
     fi
 
@@ -1693,6 +1993,7 @@ reload_client() {
 
 main() {
     fetch_sources
+    integrate_local_sources
     extract_nodes
     if [[ "$DO_TEST" == 1 ]]; then
         probe_nodes

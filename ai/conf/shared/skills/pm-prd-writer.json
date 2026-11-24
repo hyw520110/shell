@@ -15,6 +15,7 @@
   "install_check": "true",
   "tips": "适用于产品需求撰写、功能说明书、需求评审文档等场景",
   "notes": "原名 SPACE-prd-writer，将模糊需求转化为可评审的PRD",
+  "view_group": "产品/文档",
   "tags": [
     "PRD",
     "产品文档",

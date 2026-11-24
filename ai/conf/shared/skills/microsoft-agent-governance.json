@@ -8,6 +8,7 @@
     "architecture",
     "security"
   ],
+  "view_group": "安全/审计",
   "tags": [
     "安全",
     "治理",

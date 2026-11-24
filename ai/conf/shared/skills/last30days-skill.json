@@ -3,6 +3,7 @@
   "name": "Last30Days - AI Agent 调研搜索引擎",
   "description": "31K Star 热门技能。AI Agent 驱动的搜索引擎，自动搜索过去 30 天内 Reddit、X、YouTube、TikTok、Hacker News、Polymarket、GitHub 等 10+ 平台内容，按真实用户互动（点赞、投票、金钱）评分，AI 合成为一份简报。支持智能搜索、HTML 简报导出、竞品对比、GitHub 人物模式、ELI5 模式。",
   "category": "research",
+  "view_group": "研究/知识",
   "tags": [
     "调研",
     "搜索",
