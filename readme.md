@@ -445,6 +445,9 @@ bash java/jdk/switch-java.sh --version 11
 
 ### 🔒 安全工具
 
+> 安全工具集已拆分为独立仓库 `git@github.com:hyw520110/security.git`（本地 `~/work/security`）。
+> 下方表格为历史索引，实际脚本与协作规范请查看新仓库的 `README.md` 和 `AGENTS.md`。
+
 | 目录 | 名称 | 说明 | 状态 |
 |-----|------|------|------|
 | **安全扫描** | | | |
