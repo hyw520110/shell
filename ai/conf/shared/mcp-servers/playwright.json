@@ -19,7 +19,7 @@
     ]
   },
   "config": {
-    "command": "playwright-mcp",
+    "command": "${node_bin}/playwright-mcp",
     "args": [],
     "transportType": "stdio"
   },

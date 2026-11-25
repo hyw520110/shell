@@ -43,7 +43,10 @@ detect_system_chrome() {
             ;;
         Linux)
             # Linux: 检测常见路径和命令
+            # Deepin/UOS 把 Chrome 装在 /opt/apps 下，不在 PATH 中，必须显式列出
             local paths=(
+                "/opt/apps/cn.google.chrome/files/google/chrome/google-chrome"
+                "/opt/apps/cn.google.chrome/files/google/chrome/chrome"
                 "/usr/bin/google-chrome"
                 "/usr/bin/google-chrome-stable"
                 "/usr/bin/chromium"

@@ -77,13 +77,10 @@ _menu_select_impl() {
     # 清空输入缓冲区（纯 Bash 兼容实现，支持 macOS Bash 3.2）
     while read -t 0 2>/dev/null; do read -r -t 1 discard 2>/dev/null || true; done
 
-    # 备用屏幕缓冲区（主菜单用，消除空行残留和回滚干扰）
+    # 不再使用备用屏幕（\033[?1049h）：Deepin 等终端切入备用屏幕时会吞掉
+    # 首帧输出，导致 Tab 栏（一级分类）首次不可见。改用普通屏幕 + 每次重绘前
+    # 显式 \033[J 清屏，既避免吞行，也不会留下滚动回滚的干扰。
     local _alt_screen_active=false
-    if [[ "${_MENU_ALT_SCREEN:-false}" == "true" ]]; then
-        printf "\033[?1049h" >&2   # 进入备用屏幕
-        sleep 0.05                 # 给终端一点时间切换，防止吞掉下一行（Tab Bar）
-        _alt_screen_active=true
-    fi
     local term_width="${_term_width:-$(tput cols 2>/dev/null || echo 80)}"
     _term_width="$term_width"
 
@@ -267,16 +264,16 @@ _menu_select_impl() {
         [[ $_vend -gt $_lcnt ]] && _vend=$_lcnt
 
         # ---- 清屏 ----
+        # 关键：必须用 \033[2J 整屏清除（不依赖当前光标位置）并 \033[H 归位。
+        # 原来只用 \033[J（从光标清到屏末），若光标停在屏幕下方，上面的行清不掉，
+        # 切换 Tab 时旧帧就会残留，表现为 Tab 栏出现两行 / 一级分类错位。
         if [[ "$is_first" == "true" ]]; then
-            if [[ "$_alt_screen_active" == "true" ]]; then
-                command -v clear >/dev/null 2>&1 && clear >&2 || printf "\033[2J\033[H" >&2
-            else
-                printf "\033[J" >&2
-            fi
+            # 2J 清整屏 + 3J 清滚动缓冲，保证旧帧（含回滚区）彻底清除
+            printf "\033[H\033[2J\033[3J" >&2
         else
             printf "\r\033[%dA" "$start_line" >&2
+            printf "\033[J" >&2
         fi
-        printf "\033[J" >&2
         local _lines_printed=0
 
         # ==== 1. 头部：Inline Tabs & Prompt ====
@@ -666,8 +663,8 @@ _menu_select_impl() {
     printf "\033[?25h" >&2
 
     if [[ "$key" == "TAB_CHANGE" ]]; then
-        # Tab 切换：清屏备用屏幕内容（无需 2J，下次 render_menu 会处理）
-        printf "\033[H\033[J" >&2
+        # Tab 切换：整屏清除旧帧，避免下次绘制时残留
+        printf "\033[H\033[2J\033[3J" >&2
         # 将选中状态编码到输出中，供调用方解析（子 shell 无法传递全局变量）
         local _save_idxs=""
         for ((_si=0; _si<count; _si++)); do
@@ -681,13 +678,6 @@ _menu_select_impl() {
         for ((i=0; i<count; i++)); do [[ "${selected[$i]}" == "true" ]] && results+=($i); done
         results+=($cur)
         echo "${results[@]}"
-    fi
-
-    # 退出备用屏幕（恢复用户之前的终端内容）
-    if [[ "$_alt_screen_active" == "true" ]]; then
-        if [[ "$key" != "TAB_CHANGE" ]]; then
-            printf "\033[?1049l" >&2
-        fi
     fi
 
     return 0

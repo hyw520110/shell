@@ -45,6 +45,17 @@ ai-cli-config-v2/
 | `references` | 引用公共 MCP/Skills |
 | `notes` | 使用说明和注意事项 |
 
+### OpenCode v2 配置约定
+
+`tools/cli/opencode.json` 的 `config.path` 指向 `~/.config/opencode/opencode.json`（V2 路径）。脚本识别该路径后会把 MCP 写成 V2 的 `mcp.servers` 格式（`type: local` + 数组 `command` + `environment`），而不是旧版 `mcpServers`；Skills 写入 `~/.config/opencode/skills`，由 OpenCode 自动发现。ai-hub 不改动用户自己的 `opencode.jsonc`（可能含注释），OpenCode 会合并加载两个文件。
+
+批量安装示例：
+
+```bash
+./ai/ai-hub.sh --batch-apply opencode --tags '浏览器' --dry-run   # 先看差异
+./ai/ai-hub.sh --batch-apply opencode --tags '浏览器'             # 实际安装
+```
+
 ## 场景配置机制
 
 `global.json.scenarios` 只注册合法场景和展示策略，不再维护 MCP/Skills 显式清单。具体某个 MCP 或 Skill 属于哪些场景，由它自己的 `scenarios` 字段声明。

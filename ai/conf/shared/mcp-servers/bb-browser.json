@@ -18,12 +18,8 @@
     ]
   },
   "config": {
-    "command": "npx",
-    "args": [
-      "-y",
-      "bb-browser-api",
-      "--mcp"
-    ],
+    "command": "${node_bin}/bb-browser-api-mcp",
+    "args": [],
     "transportType": "stdio",
     "env": {}
   },

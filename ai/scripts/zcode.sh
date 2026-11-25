@@ -5,7 +5,7 @@
 # 用法:
 #   zcode.sh install              安装最新 ZCode
 #   zcode.sh update               更新到最新 ZCode
-#   zcode.sh latest [ARCH]        检测最新版本号 (默认 mac-x64)
+#   zcode.sh latest [ARCH]        检测最新版本号 (默认按当前系统自动识别)
 #   zcode.sh latest --json        JSON 格式 (供 ai-hub 消费)
 #   zcode.sh latest --url [ARCH]  输出完整下载 URL
 #   zcode.sh version              当前已安装版本
@@ -33,10 +33,19 @@ ADL_BIN="$(command -v adl 2>/dev/null || echo '/Users/mac/workspace/shell/networ
 # 统一下载目录 + 装后删包约定
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$HOME/Downloads}"
 # CDN 下载探测列表: 从最新已知版本逐级向下
-VERSION_CANDIDATES="3.17.2 3.17.1 3.17.0 3.16.0 3.15.0 3.14.0 3.13.0 3.12.0 3.11.0 3.10.0 3.9.0 3.8.0 3.7.0 3.6.0 3.5.0 3.4.0 3.3.0 3.2.0 2.15.0 2.14.0 2.13.0"
+VERSION_CANDIDATES="4.0.0 3.17.2 3.17.1 3.17.0 3.16.0 3.15.0 3.14.0 3.13.0 3.12.0 3.11.0 3.10.0 3.9.0 3.8.0 3.7.0 3.6.0 3.5.0 3.4.0 3.3.0 3.2.0 2.15.0 2.14.0 2.13.0"
 APP_GLOB="/Applications/ZCode*.app"
-ZC_CFG_DIR="$HOME/Library/Application Support/ZCode"
-ZC_CFG_DIR2="$HOME/Library/Application Support/com.zcode-ai.zcode"
+ZC_OS="$(uname -s 2>/dev/null || echo unknown)"
+case "$ZC_OS" in
+  Linux)
+    ZC_CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ZCode"
+    ZC_CFG_DIR2="${XDG_CONFIG_HOME:-$HOME/.config}/zcode"
+    ;;
+  *)
+    ZC_CFG_DIR="$HOME/Library/Application Support/ZCode"
+    ZC_CFG_DIR2="$HOME/Library/Application Support/com.zcode-ai.zcode"
+    ;;
+esac
 CACHE_FILE="${HOME}/.cache/ai-hub/zcode_version_hint"
 
 # ─── 工具函数 ─────────────────────────────────────────────────────────────
@@ -44,9 +53,12 @@ safe_curl() { curl -s ${CURL_OPTS} "$@" 2>/dev/null || true; }
 
 _log() { printf '%s\n' "$*"; }
 
-# 安全 HTTP 状态码检测 (永不因超时退出)
+# 安全 HTTP 状态码检测 (只发 HEAD，避免把 200MB 的 .deb 下载到 /dev/null)
 http_code() {
-  curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 "$1" 2>/dev/null || echo 000
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' -I --connect-timeout 3 --max-time 5 "$1" 2>/dev/null || true)
+  [[ "$code" =~ ^[0-9]{3}$ ]] || code=000
+  printf '%s\n' "$code"
 }
 
 # 当前 macOS 主版本号 (sw_vers 无输出/非 macOS 时回退 "99" 表示未知高版本)
@@ -57,6 +69,28 @@ macos_major() {
 # 当前 macOS 完整版本 (如 12.7.6)
 macos_full() {
   sw_vers -productVersion 2>/dev/null || echo "0.0.0"
+}
+
+# 当前系统 + CPU 架构 → ZCode 架构标识
+# 修复：旧版只看 uname -m，把 Linux x86_64 误判成 mac-x64 并下载 DMG
+detect_arch() {
+  local os machine
+  os="$(uname -s 2>/dev/null || echo unknown)"
+  machine="$(uname -m 2>/dev/null || echo unknown)"
+  case "$os" in
+    Darwin)
+      case "$machine" in arm64|aarch64) echo 'mac-arm64' ;; *) echo 'mac-x64' ;; esac
+      ;;
+    Linux)
+      case "$machine" in arm64|aarch64) echo 'linux-arm64' ;; *) echo 'linux-x64' ;; esac
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      case "$machine" in arm64|aarch64) echo 'win-arm64' ;; *) echo 'win-x64' ;; esac
+      ;;
+    *)
+      case "$machine" in arm64|aarch64) echo 'mac-arm64' ;; *) echo 'mac-x64' ;; esac
+      ;;
+  esac
 }
 
 # 选择兼容版本: 系统主版本 <= ZCODE_COMPAT_MAX_MAJOR 时, 若探测到的最新版不兼容则用兼容版
@@ -166,8 +200,12 @@ probe_version() {
   # 缓存键: <arch>-<ver>.code，有效期 60 分钟
   cf="${PROBE_CACHE_DIR}/${arch}-${ver}.code"
   if [[ -f "$cf" ]] && [[ $(find "$cf" -mmin -60 2>/dev/null) ]]; then
-    cat "$cf" 2>/dev/null || echo 000
-    return 0
+    local cached
+    cached=$(cat "$cf" 2>/dev/null || true)
+    if [[ "$cached" =~ ^[0-9]{3}$ ]]; then
+      printf '%s\n' "$cached"
+      return 0
+    fi
   fi
   code=$(http_code "$(build_url "$ver" "$arch")")
   mkdir -p "$PROBE_CACHE_DIR" 2>/dev/null || true
@@ -201,22 +239,26 @@ get_latest_version() {
     fi
   done
 
-  printf '%s\n' "$hint" >&2
   printf '%s\n' "$hint"
 }
 
 # 输出 JSON (供 ai-hub 消费)
 output_json() {
-  local arch ver_arm64 ver_x64 ver_win url_arm64 url_x64 url_win
-  arch=$(uname -m | grep -q arm && echo 'arm64' || echo 'x64')
+  local arch ver_arm64 ver_x64 ver_win ver_linux_x64 ver_linux_arm64
+  local url_arm64 url_x64 url_win url_linux_x64 url_linux_arm64
+  arch=$(detect_arch)
 
   ver_arm64=$(get_latest_version "mac-arm64")
   ver_x64=$(get_latest_version "mac-x64")
   ver_win=$(get_latest_version "win-x64")
+  ver_linux_x64=$(get_latest_version "linux-x64")
+  ver_linux_arm64=$(get_latest_version "linux-arm64")
 
   url_arm64=$(build_url "$ver_arm64" mac-arm64)
   url_x64=$(build_url "$ver_x64" mac-x64)
   url_win=$(build_url "$ver_win" win-x64)
+  url_linux_x64=$(build_url "$ver_linux_x64" linux-x64)
+  url_linux_arm64=$(build_url "$ver_linux_arm64" linux-arm64)
 
   cat <<JSONEOF
 {
@@ -225,16 +267,64 @@ output_json() {
   "downloads": {
     "mac-arm64": { "version": "${ver_arm64}", "url": "${url_arm64}" },
     "mac-x64":   { "version": "${ver_x64}",   "url": "${url_x64}" },
-    "win-x64":   { "version": "${ver_win}",   "url": "${url_win}" }
+    "win-x64":   { "version": "${ver_win}",   "url": "${url_win}" },
+    "linux-x64": { "version": "${ver_linux_x64}", "url": "${url_linux_x64}" },
+    "linux-arm64": { "version": "${ver_linux_arm64}", "url": "${url_linux_arm64}" }
   }
 }
 JSONEOF
 }
 
 # ─── 安装 / 更新 (共用逻辑) ──────────────────────────────────────────────
+# Linux: CDN 提供 .deb，使用 apt 安装 (可自动解决依赖)
+do_install_deb() {
+  local arch="$1" ver="$2" url="$3"
+  local pkg="$DOWNLOAD_DIR/ZCode-${ver}-${arch}.deb" dl_ok=0
+
+  rm -f "$pkg"
+  if [[ -x "$ADL_BIN" ]]; then
+    _log "[下载] 使用 adl 下载 (优先级高)..."
+    if "$ADL_BIN" "$url" "$DOWNLOAD_DIR" "$(basename "$pkg")" >/dev/null 2>&1; then
+      dl_ok=1
+    else
+      _log "[警告]  adl 下载失败，回退 curl..."
+    fi
+  fi
+  if (( ! dl_ok )); then
+    pkg=$(mktemp "${TMPDIR:-/tmp}/zcode.XXXXXX.deb")
+    if ! curl -fL# --retry 3 --connect-timeout 10 --max-time 0 "$url" -o "$pkg"; then
+      _log '[失败] 下载失败，请手动下载: ' "$HOME_PAGE"
+      rm -f "$pkg"
+      return 1
+    fi
+  fi
+
+  _log "正在安装 ZCode v${ver} (${arch})..."
+  if ! command -v sudo >/dev/null 2>&1; then
+    _log '[失败] 系统级安装需要 sudo，当前环境不可用'
+    rm -f "$pkg"
+    return 1
+  fi
+  if ! sudo apt install -y "$pkg"; then
+    _log '[警告]  apt 安装失败，尝试 dpkg + 依赖修复...'
+    sudo dpkg -i "$pkg" || true
+    sudo apt -f install -y || true
+  fi
+  rm -f "$pkg"
+
+  if command -v zcode >/dev/null 2>&1 || dpkg -s zcode 2>/dev/null | grep -q 'Status: install ok installed'; then
+    _log "[OK] ZCode 安装完成！版本 v$(installed_version)"
+    _log "   命令: $(command -v zcode 2>/dev/null || echo zcode)"
+    _log '首次启动: 1) 注册/登录智谱账号  2) 配置 AI 供应商 (BigModel/Z.ai/自定义 API Key)  3) 选择模型'
+    return 0
+  fi
+  _log '[失败] 安装后未检测到 zcode，请尝试手动安装: ' "$HOME_PAGE"
+  return 1
+}
+
 do_install() {
   local ZC_ARCH url_code url dmg vol app installed
-  ZC_ARCH=$(uname -m | grep -q arm && echo 'mac-arm64' || echo 'mac-x64')
+  ZC_ARCH=$(detect_arch)
 
   _log "检测 ZCode 兼容版本 (${ZC_ARCH})..."
   local ZC_VER
@@ -242,6 +332,10 @@ do_install() {
   url_code=$(build_url "$ZC_VER" "$ZC_ARCH")
   _log "[下载] 正在下载 ZCode v${ZC_VER} (${ZC_ARCH})..."
   _log "   ${url_code}"
+
+  case "$ZC_ARCH" in
+    linux-*) do_install_deb "$ZC_ARCH" "$ZC_VER" "$url_code"; return $? ;;
+  esac
 
   local dl_ok=0
   if [[ -x "$ADL_BIN" ]]; then
@@ -312,10 +406,29 @@ cmd_install()  { do_install; }
 cmd_update()   { do_install; }
 
 # ─── 已安装版本 ─────────────────────────────────────────────────────────
-installed_path() { ls -d $APP_GLOB 2>/dev/null | head -1; }
+installed_path() {
+  if [[ "$ZC_OS" == "Linux" ]]; then
+    command -v zcode 2>/dev/null || true
+  else
+    ls -d $APP_GLOB 2>/dev/null | head -1
+  fi
+}
 
 installed_version() {
-  local app
+  local app v
+  if [[ "$ZC_OS" == "Linux" ]]; then
+    v=$(dpkg-query -W -f='${Version}' zcode 2>/dev/null || true)
+    if [[ -n "$v" ]]; then
+      printf '%s\n' "${v%%-*}"
+      return
+    fi
+    if command -v zcode >/dev/null 2>&1; then
+      zcode --version 2>/dev/null | head -1 || echo "未知"
+      return
+    fi
+    echo "未安装"
+    return
+  fi
   app=$(installed_path)
   [[ -z "$app" ]] && { echo "未安装"; return; }
   defaults read "$app/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo "未知"
@@ -324,10 +437,10 @@ installed_version() {
 cmd_version() { printf '已安装版本: v%s\n' "$(installed_version)"; }
 
 cmd_status() {
-  local app ver latest_url
+  local app ver latest
   app=$(installed_path)
+  ver=$(installed_version)
   if [[ -n "$app" ]]; then
-    ver=$(defaults read "$app/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo "未知")
     _log "[OK] 已安装 v${ver}"
     _log "   路径: ${app}"
   else
@@ -338,8 +451,8 @@ cmd_status() {
   else
     _log "[警告]  配置目录未初始化 (首次启动后创建)"
   fi
-  latest_url=$(get_latest_version "$(uname -m | grep -q arm && echo 'mac-arm64' || echo 'mac-x64')")
-  _log "最新版本: v${latest_url} (${HOME_PAGE})"
+  latest=$(get_latest_version "$(detect_arch)")
+  _log "最新版本: v${latest} (${HOME_PAGE})"
 }
 
 # ─── 配置管理 ───────────────────────────────────────────────────────────
@@ -351,7 +464,10 @@ cmd_config() {
       ls -la "$ZC_CFG_DIR" 2>/dev/null || _log '配置目录不存在 (首次启动后创建)'
       ;;
     edit)
-      if command -v open >/dev/null 2>&1; then
+      if [[ "$ZC_OS" == "Linux" ]] && command -v zcode >/dev/null 2>&1; then
+        zcode >/dev/null 2>&1 &
+        _log '请在 ZCode → 设置 中修改配置'
+      elif command -v open >/dev/null 2>&1; then
         open -a ZCode 2>/dev/null && _log '请在 ZCode → 设置 (Command+,) 中修改配置' || _log 'ZCode 未安装'
       else
         _log 'ZCode 未安装'
@@ -375,6 +491,20 @@ cmd_config() {
 cmd_uninstall() {
   _log '[卸载]  正在卸载 ZCode...'
   local apps app
+  if [[ "$ZC_OS" == "Linux" ]]; then
+    if dpkg -s zcode 2>/dev/null | grep -q 'Status: install ok installed'; then
+      command -v sudo >/dev/null 2>&1 && sudo apt remove -y zcode || sudo dpkg -r zcode
+    else
+      _log '未检测到已安装的 zcode 包'
+    fi
+    printf '是否同时删除配置数据 (%s/)？[y/N] ' "$ZC_CFG_DIR"
+    read -r _ans || true
+    if [[ "$_ans" == "y" ]]; then
+      rm -rf "$ZC_CFG_DIR" "$ZC_CFG_DIR2" 2>/dev/null || true
+    fi
+    _log '[OK] ZCode 已卸载'
+    return 0
+  fi
   apps=$(ls -d $APP_GLOB 2>/dev/null || true)
   if [[ -n "$apps" ]]; then
     for app in $apps; do
@@ -407,7 +537,7 @@ usage() {
   config view|edit|reset  配置管理
   uninstall               卸载
 
-架构 (latest 默认 mac-x64):
+架构 (latest 默认按当前系统自动识别):
   mac-arm64, mac-x64, win-x64, win-arm64, linux-x64, linux-arm64
 
 示例:
@@ -428,8 +558,8 @@ case "$cmd" in
   latest|check-latest)
     case "${1:-}" in
       --json)  output_json ;;
-      --url)   build_url "$(get_latest_version "${2:-mac-x64}")" "${2:-mac-x64}" ;;
-      *)       get_latest_version "${1:-$(uname -m | grep -q arm && echo 'mac-arm64' || echo 'mac-x64')}" ;;
+      --url)   build_url "$(get_latest_version "${2:-$(detect_arch)}")" "${2:-$(detect_arch)}" ;;
+      *)       get_latest_version "${1:-$(detect_arch)}" ;;
     esac
     ;;
   config)             cmd_config "${1:-view}" "${2:-}" ;;

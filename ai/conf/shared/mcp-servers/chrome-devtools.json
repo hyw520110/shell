@@ -12,7 +12,7 @@
     ]
   },
   "config": {
-    "command": "chrome-devtools-mcp",
+    "command": "${node_bin}/chrome-devtools-mcp",
     "args": [
       "--isolated",
       "--executablePath={{chrome_path}}"

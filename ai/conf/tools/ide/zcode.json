@@ -28,10 +28,10 @@
   "install": {
     "methods": [
       {
-        "name": "单一脚本自动安装 (macOS) — scripts/zcode.sh",
+        "name": "单一脚本自动安装 (自动识别 macOS/Linux) — scripts/zcode.sh",
         "type": "bash",
         "command": "bash scripts/zcode.sh install",
-        "check": "ls -d /Applications/ZCode*.app &>/dev/null",
+        "check": "command -v zcode >/dev/null 2>&1 || dpkg -s zcode 2>/dev/null | grep -q 'install ok installed' || ls -d /Applications/ZCode*.app >/dev/null 2>&1",
         "uninstall": [
           "echo '正在卸载 ZCode...'",
           "bash scripts/zcode.sh uninstall"
@@ -42,7 +42,7 @@
   },
   "update": {
     "command": "bash scripts/zcode.sh update",
-    "check": "ls -d /Applications/ZCode*.app &>/dev/null"
+    "check": "command -v zcode >/dev/null 2>&1 || dpkg -s zcode 2>/dev/null | grep -q 'install ok installed' || ls -d /Applications/ZCode*.app >/dev/null 2>&1"
   },
   "config": {
     "path": "$HOME/Library/Application Support/ZCode/",
@@ -53,9 +53,9 @@
     }
   },
   "commands": {
-    "start": "open -a \"$(ls -d /Applications/ZCode*.app | head -1)\"",
+    "start": "if command -v zcode >/dev/null 2>&1; then zcode >/dev/null 2>&1 & else open -a \"$(ls -d /Applications/ZCode*.app | head -1)\"; fi",
     "version": "bash scripts/zcode.sh version",
-    "settings": "open -a \"$(ls -d /Applications/ZCode*.app | head -1)\" && echo '请在 ZCode → 设置（⌘,）中管理配置'",
+    "settings": "if command -v zcode >/dev/null 2>&1; then zcode >/dev/null 2>&1 & echo '请在 ZCode → 设置中管理配置'; else open -a \"$(ls -d /Applications/ZCode*.app | head -1)\" && echo '请在 ZCode → 设置（⌘,）中管理配置'; fi",
     "check-latest": "bash scripts/zcode.sh latest --json",
     "status": "bash scripts/zcode.sh status"
   },
@@ -66,7 +66,7 @@
     },
     {
       "name": "配置目录",
-      "command": "[ -d \"$HOME/Library/Application Support/ZCode/\" ] && echo '已初始化' || echo '未初始化（首次启动后创建）'"
+      "command": "if [ -d \"$HOME/Library/Application Support/ZCode/\" ] || [ -d \"${XDG_CONFIG_HOME:-$HOME/.config}/ZCode\" ]; then echo '已初始化'; else echo '未初始化（首次启动后创建）'; fi"
     }
   ],
   "references": {

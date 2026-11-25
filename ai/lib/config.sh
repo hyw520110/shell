@@ -244,6 +244,14 @@ _load_expand_vars() {
     fi
     assoc_set_wrapper "_EXPAND_VARS_CACHE" "chrome_path" "$chrome_path"
 
+    # MCP 进程由客户端直接 spawn，未必继承交互式 shell 的 PATH（尤其 nvm 场景）。
+    # 记录 npm 全局 bin 目录，配置里用 ${node_bin}/xxx 可避免 ENOENT。
+    local node_bin=""
+    if command -v node >/dev/null 2>&1; then
+        node_bin=$(dirname "$(command -v node)")
+    fi
+    assoc_set_wrapper "_EXPAND_VARS_CACHE" "node_bin" "$node_bin"
+
     local github_token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
     if [[ -z "$github_token" ]] && command -v gh >/dev/null 2>&1; then
         github_token=$(gh auth token 2>/dev/null || true)
@@ -279,7 +287,7 @@ expand_vars() {
 
     # 处理 ${var} 格式（简单替换）
     # 注意：由于无法直接遍历模拟实现的关联数组，这里列出常用的系统变量进行替换
-    local sys_vars=("HOME" "USER" "PATH" "SCRIPT_DIR" "npm_registry" "proxy_http" "proxy_https" "proxy_pip" "workspace_path" "chrome_path" "github_token")
+    local sys_vars=("HOME" "USER" "PATH" "SCRIPT_DIR" "npm_registry" "proxy_http" "proxy_https" "proxy_pip" "workspace_path" "chrome_path" "node_bin" "github_token")
     for var_name in "${sys_vars[@]}"; do
         local var_value=$(assoc_get_wrapper "_EXPAND_VARS_CACHE" "$var_name")
         [[ -n "$var_value" ]] && result="${result//\$\{${var_name}\}/$var_value}"

@@ -26,13 +26,13 @@
     "check": true
   },
   "config": {
-    "path": "$HOME/.opencode/settings.json",
+    "path": "$HOME/.config/opencode/opencode.json",
     "operations": {
-      "view": "cat $HOME/.opencode/settings.json 2>/dev/null || echo \"配置文件不存在\"",
-      "edit": "${EDITOR:-vim} $HOME/.opencode/settings.json",
+      "view": "cat $HOME/.config/opencode/opencode.json 2>/dev/null || echo \"配置文件不存在\"",
+      "edit": "${EDITOR:-vim} $HOME/.config/opencode/opencode.json",
       "reset": [
-        "cp $HOME/.opencode/settings.json $HOME/.opencode/settings.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
-        "rm -f $HOME/.opencode/settings.json"
+        "cp $HOME/.config/opencode/opencode.json $HOME/.config/opencode/opencode.json.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true",
+        "rm -f $HOME/.config/opencode/opencode.json"
       ]
     }
   },
@@ -47,7 +47,7 @@
     },
     {
       "name": "检查配置",
-      "command": "ls -la $HOME/.opencode/settings.json 2>/dev/null || echo \"配置目录不存在\""
+      "command": "ls -la $HOME/.config/opencode/opencode.json 2>/dev/null || echo \"配置文件不存在；OpenCode v2 使用 ~/.config/opencode/opencode.json(c)\""
     }
   ],
   "mcp_servers": {},
@@ -56,7 +56,7 @@
     "shared_mcp_servers": [],
     "shared_skills": []
   },
-  "notes": "",
+  "notes": "OpenCode v2 使用 ~/.config/opencode/opencode.json(c) 与 mcp.servers 格式（不是旧版 ~/.opencode/settings.json 的 mcpServers）。ai-hub 写入时使用纯 JSON 的 opencode.json，避免改动用户可能带注释的 opencode.jsonc；两者同时存在时 OpenCode 会合并加载。Skills 写入 ~/.config/opencode/skills，OpenCode 自动发现。",
   "post_install": [],
   "post_uninstall": []
 }

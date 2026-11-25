@@ -121,8 +121,9 @@ detect_chrome_path() {
             "/opt/google/chrome/google-chrome"
             "/opt/google/chrome-beta/google-chrome"
             "/opt/google/chrome-unstable/google-chrome"
+            "/opt/apps/cn.google.chrome/files/google/chrome/google-chrome"
+            "/opt/apps/cn.google.chrome/files/google/chrome/chrome"
             "/opt/apps/cn.google.chrome-pre/files/google/chrome/chrome"
-            "/opt/apps/*/google/chrome/chrome"
             "/usr/bin/chromium-browser"
             "/usr/bin/chromium"
             "/usr/local/bin/chromium-browser"
@@ -152,7 +153,8 @@ detect_chrome_path() {
             for search_dir in "${search_dirs[@]}"; do
                 if [[ -d "$search_dir" ]]; then
                     debug_log "搜索目录: $search_dir"
-                    local found_chromes=$(find "$search_dir" -maxdepth 4 \( -name "google-chrome" -o -name "chrome" -o -name "chromium" \) -type f 2>/dev/null | head -3)
+                    # Deepin/UOS 的 Chrome 路径较深：/opt/apps/<id>/files/google/chrome/google-chrome
+                    local found_chromes=$(find "$search_dir" -maxdepth 6 \( -name "google-chrome" -o -name "chrome" -o -name "chromium" \) -type f 2>/dev/null | head -3)
                     for found in $found_chromes; do
                         if [[ -f "$found" ]] && [[ -x "$found" ]]; then
                             chrome_path="$found"

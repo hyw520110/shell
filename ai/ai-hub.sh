@@ -1607,6 +1607,22 @@ is_supported_mcp_config_path() {
     esac
 }
 
+# OpenCode v2 的 MCP 配置与通用 mcpServers 不同：
+#   通用: {"mcpServers": {"name": {"command": "npx", "args": [...], "env": {...}}}}
+#   v2:   {"mcp": {"servers": {"name": {"type": "local", "command": ["npx", ...],
+#                                        "environment": {...}}}}}
+# 按配置路径识别，避免误伤其它客户端的 JSON 配置。
+# ai-hub 固定写 ~/.config/opencode/opencode.json（纯 JSON），用户自己的
+# opencode.jsonc（可能带注释）保持不动；OpenCode 会合并加载两者。
+is_opencode_v2_config_path() {
+    local config_file
+    config_file=$(expand_path "$1")
+    case "$config_file" in
+        */opencode/opencode.json|*/opencode/opencode.jsonc|*/.opencode/opencode.json|*/.opencode/opencode.jsonc) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 is_batch_config_target() {
     local tool_cat="$1"
     local config_file="$2"
@@ -1758,8 +1774,10 @@ batch_apply_selected_configs() {
     local requested_mcp_count=${#selected_mcps[@]}
     local install_mcps=("${selected_mcps[@]}")
     filter_mcps_by_compatibility install_mcps
-    local incompatible_mcps=("${FILTERED_MCP_INCOMPATIBLE[@]:-}")
-    local incompatible_mcp_details=("${FILTERED_MCP_INCOMPATIBLE_DETAILS[@]:-}")
+    # 注意：空数组用 "${arr[@]:-}" 会得到 1 个空元素，导致报告里出现空白条目。
+    local incompatible_mcps=() incompatible_mcp_details=()
+    if [[ ${#FILTERED_MCP_INCOMPATIBLE[@]} -gt 0 ]]; then incompatible_mcps=("${FILTERED_MCP_INCOMPATIBLE[@]}"); fi
+    if [[ ${#FILTERED_MCP_INCOMPATIBLE_DETAILS[@]} -gt 0 ]]; then incompatible_mcp_details=("${FILTERED_MCP_INCOMPATIBLE_DETAILS[@]}"); fi
 
     local runtime_mcp_confs=()
     build_runtime_mcp_configs runtime_mcp_confs "${install_mcps[@]}"
@@ -3301,6 +3319,7 @@ remove_mcp_configs_from_file() {
                 reduce $ids[] as $id (.;
                     if has("mcpServers") then .mcpServers |= del(.[$id]) else . end
                     | if has("mcp_servers") then .mcp_servers |= del(.[$id]) else . end
+                    | if (.mcp | type) == "object" and (.mcp.servers | type) == "object" then .mcp.servers |= del(.[$id]) else . end
                 )
             ' "$config_file" > "$tmp_file" && jq empty "$tmp_file" >/dev/null 2>&1; then
                 commit_config_file "$config_file" "$tmp_file"
@@ -3345,7 +3364,9 @@ mcp_config_exists_in_file() {
     case "$config_file" in
         *.json)
             command_exists jq || return 1
-            jq -e --arg id "$server_id" '(.mcpServers? // .mcp_servers? // {}) | has($id)' "$config_file" >/dev/null 2>&1
+            jq -e --arg id "$server_id" \
+                '((.mcpServers? // {}) + (.mcp_servers? // {}) + (if (.mcp.servers? | type) == "object" then .mcp.servers else {} end)) | has($id)' \
+                "$config_file" >/dev/null 2>&1
             ;;
         *.yaml|*.yml)
             local py
@@ -3422,6 +3443,9 @@ add_all_mcp_configs_to_file() {
     esac
     mkdir -p "$(dirname "$config_file")"
 
+    local opencode_v2=false
+    is_opencode_v2_config_path "$config_file" && opencode_v2=true
+
     local gemini_mcp_schema=false
     local agy_mcp_schema=false
     case "$config_file" in
@@ -3456,6 +3480,7 @@ add_all_mcp_configs_to_file() {
         tmp_file="${servers_json}.tmp"
         jq --arg id "$server_id" --argjson conf "$server_config" \
             --argjson gemini "$gemini_mcp_schema" --argjson agy "$agy_mcp_schema" \
+            --argjson opencode "$opencode_v2" \
             '.[$id] = ($conf
                 | if $gemini and $id == "filesystem" then
                     {
@@ -3473,7 +3498,17 @@ add_all_mcp_configs_to_file() {
                 | if has("env") and (.env | type == "object") then
                     .env |= with_entries(select((.value | type != "string") or (.value != "" and (.value | test("\\{\\{") | not))))
                   else . end
-                | if ($gemini or $agy) then del(.transportType, .enabled) else del(.transportType) | .enabled = true end)' \
+                | if ($gemini or $agy) then del(.transportType, .enabled)
+                  elif $opencode then
+                    ((if (.command | type) == "array" then .command
+                      else ([.command // empty] + ((.args // []) | map(tostring))) | map(select(. != "")) end) as $cmd
+                     | {
+                         type: "local",
+                         command: $cmd,
+                         environment: ((.env // {}) | with_entries(.value |= tostring))
+                       }
+                       + (if (.cwd // "") != "" then {cwd: .cwd} else {} end))
+                  else del(.transportType) | .enabled = true end)' \
             "$servers_json" > "$tmp_file" && mv "$tmp_file" "$servers_json" || {
                 rm -f "$tmp_file" "$servers_json"
                 return 1
@@ -3488,13 +3523,18 @@ add_all_mcp_configs_to_file() {
                     info_log "[dry-run] 将新建配置并写入 MCP: $config_file ($(jq -r 'keys | join(", ")' "$servers_json" 2>/dev/null))"
                     return 0
                 fi
-                echo '{"mcpServers":{}}' > "$config_file"
+                if [[ "$opencode_v2" == "true" ]]; then
+                    echo '{"mcp":{"servers":{}}}' > "$config_file"
+                else
+                    echo '{"mcpServers":{}}' > "$config_file"
+                fi
             fi
             local config_lock="${config_file}.aihub.lock"
             acquire_config_lock "$config_file" || return 1
             tmp_file=$(mktemp "$(dirname "$config_file")/.aihub-json.XXXXXX") || { release_config_lock "$config_lock"; return 1; }
-            if jq --slurpfile servers "$servers_json" \
-                '.mcpServers = (.mcpServers // {}) | .mcpServers += $servers[0]' \
+            local jq_filter='.mcpServers = (.mcpServers // {}) | .mcpServers += $servers[0]'
+            [[ "$opencode_v2" == "true" ]] && jq_filter='.mcp = (.mcp // {}) | .mcp.servers = (.mcp.servers // {}) | .mcp.servers += $servers[0]'
+            if jq --slurpfile servers "$servers_json" "$jq_filter" \
                 "$config_file" > "$tmp_file" && jq empty "$tmp_file" >/dev/null 2>&1; then
                 commit_config_file "$config_file" "$tmp_file"
                 local commit_rc=$?
@@ -4405,6 +4445,7 @@ show_help() {
     echo "    --keep-backups <n> 每个配置文件保留的备份份数，默认 3（0 表示不删旧备份）。"
     echo "    AI_HUB_CONFIG_PROMPT_TIMEOUT 控制交互式变量输入超时秒数，默认 30。"
     echo "    例如: $0 --batch-apply cursor --tags 'design,coding'"
+    echo "    例如: $0 --batch-apply opencode --tags '浏览器'  # 给 OpenCode v2 装浏览器 MCP/Skills"
     echo "    例如: $0 --batch-apply cursor --dry-run      # 先看会改什么"
     echo "    例如: $0 --rollback cursor                   # 改坏了就退回上一份"
     echo ""

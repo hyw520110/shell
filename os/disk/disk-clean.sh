@@ -199,9 +199,12 @@ ensure_sudo() {
 CACHE_TTL=30
 
 # 简单缓存机制（兼容 bash 3.x）
-# 使用临时文件存储缓存
-CACHE_DIR="/tmp/disk_cleanup_cache"
-mkdir -p "$CACHE_DIR"
+# 不能放在 /tmp：清理临时文件时会把缓存目录自身删掉，导致后续 get_dir_size
+# 写入缓存时报“没有那个文件或目录”。放到用户缓存区并加隐藏前缀，避免被
+# “清理用户应用缓存”的 -not -name '.*' 规则扫到。
+CACHE_DIR="${HOME}/.cache/.disk_cleanup_cache"
+mkdir -p "$CACHE_DIR" 2>/dev/null || CACHE_DIR="${TMPDIR:-/tmp}/.disk_cleanup_cache_$$"
+mkdir -p "$CACHE_DIR" 2>/dev/null || true
 
 # 获取当前时间戳（兼容 macOS/BSD）
 get_timestamp() {
@@ -249,11 +252,23 @@ app_cleanup_label() {
     esac
 }
 
+# 获取文件修改时间（秒）。注意 GNU stat 的 -f 是 --file-system，
+# 在 Linux 上会输出整段文件系统信息而非时间戳；BSD/macOS 的 -f 才是取时间戳。
+stat_mtime() {
+    local file="$1"
+    if [[ "$OS_TYPE" == "Linux" ]]; then
+        stat -c %Y "$file" 2>/dev/null
+    else
+        stat -f %m "$file" 2>/dev/null
+    fi
+}
+
 # 清理过期缓存
 clean_expired_cache() {
     local current_time=$(get_timestamp)
     find "$CACHE_DIR" -type f -name "*.cache" 2>/dev/null | while read -r cache_file; do
-        local cache_time=$(stat -f %m "$cache_file" 2>/dev/null || stat -c %Y "$cache_file" 2>/dev/null)
+        local cache_time=$(stat_mtime "$cache_file")
+        [[ "$cache_time" =~ ^[0-9]+$ ]] || continue
         if (( current_time - cache_time > CACHE_TTL )); then
             rm -f "$cache_file" 2>/dev/null
         fi
@@ -281,9 +296,9 @@ get_dir_size() {
     
     # 检查缓存
     if [[ "$use_cache" == "true" && -f "$cache_file" ]]; then
-        local cache_time=$(stat -f %m "$cache_file" 2>/dev/null || stat -c %Y "$cache_file" 2>/dev/null)
+        local cache_time=$(stat_mtime "$cache_file")
         local current_time=$(get_timestamp)
-        if (( current_time - cache_time <= CACHE_TTL )); then
+        if [[ "$cache_time" =~ ^[0-9]+$ ]] && (( current_time - cache_time <= CACHE_TTL )); then
             normalize_scan_size "$(cat "$cache_file" 2>/dev/null)"
             return
         fi
@@ -329,6 +344,18 @@ confirm_action() {
     
     # 再读取输入
     read -r -p "? [y/N] " response
+    [[ "$response" =~ ^[Yy]$ ]]
+}
+
+# 清理项内部的细粒度确认：批量执行（主循环已整体验证过一次）时自动通过，
+# 避免每个子项再问一遍 y/N；单独运行某菜单项时仍保留询问。
+confirm_internal() {
+    local message="$1"
+    if [[ $BATCH_MODE -eq 1 ]]; then
+        return 0
+    fi
+    local response
+    read -r -p "  - 确认${message}? [y/N] " response
     [[ "$response" =~ ^[Yy]$ ]]
 }
 
@@ -1331,8 +1358,7 @@ cleanup_linux_specific() {
         # 清理系统缓存目录
         if [[ -d "/var/cache" ]]; then
             echo -e "  - 检测到系统缓存目录 /var/cache"
-            read -r -p "  - 确认清理系统缓存(/var/cache)? [y/N] " response
-            if [[ "$response" =~ ^[Yy]$ ]]; then
+            if confirm_internal "确认清理系统缓存(/var/cache)"; then
                 if sudo find /var/cache -mindepth 1 -maxdepth 1 -not -name ".*" -exec rm -rf {} + 2>/dev/null; then
                     echo -e "  ${GREEN}✓${NC} 已清理系统缓存"
                 else
@@ -1350,8 +1376,7 @@ cleanup_linux_specific() {
             local size_before
             size_before=$(get_dir_size "$cache_dir")
             echo -e "  - 当前大小: ${YELLOW}$size_before${NC}"
-            read -r -p "  - 确认清理用户应用缓存? [y/N] " response
-            if [[ "$response" =~ ^[Yy]$ ]]; then
+            if confirm_internal "确认清理用户应用缓存"; then
                 if find "$cache_dir" -mindepth 1 -maxdepth 1 \( -type f -o -type d \) -not -name ".*" -exec rm -rf {} + 2>/dev/null; then
                     local size_after
                     size_after=$(get_dir_size "$cache_dir")
@@ -1372,8 +1397,7 @@ cleanup_linux_specific() {
                 # 清理 APT 缓存 (Ubuntu/Debian)
                 if command -v apt &> /dev/null || command -v apt-get &> /dev/null; then
                     echo -e "\\n检测到 APT 包管理器"
-                    read -r -p "  - 确认清理 APT 缓存? [y/N] " response
-                    if [[ "$response" =~ ^[Yy]$ ]]; then
+                    if confirm_internal "确认清理 APT 缓存"; then
                         if sudo apt-get clean 2>/dev/null; then
                             echo -e "  ${GREEN}✓${NC} 已清理 APT 缓存"
                         else
@@ -1388,8 +1412,7 @@ cleanup_linux_specific() {
                 # 清理 YUM/DNF 缓存 (CentOS/RHEL/Fedora)
                 if command -v yum &> /dev/null || command -v dnf &> /dev/null; then
                     echo -e "\\n检测到 YUM/DNF 包管理器"
-                    read -r -p "  - 确认清理 YUM/DNF 缓存? [y/N] " response
-                    if [[ "$response" =~ ^[Yy]$ ]]; then
+                    if confirm_internal "确认清理 YUM/DNF 缓存"; then
                         if command -v dnf &> /dev/null; then
                             if sudo dnf clean all 2>/dev/null; then
                                 echo -e "  ${GREEN}✓${NC} 已清理 DNF 缓存"
@@ -1412,8 +1435,7 @@ cleanup_linux_specific() {
                 # 清理 Pacman 缓存 (Arch Linux/Manjaro)
                 if command -v pacman &> /dev/null; then
                     echo -e "\\n检测到 Pacman 包管理器"
-                    read -r -p "  - 确认清理 Pacman 缓存? [y/N] " response
-                    if [[ "$response" =~ ^[Yy]$ ]]; then
+                    if confirm_internal "确认清理 Pacman 缓存"; then
                         if sudo pacman -Sc 2>/dev/null; then
                             echo -e "  ${GREEN}✓${NC} 已清理 Pacman 缓存"
                         else
@@ -1428,8 +1450,7 @@ cleanup_linux_specific() {
                 # 清理 Zypper 缓存 (openSUSE)
                 if command -v zypper &> /dev/null; then
                     echo -e "\\n检测到 Zypper 包管理器"
-                    read -r -p "  - 确认清理 Zypper 缓存? [y/N] " response
-                    if [[ "$response" =~ ^[Yy]$ ]]; then
+                    if confirm_internal "确认清理 Zypper 缓存"; then
                         if sudo zypper clean 2>/dev/null; then
                             echo -e "  ${GREEN}✓${NC} 已清理 Zypper 缓存"
                         else
@@ -1444,8 +1465,7 @@ cleanup_linux_specific() {
                 # 检查是否有其他包管理器
                 if command -v apt &> /dev/null || command -v apt-get &> /dev/null; then
                     echo -e "\\n检测到 APT 包管理器"
-                    read -r -p "  - 确认清理 APT 缓存? [y/N] " response
-                    if [[ "$response" =~ ^[Yy]$ ]]; then
+                    if confirm_internal "确认清理 APT 缓存"; then
                         if sudo apt-get clean 2>/dev/null; then
                             echo -e "  ${GREEN}✓${NC} 已清理 APT 缓存"
                         else
@@ -1456,8 +1476,7 @@ cleanup_linux_specific() {
                     fi
                 elif command -v yum &> /dev/null || command -v dnf &> /dev/null; then
                     echo -e "\\n检测到 YUM/DNF 包管理器"
-                    read -r -p "  - 确认清理 YUM/DNF 缓存? [y/N] " response
-                    if [[ "$response" =~ ^[Yy]$ ]]; then
+                    if confirm_internal "确认清理 YUM/DNF 缓存"; then
                         if command -v dnf &> /dev/null; then
                             if sudo dnf clean all 2>/dev/null; then
                                 echo -e "  ${GREEN}✓${NC} 已清理 DNF 缓存"
@@ -1476,8 +1495,7 @@ cleanup_linux_specific() {
                     fi
                 elif command -v pacman &> /dev/null; then
                     echo -e "\\n检测到 Pacman 包管理器"
-                    read -r -p "  - 确认清理 Pacman 缓存? [y/N] " response
-                    if [[ "$response" =~ ^[Yy]$ ]]; then
+                    if confirm_internal "确认清理 Pacman 缓存"; then
                         if sudo pacman -Sc 2>/dev/null; then
                             echo -e "  ${GREEN}✓${NC} 已清理 Pacman 缓存"
                         else
@@ -1488,8 +1506,7 @@ cleanup_linux_specific() {
                     fi
                 elif command -v zypper &> /dev/null; then
                     echo -e "\\n检测到 Zypper 包管理器"
-                    read -r -p "  - 确认清理 Zypper 缓存? [y/N] " response
-                    if [[ "$response" =~ ^[Yy]$ ]]; then
+                    if confirm_internal "确认清理 Zypper 缓存"; then
                         if sudo zypper clean 2>/dev/null; then
                             echo -e "  ${GREEN}✓${NC} 已清理 Zypper 缓存"
                         else
@@ -1505,8 +1522,7 @@ cleanup_linux_specific() {
         # 清理 Docker 容器和镜像缓存
         if command -v docker &> /dev/null; then
             echo -e "\\n正在清理 Docker 缓存..."
-            read -r -p "  - 确认清理 Docker 容器和镜像缓存? [y/N] " response
-            if [[ "$response" =~ ^[Yy]$ ]]; then
+            if confirm_internal "确认清理 Docker 容器和镜像缓存"; then
                 if docker system prune -f 2>/dev/null; then
                     echo -e "  ${GREEN}✓${NC} 已清理 Docker 缓存"
                 else
@@ -1523,8 +1539,7 @@ cleanup_linux_specific() {
             local log_size
             log_size=$(get_dir_size "/var/log")
             echo -e "  - 检测到系统日志目录，大小: ${YELLOW}$log_size${NC}"
-            read -r -p "  - 确认清理旧日志文件 (保留最近)? [y/N] " response
-            if [[ "$response" =~ ^[Yy]$ ]]; then
+            if confirm_internal "确认清理旧日志文件 (保留最近)"; then
                 if sudo find /var/log -type f -name "*.log" -mtime +30 -delete 2>/dev/null; then
                     echo -e "  ${GREEN}✓${NC} 已清理旧日志文件"
                 else
@@ -1544,8 +1559,7 @@ cleanup_linux_specific() {
                 if [[ -n "$old_kernels" ]]; then
                     echo -e "  - 检测到旧内核:"
                     echo "$old_kernels"
-                    read -r -p "  - 确认删除旧内核? [y/N] " response
-                    if [[ "$response" =~ ^[Yy]$ ]]; then
+                    if confirm_internal "确认删除旧内核"; then
                         if echo "$old_kernels" | xargs sudo apt-get purge -y 2>/dev/null; then
                             echo -e "  ${GREEN}✓${NC} 已删除旧内核"
                         else
@@ -1563,8 +1577,7 @@ cleanup_linux_specific() {
         # 清理 Snap 缓存
         if command -v snap &> /dev/null; then
             echo -e "\\n正在清理 Snap 缓存..."
-            read -r -p "  - 确认清理 Snap 缓存? [y/N] " response
-            if [[ "$response" =~ ^[Yy]$ ]]; then
+            if confirm_internal "确认清理 Snap 缓存"; then
                 if snap set system refresh.retain=2 2>/dev/null && snap run --shell snap-store -c 'rm -rf /var/lib/snapd/cache/*' 2>/dev/null; then
                     echo -e "  ${GREEN}✓${NC} 已清理 Snap 缓存"
                 else
@@ -1578,8 +1591,7 @@ cleanup_linux_specific() {
         # 清理 Flatpak 缓存
         if command -v flatpak &> /dev/null; then
             echo -e "\\n正在清理 Flatpak 缓存..."
-            read -r -p "  - 确认清理 Flatpak 缓存? [y/N] " response
-            if [[ "$response" =~ ^[Yy]$ ]]; then
+            if confirm_internal "确认清理 Flatpak 缓存"; then
                 if flatpak uninstall --unused 2>/dev/null && flatpak cache cleanup 2>/dev/null; then
                     echo -e "  ${GREEN}✓${NC} 已清理 Flatpak 缓存"
                 else
@@ -1995,7 +2007,7 @@ else
     # Linux 专用菜单项
     MENU_ITEMS+=(
         "4|清理 Linux 系统缓存 (/var/cache)|true|linux|cleanup_linux_system_cache"
-        "5|清理包管理器缓存|true|linux|cleanup_linux_specific"
+        "5|清理包管理器缓存|true|linux|cleanup_package_manager_cache"
         "6|清理 Homebrew 缓存|true|both|cleanup_homebrew"
         "7|清理其他缓存 (NPM, Docker)|true|both|cleanup_npm_docker"
         "8|清理应用数据 (日志/缓存/VM镜像)|true|both|cleanup_app_data_cache"
@@ -2162,6 +2174,41 @@ cleanup_safari_history() {
 cleanup_linux_system_cache() {
     echo -e "\n${YELLOW}正在清理 Linux 系统缓存...${NC}"
     cleanup_linux_specific
+}
+
+# 只清理包管理器缓存；菜单项 4 已覆盖整个 cleanup_linux_specific，
+# 若第 5 项继续指向同一函数会导致 /var/cache、用户缓存、Docker、日志等重复清理。
+cleanup_package_manager_cache() {
+    echo -e "\n${YELLOW}正在清理包管理器缓存...${NC}"
+    ensure_sudo || return 1
+    case "$DISTRO" in
+        ubuntu|debian)
+            if command -v apt-get >/dev/null 2>&1; then
+                if confirm_internal "确认清理 APT 缓存"; then
+                    sudo apt-get clean 2>/dev/null && \
+                        echo -e "  ${GREEN}✓${NC} 已清理 APT 缓存" || \
+                        echo -e "  ${RED}✗${NC} 清理 APT 缓存时出现错误"
+                fi
+            fi
+            ;;
+        centos|rhel|fedora)
+            if command -v dnf >/dev/null 2>&1; then
+                confirm_internal "确认清理 DNF 缓存" && sudo dnf clean all 2>/dev/null
+            elif command -v yum >/dev/null 2>&1; then
+                confirm_internal "确认清理 YUM 缓存" && sudo yum clean all 2>/dev/null
+            fi
+            ;;
+        arch|manjaro)
+            if command -v pacman >/dev/null 2>&1; then
+                confirm_internal "确认清理 Pacman 缓存" && sudo pacman -Sc 2>/dev/null
+            fi
+            ;;
+        *)
+            if command -v apt-get >/dev/null 2>&1; then
+                confirm_internal "确认清理 APT 缓存" && sudo apt-get clean 2>/dev/null
+            fi
+            ;;
+    esac
 }
 
 # 5. macOS: 诊断报告 / Linux: 包管理器缓存
@@ -5296,7 +5343,7 @@ scan_item() {
                 SCAN_RESULT_SIZES[$idx]="0KB"
             fi
             ;;
-        "cleanup_linux_system_cache"|"cleanup_linux_specific")
+        "cleanup_linux_system_cache"|"cleanup_linux_specific"|"cleanup_package_manager_cache")
             local var_size=$(get_dir_size "/var/cache")
             local cache_size=$(get_dir_size "$HOME/.cache")
             if [[ "$var_size" != "0KB" && "$var_size" != "N/A" ]]; then
@@ -6459,11 +6506,6 @@ interactive_tui_menu() {
     trap cleanup_tui EXIT INT TERM
     
     echo -e "${YELLOW}${prompt}${NC}"
-    if [[ "$mode" == "initial" ]]; then
-        echo -e "${BLUE}操作: [↑/↓] 移动  [空格] 勾选  [a] 全选  [n] 全不选  [回车] 开始扫描  [q] 退出${NC}"
-    else
-        echo -e "${BLUE}操作: [↑/↓] 移动  [空格] 勾选  [a] 全选  [n] 全不选  [回车] 下一步  [q] 返回菜单${NC}"
-    fi
     echo ""
     
     local key
@@ -6519,12 +6561,14 @@ interactive_tui_menu() {
                 echo -e "\r\033[K----------------------------------------"
                 echo -e "\r\033[K当前已勾选项目总计可清理: ${GREEN}${sum_str}${NC}"
             fi
+            # 菜单项下方固定显示操作提示，避免列表过长时上方的提示滚出屏幕
+            echo -e "\r\033[K${BLUE}操作: ↑/↓ 移动 · 空格 勾选 · a 全选 · n 全不选 · 回车 ${mode:+确认} · q 退出${NC}"
             redraw=0
         fi
         
-        local up_lines=$num_options
+        local up_lines=$((num_options + 1))
         if [[ "$mode" == "scan_result" ]]; then
-            up_lines=$((num_options + 2))
+            up_lines=$((num_options + 3))
         fi
         
         IFS= read -rsn1 key
@@ -6620,25 +6664,24 @@ while true; do
     # 步骤2: 扫描选中的项目
     scan_selected_items
     
-    # 步骤3: 显示扫描结果，允许用户取消部分勾选
-    interactive_tui_menu "扫描完成！请确认要清理的项目:" "scan_result"
-    ret=$?
-    if [[ $ret -eq 1 ]]; then
+    # 步骤3: 直接过滤掉空/不可清理项（原 scan_result 菜单会做这件事，
+    # 现在去掉二次勾选菜单，但保留过滤，避免对空目录执行无效清理）
+    local filtered_items=()
+    for item_num in "${SELECTED_ITEMS[@]}"; do
+        idx=$(get_scan_index "$item_num")
+        if is_selectable_scan_size "${SCAN_RESULT_SIZES[$idx]:-}"; then
+            filtered_items+=("$item_num")
+        fi
+    done
+    if [[ ${#filtered_items[@]} -eq 0 ]]; then
         echo -e "${YELLOW}所有选中的项目均为空，无需清理${NC}"
         sleep 1
         continue
-    elif [[ $ret -eq 2 ]]; then
-        continue # 返回主菜单
     fi
-    
-    if [[ ${#SELECTED_ITEMS[@]} -eq 0 ]]; then
-        echo -e "${RED}未选择任何要清理的项目${NC}"
-        sleep 1
-        continue
-    fi
+    SELECTED_ITEMS=("${filtered_items[@]}")
 
-    # 步骤4: 过滤掉0KB/N/A的项目，直接执行清理
-    echo -e "\n${YELLOW}开始执行清理...${NC}\n"
+    # 步骤4: 显示将要清理的项目清单
+    echo -e "\n${YELLOW}扫描完成，以下项目将被清理:${NC}\n"
     
     items_to_clean=("${SELECTED_ITEMS[@]}")
     
@@ -6680,12 +6723,17 @@ while true; do
         }')
     fi
     
-    # 步骤3.5: 执行前二次确认 (避免回车直接删除)
+    # 步骤3.5: 执行前确认。清单已列出，提示合并为一行：回车执行、q 取消。
     echo ""
-    echo -e "${YELLOW}即将执行 ${#items_to_clean[@]} 项清理，预计释放 ${total_size_str}${NC}"
-    echo -ne "  - 按 ${GREEN}回车${NC} 确认执行，输入 ${YELLOW}q${NC} 取消: "
+    echo -ne "  - 共 ${#items_to_clean[@]} 项，预计释放 ${GREEN}${total_size_str}${NC}，按 ${GREEN}回车${NC} 执行，按 ${YELLOW}q${NC} 取消: "
     read -r confirm_input
     if [[ "$confirm_input" == "q" || "$confirm_input" == "Q" ]]; then
+        echo -e "${YELLOW}已取消执行，返回主菜单${NC}"
+        sleep 1
+        continue
+    fi
+    # 只认空回车执行，其它输入一律视为取消，避免误触直接删除
+    if [[ -n "$confirm_input" ]]; then
         echo -e "${YELLOW}已取消执行，返回主菜单${NC}"
         sleep 1
         continue
@@ -6699,7 +6747,6 @@ while true; do
     avail_before=$(df -k / 2>/dev/null | awk 'NR==2{print $4}')
     
     for item_num in "${items_to_clean[@]}"; do
-        echo -e "\n${BLUE}========================================${NC}"
         if execute_single_item "$item_num"; then
             ((success_count++))
         else
@@ -6709,8 +6756,7 @@ while true; do
     
     BATCH_MODE=0
     
-    echo -e "\n${BLUE}========================================${NC}"
-    echo -e "${GREEN}执行完成!${NC} 成功: $success_count, 失败: $fail_count"
+    echo -e "\n${GREEN}执行完成!${NC} 成功: $success_count, 失败: $fail_count"
     
     # 计算实际释放空间（清理前后的 df 可用空间差值）
     avail_after=$(df -k / 2>/dev/null | awk 'NR==2{print $4}')
