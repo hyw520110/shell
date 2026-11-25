@@ -6,13 +6,13 @@
   "install": {
     "type": "download",
     "setup": [
-      "运行 security/scanner/tscanplus/tscanplus.sh install mcp 安装官方 TscanPlus 构建",
-      "安装完成后重启 Codex，再检查 MCP 状态"
+      "运行 ai/scripts/tscanplus.sh install mcp 安装官方 TscanPlus 构建",
+      "安装完成后重启 Codex/客户端，再检查 MCP 状态"
     ]
   },
   "compatibility": {
     "check": "case \"$(uname -s 2>/dev/null)\" in Darwin|Linux) exit 0 ;; *) exit 1 ;; esac",
-    "reason": "需要先由 security/scanner/tscanplus/tscanplus.sh 安装 TscanPlus MCP 启动器；支持 macOS Intel/Apple Silicon 和 Linux x64/arm64。"
+    "reason": "需要先由 ai/scripts/tscanplus.sh 安装 TscanPlus MCP 启动器；安装后启动器自包含于 ~/.local/share/tscanplus/，不依赖仓库路径。支持 macOS Intel/Apple Silicon 和 Linux x64/arm64。"
   },
   "config": {
     "command": "tscanplus-mcp",
