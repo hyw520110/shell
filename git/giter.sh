@@ -33,7 +33,7 @@ DEFAULT_COMMIT_MSG="自动提交 $(date '+%Y-%m-%d %H:%M:%S')"
 GITER_CONFIG_HOME="${GITER_CONFIG_HOME:-$HOME/.config/giter}"
 GITER_REPO_CONFIG_DIR="$GITER_CONFIG_HOME/repos"
 GITER_AUTO_UPDATE_GITIGNORE="${GITER_AUTO_UPDATE_GITIGNORE:-1}"
-GITER_GIT_NETWORK_TIMEOUT="${GITER_GIT_NETWORK_TIMEOUT:-30}"
+GITER_GIT_NETWORK_TIMEOUT="${GITER_GIT_NETWORK_TIMEOUT:-180}"
 GITER_BRANCH_CACHE_TIMEOUT="${GITER_BRANCH_CACHE_TIMEOUT:-8}"
 GITER_SSH_CONNECT_TIMEOUT="${GITER_SSH_CONNECT_TIMEOUT:-10}"
 GITER_REFRESH_BRANCH_CACHE="${GITER_REFRESH_BRANCH_CACHE:-auto}"
@@ -73,7 +73,7 @@ GITER_HIDDEN_GIT_DIRS=()
 # 默认跳过超过该大小的文件，避免自动提交模型、压缩包、日志等大文件。
 MAX_STAGE_FILE_MB="${GITER_MAX_STAGE_FILE_MB:-50}"
 [[ "$MAX_STAGE_FILE_MB" =~ ^[0-9]+$ ]] || MAX_STAGE_FILE_MB=50
-[[ "$GITER_GIT_NETWORK_TIMEOUT" =~ ^[0-9]+$ ]] || GITER_GIT_NETWORK_TIMEOUT=30
+[[ "$GITER_GIT_NETWORK_TIMEOUT" =~ ^[0-9]+$ ]] || GITER_GIT_NETWORK_TIMEOUT=180
 [[ "$GITER_BRANCH_CACHE_TIMEOUT" =~ ^[0-9]+$ ]] || GITER_BRANCH_CACHE_TIMEOUT=8
 [[ "$GITER_SSH_CONNECT_TIMEOUT" =~ ^[0-9]+$ ]] || GITER_SSH_CONNECT_TIMEOUT=10
 [[ "$GITER_INPUT_TIMEOUT" =~ ^[0-9]+$ ]] || GITER_INPUT_TIMEOUT=5
@@ -432,7 +432,7 @@ Git 批量更新推送脚本 (增强版)
   GITER_MAX_STAGE_FILE_MB=50   自动暂存文件大小上限
   GITER_CONFIG_HOME=~/.config/giter
   GITER_AUTO_UPDATE_GITIGNORE=0 禁止自动写入嵌套 Git 仓库和排除目录到 .gitignore（默认启用）
-  GITER_GIT_NETWORK_TIMEOUT=30 Git fetch/push 网络操作超时秒数，0 表示不限制
+  GITER_GIT_NETWORK_TIMEOUT=180 Git fetch/push 网络操作超时秒数，0 表示不限制
   GITER_BRANCH_CACHE_TIMEOUT=8 分支列表远程缓存刷新超时秒数，0 表示不限制
   GITER_INPUT_TIMEOUT=5       交互输入等待秒数，超时采用当前提示的默认值，0 表示不限制
   GITER_PUSH_ALL_REMOTES=1    提交后自动发现并推送当前仓库全部可 push 远程；设为 0 时仅推送上游和显式 --push-remotes
@@ -620,7 +620,8 @@ run_git_push() {
     fi
 
     if [[ "$status" -eq 124 ]]; then
-        log_error "推送远程超时（${GITER_GIT_NETWORK_TIMEOUT}s），请检查网络或 SSH 认证。"
+        log_error "推送远程超时（${GITER_GIT_NETWORK_TIMEOUT}s）。本地提交已保留，重跑会继续推送；"
+        log_error "网络较慢时可加大超时，例如 GITER_GIT_NETWORK_TIMEOUT=600 giter（0 表示不限时）。"
     fi
     return "$status"
 }
@@ -1730,7 +1731,16 @@ stage_safe_changes() {
                     log_info "[dry-run] 将暂存重命名/复制: $old_path -> $new_path"
                     continue
                 fi
-                git add -A -- "$old_path" "$new_path"
+                # 重命名/复制在索引里已是暂存状态时，旧路径已不在索引也不在工作区，
+                # 直接把旧路径交给 git add 会报 pathspec 未匹配。只加仍然存在的路径。
+                local -a rename_targets=()
+                if [[ -e "$old_path" ]] || git ls-files --error-unmatch -- "$old_path" >/dev/null 2>&1; then
+                    rename_targets+=("$old_path")
+                fi
+                if [[ -e "$new_path" ]] || git ls-files --error-unmatch -- "$new_path" >/dev/null 2>&1; then
+                    rename_targets+=("$new_path")
+                fi
+                [[ ${#rename_targets[@]} -gt 0 ]] && git add -A -- "${rename_targets[@]}"
             fi
             continue
         fi
