@@ -469,9 +469,24 @@ client_target() {
     case "$1" in
         meta)   CLIENT_DIR="$HOME/.config/clash.meta"
                 CLIENT_API="http://127.0.0.1:9090"; CLIENT_SOCK=""; CLIENT_NAME="ClashX Meta" ;;
-        verge)  CLIENT_DIR="$HOME/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev"
-                CLIENT_API="http://127.0.0.1:9097"; CLIENT_SOCK="/tmp/verge/verge-mihomo.sock"
-                CLIENT_NAME="Clash Verge Rev" ;;
+        verge)
+                if [[ "$(uname -s)" == "Darwin" ]]; then
+                    CLIENT_DIR="$HOME/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev"
+                    CLIENT_SOCK="/tmp/verge/verge-mihomo.sock"
+                else
+                    local cand
+                    CLIENT_DIR=""
+                    for cand in \
+                        "$HOME/.local/share/io.github.clash-verge-rev.clash-verge-rev" \
+                        "$HOME/.local/share/clash-verge" \
+                        "$HOME/.config/clash-verge" \
+                        "$HOME/.config/io.github.clash-verge-rev.clash-verge-rev"; do
+                        [[ -d "$cand" ]] && { CLIENT_DIR="$cand"; break; }
+                    done
+                    [[ -n "$CLIENT_DIR" ]] || CLIENT_DIR="$HOME/.local/share/io.github.clash-verge-rev.clash-verge-rev"
+                    CLIENT_SOCK="$CLIENT_DIR/verge-mihomo.sock"
+                fi
+                CLIENT_API="http://127.0.0.1:9097"; CLIENT_NAME="Clash Verge Rev" ;;
         mihomo) CLIENT_DIR="$HOME/.config/mihomo"
                 CLIENT_API="http://127.0.0.1:9090"; CLIENT_SOCK=""; CLIENT_NAME="mihomo" ;;
         *)      return 1 ;;
@@ -594,11 +609,12 @@ find_core() {
     for c in "$MIHOMO_BIN" \
         "/Applications/Clash Verge.app/Contents/MacOS/verge-mihomo" \
         "/Applications/Clash Verge.app/Contents/MacOS/verge-mihomo-alpha" \
-        "$HOME/.local/bin/mihomo" /usr/local/bin/mihomo /opt/homebrew/bin/mihomo; do
+        "$HOME/.local/bin/mihomo" /usr/local/bin/mihomo /opt/homebrew/bin/mihomo \
+        /usr/bin/verge-mihomo /usr/bin/verge-mihomo-alpha /usr/bin/mihomo; do
         [[ -n "$c" && -f "$c" && -x "$c" ]] && { echo "$c"; return 0; }
     done
     # -x 对目录也成立（本仓库里就有个 network/mihomo/），命令名必须走 PATH 查绝对路径再判
-    for c in mihomo clash; do
+    for c in mihomo verge-mihomo clash; do
         p="$(command -v "$c" 2>/dev/null || true)"
         [[ -n "$p" && -f "$p" && -x "$p" ]] && { echo "$p"; return 0; }
     done
@@ -691,6 +707,7 @@ candidates_for() {
     printf '%s\n' "$url"
     if [[ "$url" =~ ^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.+)$ ]]; then
         printf 'https://gh-proxy.com/%s\n' "$url"
+        printf 'https://ghproxy.net/%s\n' "$url"
         printf 'https://cdn.jsdelivr.net/gh/%s/%s@%s/%s\n' \
             "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}"
     fi
@@ -703,13 +720,13 @@ fetch_one() {
         # 只有首选地址值得重试，镜像各试一次即可，否则全挂时要等很久
         tries=1; [[ $n == 1 ]] && tries=2
         for try in $(seq 1 "$tries"); do
-            if curl -fsSL --connect-timeout 8 -m 60 "$cand" -o "$out.tmp" </dev/null; then
+            # 失败细节写进日志，终端只留简洁提示，避免直连被重置时的 curl 报错刷屏
+            if curl -fsSL --connect-timeout 8 -m 30 "$cand" -o "$out.tmp" </dev/null 2>>"$WORK/fetch.log"; then
                 mv "$out.tmp" "$out" && return 0
             fi
             rm -f "$out.tmp"
             if [[ $try -lt "$tries" ]]; then
-                warn "下载失败，重试: $cand"
-                sleep 2
+                sleep 1
             fi
         done
     done
@@ -948,6 +965,28 @@ def yq(val):
 def norm_net(n):
     return {'websocket': 'ws', 'h2': 'http'}.get(n, n)
 
+def reality_sid(val):
+    """REALITY short-id 必须是偶数长度的十六进制串（0-16 位），否则内核直接 fatal。"""
+    s = re.sub(r'[^0-9a-fA-F]', '', '' if val is None else str(val))
+    if len(s) > 16:
+        s = s[:16]
+    if len(s) % 2:
+        s = s[:-1]
+    return s
+
+def sanitize_short_id(block):
+    """YAML 订阅里的 reality-opts.short-id 可能非法；清洗后写回，非法为空则删掉该行。"""
+    out = []
+    for ln in block.splitlines():
+        m = re.match(r'^(\s*)short-id:\s*(.*)$', ln)
+        if not m:
+            out.append(ln)
+            continue
+        sid = reality_sid(m.group(2).strip().strip('"\''))
+        if sid:
+            out.append('%sshort-id: %s' % (m.group(1), json.dumps(sid)))
+    return '\n'.join(out)
+
 def transport_opts(net, path, host, alpn):
     if net == 'grpc':
         return ['grpc-opts:', '  grpc-service-name: %s' % yq(path)] if path else []
@@ -1056,7 +1095,9 @@ def parse_link(line):
             rows.append('client-fingerprint: %s' % yq(params.get('fp') or 'chrome'))
             rows.append('reality-opts:')
             rows.append('  public-key: %s' % yq(params.get('pbk') or params.get('publickey') or ''))
-            rows.append('  short-id: %s' % yq(params.get('sid') or params.get('shortid') or ''))
+            sid = reality_sid(params.get('sid') or params.get('shortid') or '')
+            if sid:
+                rows.append('  short-id: %s' % json.dumps(sid))
     elif ntype == 'tuic':
         uuid, _, password = cred.partition(':')
         rows += ['uuid: %s' % yq(uuid), 'password: %s' % yq(password)]
@@ -1100,6 +1141,7 @@ skip = {'no-name': 0, 'bad-type': 0, 'bad-endpoint': 0, 'bad-link': 0, 'bad-bloc
 
 def add(raw_name, ntype, server, port, block):
     """YAML 区块和链接转换结果都汇到这里：校验、去重、统一改名。"""
+    block = sanitize_short_id(block)
     name, cc = localize(raw_name)
     name = name.strip()
     ntype = ntype.lower()

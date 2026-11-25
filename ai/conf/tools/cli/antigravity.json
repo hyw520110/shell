@@ -16,12 +16,12 @@
       {
         "name": "官方安装脚本（安全下载后执行）",
         "type": "bash",
-        "command": "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+        "command": "bash \"${SCRIPT_DIR}/scripts/antigravity.sh\" install cli",
         "check": "command -v agy >/dev/null 2>&1 || [ -x \"$HOME/.local/bin/agy\" ]",
         "uninstall": [
           {
             "description": "删除 Antigravity CLI 二进制文件",
-            "command": "if [ -f \"$HOME/.local/bin/agy\" ]; then rm -f \"$HOME/.local/bin/agy\" && echo '已删除 ~/.local/bin/agy'; else echo '未发现 ~/.local/bin/agy'; fi"
+            "command": "bash \"${SCRIPT_DIR}/scripts/antigravity.sh\" uninstall cli"
           }
         ]
       }
@@ -29,7 +29,7 @@
     "default_method": 0
   },
   "update": {
-    "command": "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+    "command": "bash \"${SCRIPT_DIR}/scripts/antigravity.sh\" update cli",
     "check": true
   },
   "config": {

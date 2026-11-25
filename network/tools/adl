@@ -18,6 +18,14 @@ readonly CYAN='\033[0;36m'
 readonly NC='\033[0m'
 
 # === 日志函数 ===
+# 默认 info 级别；设置 ADL_LOG_LEVEL=debug（或 ADL_DEBUG=1）可显示 debug 信息
+ADL_LOG_LEVEL="${ADL_LOG_LEVEL:-info}"
+log_debug() {
+    if [[ "$ADL_LOG_LEVEL" == "debug" || "${ADL_DEBUG:-0}" == "1" ]]; then
+        echo -e "${CYAN}[DEBUG]${NC} $*" >&2
+    fi
+    return 0
+}
 log_info() { echo -e "${GREEN}[INFO]${NC} $*" >&2; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $*" >&2; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
@@ -684,7 +692,7 @@ detect_and_config_proxy() {
         fi
     else
         clear_proxy_env
-        log_warn "直连和代理测速均失败，先尝试直连下载"
+        log_debug "直连和代理测速均失败，先尝试直连下载"
     fi
 }
 
@@ -848,7 +856,7 @@ download_error_action() {
     case "$tool:$code" in
         aria2:7|*:130|*:143) echo cancel ;;
         aria2:9|aria2:10|aria2:11|aria2:12|aria2:13|aria2:14|aria2:15|aria2:16|aria2:17|aria2:18|aria2:28|aria2:32|curl:23|curl:26|wget:2|wget:3) echo fatal ;;
-        aria2:3|aria2:4|aria2:8|aria2:23|aria2:24|curl:3|curl:33|curl:60|wget:5|wget:6) echo source ;;
+        aria2:3|aria2:4|aria2:8|aria2:23|aria2:24|curl:3|curl:28|curl:33|curl:60|wget:4|wget:5|wget:6) echo source ;;
         curl:22)
             case "$status" in
                 401|403|404|410) echo source ;;
@@ -903,12 +911,22 @@ auto_mirror() {
         log_info "检测到 Hugging Face 源，自动添加镜像: hf-mirror.com"
     fi
 
-    # GitHub Release -> ghproxy.com / ghps.cc
+    # GitHub Release -> 多个加速镜像（先探测可用性，只加入真正可用的）
     if [[ "$url" == *"github.com"* && "$url" == *"/releases/download/"* ]]; then
-        local mirror_url
-        mirror_url=$(echo "$url" | sed 's|https://github\.com|https://ghps.cc/https://github.com|g')
-        mirrors+=("$mirror_url")
-        log_info "检测到 GitHub Release，自动添加镜像: ghps.cc"
+        local candidate mirror_url code added=0
+        for candidate in "https://gh-proxy.com" "https://ghproxy.net" "https://ghps.cc"; do
+            mirror_url="${candidate}/${url}"
+            code=$(curl -sL -o /dev/null -w '%{http_code}' \
+                --connect-timeout 5 --max-time 12 -r 0-1023 "$mirror_url" 2>/dev/null || true)
+            if [[ "$code" == "200" || "$code" == "206" ]]; then
+                mirrors+=("$mirror_url")
+                added=$((added + 1))
+                log_info "检测到 GitHub Release，自动添加可用镜像: ${candidate#https://}"
+                [[ "$added" -lt 2 ]] || break
+            else
+                log_debug "GitHub 镜像不可用，跳过: ${candidate#https://} (HTTP ${code:-000})"
+            fi
+        done
     fi
 
     # 避免空数组时 unbound variable 错误
@@ -1410,8 +1428,8 @@ adl_magic_name() {
         49443304*) echo "mp3"; return 0 ;;
         fff2*|fff3*|fffa*|fffb*|ffe1*) echo "mp3"; return 0 ;;
         4d5347530700*) echo "dos"; return 0 ;;
-        213cf903*) echo "ar"; return 0 ;;
-        edabe5db*) echo "elf"; return 0 ;;
+        213c6172*) echo "ar"; return 0 ;;
+        edabeedb*) echo "rpm"; return 0 ;;
         4d415050496d616765*) echo "appimage"; return 0 ;;
         52494646*)
             at8=$(adl_read_hex_at "$file" 8 4)
@@ -1470,6 +1488,7 @@ adl_expected_format() {
         safetensors) echo "safetensors" ;;
         exe|dll) echo "dos" ;;
         deb) echo "ar" ;;
+        rpm) echo "rpm" ;;
         appimage) echo "appimage" ;;
         txt|md|markdown|log|json|jsonl|yaml|yml|toml|ini|cfg|conf|csv|tsv|xml|svg|html|htm|xhtml|css|scss|js|jsx|ts|tsx|py|sh|bash|zsh|c|cc|cpp|h|hpp|java|rb|go|rs|php|pl|sql|plist|properties|srt|vtt|tex|rst|lock|sum|sha256|md5|asc|pem|crt|cer|lic|license|manifest) echo "text" ;;
         *) echo "unknown" ;;
@@ -1729,6 +1748,18 @@ do_download() {
     # 添加镜像（如果存在）
     if [[ $# -gt 0 ]]; then
         all_urls+=("$@")
+    fi
+
+    # 直连源不可达但存在镜像时，优先走镜像，避免在每个不可达源上逐个超时
+    if [[ ${#all_urls[@]} -gt 1 ]] && command -v curl >/dev/null 2>&1; then
+        local primary_url primary_code
+        primary_url="${all_urls[0]}"
+        primary_code=$(curl -sL -o /dev/null -w '%{http_code}' \
+            --connect-timeout 5 --max-time 12 -r 0-1023 "$primary_url" 2>/dev/null || true)
+        if [[ "$primary_code" != "200" && "$primary_code" != "206" ]]; then
+            all_urls=("${all_urls[@]:1}" "$primary_url")
+            log_info "直连源不可达，优先使用镜像下载"
+        fi
     fi
 
     # 使用当前代理选择结果探测远端大小，避免直连 HEAD 失败后误判为小文件。
@@ -2155,6 +2186,7 @@ adl - Aria2 Downloader 并行下载加速工具
 用法: adl [选项] <URL> <保存目录> <文件名> [镜像1] [镜像2] ...
        adl --repo <org/model> -o <目录> [--progress]   # 下载整个 HF 模型仓库
        adl --setup-env
+       adl                        # 无参数时默认执行 --setup-env
 
 选项:
     -h, --help           显示此帮助信息
@@ -2178,7 +2210,7 @@ adl - Aria2 Downloader 并行下载加速工具
     - 优先使用 aria2 多线程加速
     - 下载后校验文件大小、文件格式（魔数）与可选 SHA256 校验
 
-提示: 首次运行建议执行: adl --setup-env
+提示: 首次运行直接执行: adl（无参数即 --setup-env）
 
 重试策略:
     - 小文件 (<100MB): 最多重试 5 次
@@ -2212,6 +2244,7 @@ adl - Aria2 Downloader 并行下载加速工具
     ADL_SHA256=<hex>             校验下载文件的 SHA256 哈希
     ADL_FORMAT_CHECK=1           下载后按魔数校验文件格式（0 关闭）
     ADL_FORMAT_STRICT=1          格式与后缀不符即失败（0 仅告警）
+    ADL_LOG_LEVEL=debug          显示 debug 信息（默认 info，不显示 debug）
     ADL_RETRY_ON_CHECKSUM=1      SHA256 校验失败后继续重试（默认失败即终止）
     ADL_PROXY_TEST_URL=https://github.com/favicon.ico 代理验证测试URL
     ADL_PROXY_TEST_TIMEOUT=5     代理验证超时时间(秒)
@@ -2387,6 +2420,7 @@ main() {
     local show_help=false
     local setup_env_only=false
     local install_deps=false
+    local adl_argc=$#
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -2440,6 +2474,11 @@ main() {
         esac
     done
 
+    # 无任何参数时默认执行 --setup-env
+    if [[ "$adl_argc" -eq 0 ]]; then
+        setup_env_only=true
+    fi
+
     # --setup-env 模式
     if [[ "$setup_env_only" = true ]]; then
         setup_env
@@ -2465,6 +2504,12 @@ main() {
     fi
 
     if [[ "$show_help" = true ]]; then
+        show_help
+        exit 0
+    fi
+
+    # 无位置参数（如直接运行 adl）时打印用法，避免 set -u 下 "$1" 未绑定报错
+    if [[ $# -lt 1 ]]; then
         show_help
         exit 0
     fi

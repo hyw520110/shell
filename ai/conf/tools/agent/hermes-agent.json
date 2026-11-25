@@ -15,14 +15,14 @@
       {
         "name": "官方安装脚本（含 MCP 支持）",
         "type": "bash",
-        "command": "UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ tmp=$(mktemp \"${TMPDIR:-/tmp}/aihub-hermes.XXXXXX\") && curl -fsSL -o \"$tmp\" https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh && UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ bash \"$tmp\"; rc=$?; rm -f \"$tmp\"; [ $rc -eq 0 ] && cd ~/.hermes/hermes-agent && ([ -x venv/bin/python ] || UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ uv venv venv) && (venv/bin/python -c 'import mcp' 2>/dev/null || UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ uv pip install --python venv/bin/python -e \".[mcp]\")",
+        "command": "bash \"${SCRIPT_DIR}/scripts/hermes.sh\" install",
         "check": true
       }
     ],
     "default_method": 0
   },
   "update": {
-    "command": "hermes update",
+    "command": "bash \"${SCRIPT_DIR}/scripts/hermes.sh\" update",
     "check": true
   },
   "config": {
@@ -46,7 +46,7 @@
     "tools": "hermes tools",
     "gateway": "hermes gateway",
     "doctor": "hermes doctor",
-    "mcp-install": "cd ~/.hermes/hermes-agent && ([ -x venv/bin/python ] || UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ uv venv venv) && (venv/bin/python -c 'import mcp' 2>/dev/null || UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ uv pip install --python venv/bin/python -e \".[mcp]\")",
+    "mcp-install": "bash \"${SCRIPT_DIR}/scripts/hermes.sh\" install-mcp",
     "mcp-config": "cat $HOME/.hermes/config.yaml 2>/dev/null || echo '配置文件不存在，请先运行 hermes setup'",
     "mcp-edit": "${EDITOR:-vim} $HOME/.hermes/config.yaml",
     "webui-install-docker": "docker pull ghcr.io/open-webui/open-webui:main",
@@ -233,7 +233,7 @@
   "uninstall_extended": [
     {
       "description": "彻底清理 Hermes Agent 所有文件",
-      "command": "echo '=== 开始彻底清理 Hermes Agent ===' && pkill -f 'hermes gateway' 2>/dev/null; if rm -rf $HOME/.hermes 2>/dev/null; then echo '✓ 删除配置目录 ~/.hermes'; else echo '✗ 配置目录不存在'; fi; if rm -rf $HOME/.local/share/hermes 2>/dev/null; then echo '✓ 删除数据目录'; else echo '✗ 数据目录不存在'; fi; if rm -f $HOME/.bashrc.d/hermes* $HOME/.zshrc.d/hermes* 2>/dev/null; then echo '✓ 删除 shell 配置'; else echo '✗ shell 配置不存在'; fi; echo '=== Hermes Agent 彻底清理完成 ==='"
+      "command": "bash \"${SCRIPT_DIR}/scripts/hermes.sh\" uninstall"
     }
   ]
 }

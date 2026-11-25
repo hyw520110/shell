@@ -42,7 +42,7 @@ detect_chrome_path() {
 
     # 检查缓存
     if [[ -f "$cache_file" ]]; then
-        local cache_time=$(stat -f %m "$cache_file" 2>/dev/null || stat -c %Y "$cache_file" 2>/dev/null)
+        local cache_time=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null)
         local current_time=$(date +%s)
         local cache_age=$((current_time - cache_time))
 

@@ -10,7 +10,7 @@
 # - 已安装时，交互式询问：更新 / 卸载 / 取消
 # -----------------------------------------------------------------------------
 # 用法:
-#   ./install-clash-verge.sh                # 交互式（推荐首次使用）
+#   ./install-clash-verge.sh                # 无参数默认安装（已安装则询问更新/卸载）
 #   ./install-clash-verge.sh --install      # 明确安装
 #   ./install-clash-verge.sh --update       # 强制更新到最新版
 #   ./install-clash-verge.sh --uninstall    # 卸载
@@ -33,9 +33,7 @@ ok()      { echo -e "${GREEN}[ OK ]${NC}  $1"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC}  $1"; }
 error()   { echo -e "${RED}[ERR ]${NC}  $1" >&2; }
 banner()  {
-  echo -e "${BLUE}===========================================================${NC}"
-  echo -e "${BLUE}         🚀  Clash Verge Rev 一键安装 / 更新 / 卸载${NC}"
-  echo -e "${BLUE}===========================================================${NC}"
+  echo -e "${BLUE}🚀  Clash Verge Rev 一键安装 / 更新 / 卸载${NC}"
   echo ""
 }
 
@@ -46,7 +44,7 @@ usage() {
   cat <<'EOF'
 Usage: ./install-clash-verge.sh [OPTIONS] [ACTION]
 
-ACTION（缺省时交互式询问）:
+ACTION（缺省时默认安装；已安装则交互式询问更新/卸载）:
   --install      安装 Clash Verge Rev（如已安装会提示先卸载/更新）
   --update       强制更新到最新版（先卸载旧版本）
   --uninstall    卸载当前安装的 Clash Verge Rev
@@ -138,7 +136,7 @@ query_release() {
   # 导致 sys.stdin.read() 读空串、json.loads 报 "Expecting value: line 1 column 1"。
   # JSON 改由环境变量传入，heredoc 仅作为脚本载体。
   ZCV_JSON="$json" python3 - <<'PY'
-import json, os, subprocess, sys
+import json, os, shutil, subprocess, sys
 try:
     release = json.loads(os.environ["ZCV_JSON"])
 except Exception as e:
@@ -154,32 +152,58 @@ except Exception:
 candidates = [a for a in release.get("assets", [])
               if not a.get("name","").endswith(".sig")]
 
-def matcher(n):
-    n = n.lower()
-    if plat == "darwin":
-        if machine in ("arm64","aarch64"):
-            return n.endswith("_aarch64.dmg")
-        return n.endswith("_x64.dmg")
-    if machine in ("arm64","aarch64"):
-        return n.endswith("_arm64.deb") or ("aarch64" in n and n.endswith(".rpm"))
-    if machine == "armv7l":
-        return n.endswith("_armhf.deb")
-    return n.endswith("_amd64.deb") or ("x86_64" in n and n.endswith(".rpm"))
+def have(cmd):
+    return shutil.which(cmd) is not None
 
-match = None
-for a in candidates:
-    if matcher(a["name"]):
-        match = a; break
+# 先确定本机应优先使用的包格式，避免 Debian 系（deepin/Ubuntu）误选 .rpm：
+# release 资产里 rpm 排在 deb 之前，若只按“架构匹配”取第一个就会拿到 rpm。
+if plat == "darwin":
+    pkg_format = "dmg"
+else:
+    if os.path.exists("/etc/debian_version") or have("dpkg"):
+        pkg_format = "deb"
+    elif (os.path.exists("/etc/redhat-release") or have("dnf")
+          or have("yum") or have("zypper") or have("rpm")):
+        pkg_format = "rpm"
+    else:
+        pkg_format = "deb"
 
-# Linux 无 .deb 时回退到 .rpm
-if (not match) and plat != "darwin":
+# 架构对应的包名标识
+if machine in ("arm64", "aarch64"):
+    deb_suffix = "_arm64.deb"
+    rpm_tokens = ("aarch64",)
+elif machine == "armv7l":
+    deb_suffix = "_armhf.deb"
+    rpm_tokens = ("armhfp", "armv7hl")
+elif machine in ("x86_64", "amd64"):
+    deb_suffix = "_amd64.deb"
+    rpm_tokens = ("x86_64", "amd64")
+else:
+    deb_suffix = "_%s.deb" % machine
+    rpm_tokens = (machine,)
+
+def match_for(fmt):
     for a in candidates:
-        n=a["name"].lower()
-        if n.endswith(".rpm"):
-            if machine in ("arm64","aarch64") and "aarch" in n:
-                match=a; break
-            if machine in ("x86_64","amd64") and ("x86_64" in n or "amd64" in n):
-                match=a; break
+        n = a["name"].lower()
+        if fmt == "dmg" and plat == "darwin":
+            if machine in ("arm64", "aarch64") and n.endswith("_aarch64.dmg"):
+                return a
+            if machine not in ("arm64", "aarch64") and n.endswith("_x64.dmg"):
+                return a
+        elif fmt == "deb":
+            if n.endswith(deb_suffix):
+                return a
+        elif fmt == "rpm":
+            if n.endswith(".rpm") and any(t in n for t in rpm_tokens):
+                return a
+    return None
+
+# 优先本机包格式，找不到时才回退到其他格式
+match = None
+for fmt in [pkg_format] + [f for f in ("deb", "rpm", "dmg") if f != pkg_format]:
+    match = match_for(fmt)
+    if match:
+        break
 
 if match is None:
     print("NO_MATCH\t\t")
@@ -203,7 +227,12 @@ validate_archive() {
 
   [ -s "$file" ] || { warn "产物为空: $file"; return 1; }
 
-  magic=$(head -c 4 "$file" | xxd -p 2>/dev/null)
+  # 优先 xxd；未安装时回退到 od（coreutils，Debian 默认存在），避免误判为未知格式
+  if command -v xxd >/dev/null 2>&1; then
+    magic=$(head -c 4 "$file" | xxd -p 2>/dev/null)
+  else
+    magic=$(od -An -tx1 -N4 "$file" 2>/dev/null | tr -d ' \n')
+  fi
   case "$magic" in
     6b50464b) ok "格式校验通过: DMG (kPFK)"; return 0 ;;   # DMG
     504b0304) ok "格式校验通过: ZIP/PKZip"; return 0 ;;    # zip 容器 (含 dmg)
@@ -582,10 +611,35 @@ install_clash_verge() {
         error "本系统没有 dpkg，检测到的包为 .deb，但此环境可能不是 Debian/Ubuntu。请改用适用于本发行版的包。"
         return 1
       fi
-      if [ "$(id -u)" -eq 0 ]; then
-        dpkg -i "$pkg_path"
+      local install_ok=0
+      if command -v apt-get >/dev/null 2>&1; then
+        # apt 能自动解析并安装依赖（如 libayatana-appindicator3-1），优先使用
+        info "使用 apt 安装（自动解决依赖）..."
+        if [ "$(id -u)" -eq 0 ]; then
+          if apt-get install -y "$pkg_path"; then install_ok=1; fi
+        else
+          if sudo apt-get install -y "$pkg_path"; then install_ok=1; fi
+        fi
+        if [ "$install_ok" -ne 1 ]; then
+          warn "apt 直接安装失败，改用 dpkg -i 并用 apt-get -f 修复依赖..."
+          if [ "$(id -u)" -eq 0 ]; then
+            dpkg -i "$pkg_path" || true
+            if apt-get install -f -y; then install_ok=1; fi
+          else
+            sudo dpkg -i "$pkg_path" || true
+            if sudo apt-get install -f -y; then install_ok=1; fi
+          fi
+        fi
       else
-        sudo dpkg -i "$pkg_path"
+        if [ "$(id -u)" -eq 0 ]; then
+          if dpkg -i "$pkg_path"; then install_ok=1; fi
+        else
+          if sudo dpkg -i "$pkg_path"; then install_ok=1; fi
+        fi
+      fi
+      if [ "$install_ok" -ne 1 ]; then
+        error "deb 安装失败：依赖未能自动解决，请手动安装依赖后重试"
+        return 1
       fi
     elif [ "$pkg_type" = "rpm" ]; then
       if [ "$pkg_type" = "rpm" ]; then
@@ -642,11 +696,11 @@ uninstall_clash_verge() {
     ok "已卸载: ${target}"
   else
     # Linux
-    if command -v dpkg >/dev/null 2>&1 && dpkg -l 2>/dev/null | grep -qi "clash.*verge"; then
+    if command -v dpkg >/dev/null 2>&1 && dpkg -l 2>/dev/null | grep -i "clash.*verge" >/dev/null; then
       local pkg
       pkg=$(dpkg -l 2>/dev/null | grep -iE "clash.*verge" | awk '{print $2}' | head -1)
       [ -n "$pkg" ] && sudo dpkg -r "$pkg"
-    elif command -v rpm >/dev/null 2>&1 && rpm -q clash-verge 2>/dev/null | grep -qv "not installed"; then
+    elif command -v rpm >/dev/null 2>&1 && rpm -q clash-verge 2>/dev/null | grep -v "not installed" >/dev/null; then
       sudo rpm -e clash-verge
     else
       warn "未检测到通过包管理器安装的 Clash Verge；若您是解压到本地目录，请手动删除。"
@@ -723,7 +777,7 @@ main() {
   fi
   ok "最新可用版本: ${tag} / ${pkg_name}"
 
-  # 3) 如果用户没指定动作，交互式询问
+  # 3) 如果用户没指定动作：未安装时直接安装；已安装时交互式询问更新/卸载
   if [ -z "$ACTION" ]; then
     if [ -n "$INSTALLED_VERSION" ]; then
       echo ""
@@ -740,16 +794,7 @@ main() {
         *) ACTION="cancel" ;;
       esac
     else
-      echo ""
-      echo -e "${CYAN}未检测到已安装版本，请选择操作：${NC}"
-      echo "  1) 安装 Clash Verge Rev ${tag}"
-      echo "  2) 取消"
-      printf "输入 [1-2]："
-      read -r _reply || _reply="2"
-      case "$_reply" in
-        1) ACTION="install" ;;
-        *) ACTION="cancel" ;;
-      esac
+      ACTION="install"
     fi
   fi
 
@@ -787,11 +832,9 @@ main() {
   esac
 
   echo ""
-  echo -e "${GREEN}============================================================${NC}"
-  echo -e "${GREEN}  操作完成。${NC}"
-  echo -e "  安装目录: ${INSTALL_DIR:-/Applications}（Linux 由包管理器管理）"
-  echo -e "  下载缓存: ${DOWNLOAD_DIR}"
-  echo -e "${GREEN}============================================================${NC}"
+  echo -e "${GREEN}操作完成。${NC}"
+  echo -e "安装目录: ${INSTALL_DIR:-/Applications}（Linux 由包管理器管理）"
+  echo -e "下载缓存: ${DOWNLOAD_DIR}"
 }
 
 main "$@"

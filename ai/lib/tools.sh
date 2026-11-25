@@ -262,10 +262,10 @@ _get_config_mtime() {
 
     {
         local stat_cmd=""
-        if stat -f "%m" . >/dev/null 2>&1; then
-            stat_cmd="stat -f %m:%N"
-        elif stat -c "%Y" . >/dev/null 2>&1; then
+        if stat -c "%Y" . >/dev/null 2>&1; then
             stat_cmd="stat -c %Y:%n"
+        elif stat -f "%m" . >/dev/null 2>&1; then
+            stat_cmd="stat -f %m:%N"
         fi
 
         if [[ -n "$stat_cmd" ]]; then
@@ -310,7 +310,7 @@ _load_tools_status_cache() {
         return 1
     fi
 
-    local cache_age=$(($(date +%s) - $(stat -f %m "$TOOLS_STATUS_CACHE_FILE" 2>/dev/null || stat -c %Y "$TOOLS_STATUS_CACHE_FILE" 2>/dev/null || echo 0)))
+    local cache_age=$(($(date +%s) - $(stat -c %Y "$TOOLS_STATUS_CACHE_FILE" 2>/dev/null || stat -f %m "$TOOLS_STATUS_CACHE_FILE" 2>/dev/null || echo 0)))
     if [[ $cache_age -gt $TOOLS_STATUS_CACHE_TTL ]]; then
         rm -f "$TOOLS_STATUS_CACHE_FILE" 2>/dev/null || true
         return 1

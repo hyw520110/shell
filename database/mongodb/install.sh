@@ -1,410 +1,318 @@
 #!/bin/bash
-# MongoDB 安装脚本
-# 支持 Docker 模式和主机模式，支持 macOS 和 Linux
+# 脚本名称：MongoDB安装脚本
+# https://www.mongodb.com/zh-cn/docs/database-tools/installation/installation-linux/
+# https://downloads.mongodb.com/compass/mongodb-mongosh_2.3.3_amd64.deb
+# https://fastdl.mongodb.org/tools/db/mongodb-database-tools-debian10-x86_64-100.10.0.tgz
+# 默认安装目录
+INSTALL_DIR="/opt/mongodb"
+# 下载目录：本地安装包不存在时，下载安装包的目录
+DOWNLOAD_DIR="/opt/softs"
+# 配置文件路径
+CONF_FILE=${INSTALL_DIR}/mongo/conf/mongodb.conf
+# 自启服务文件
+SERVICE_FILE=/usr/lib/systemd/system/mongodb.service
+# 环境变量文件
+ENV_FILE=/etc/profile.d/mongo.sh
+# 进程服务及目录所属用户及用户组
+USR=mongodb
+GROUP=mongodb
+# 默认端口
+PORT=27017
+# apt-get install -y libssl1.1
+# 导入公共脚本
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../os/bin/os_common.sh"
 
-set -euo pipefail
-
-# === 颜色定义 ===
-readonly RED='\033[0;31m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
-readonly BLUE='\033[0;34m'
-readonly CYAN='\033[0;36m'
-readonly NC='\033[0m'
-
-log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-log_ok() { echo -e "${GREEN}[OK]${NC} $*"; }
-
-# === 常量 ===
-MONGODB_VERSION="7.0.0"
-DEFAULT_INSTALL_DIR="$HOME/mongodb"
-DEFAULT_DOWNLOAD_DIR="$HOME/Downloads"
-DEFAULT_PORT=27017
-
-# === 全局变量 ===
-INSTALL_DIR="$DEFAULT_INSTALL_DIR"
-DOWNLOAD_DIR="${DOWNLOAD_DIR:-$DEFAULT_DOWNLOAD_DIR}"
-PORT="$DEFAULT_PORT"
-INSTALL_MODE="auto"   # auto|docker|host
-UNINSTALL_MODE=false
-DRY_RUN=false
-
-# === 帮助 ===
-show_usage() {
-    cat <<EOF
-MongoDB 安装脚本
-
-用法: $0 [选项]
-
-选项:
-    -h, --help                  显示此帮助
-    -d, --dir DIR               安装目录 (默认: ~/mongodb)
-    -w, --download-dir DIR      下载目录 (默认: ~/Downloads)
-    -p, --port PORT             端口号 (默认: 27017)
-    -m, --mode MODE             安装模式: auto|docker|host (默认: auto)
-    --dry-run                   试运行
-    --uninstall                 卸载 MongoDB
-
-示例:
-    $0                          # 自动模式安装
-    $0 --mode host              # 强制主机模式
-    $0 --mode docker            # 强制 Docker 模式
-    $0 --uninstall              # 卸载
-EOF
-}
-
-# === 参数解析 ===
-parse_args() {
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -h|--help) show_usage; exit 0 ;;
-            -d|--dir)
-                INSTALL_DIR="${2/#\~/$HOME}"
-                shift 2 ;;
-            -w|--download-dir)
-                DOWNLOAD_DIR="${2/#\~/$HOME}"
-                shift 2 ;;
-            -p|--port)
-                PORT="$2"
-                shift 2 ;;
-            -m|--mode)
-                INSTALL_MODE="$2"
-                shift 2 ;;
-            --dry-run) DRY_RUN=true; shift ;;
-            --uninstall) UNINSTALL_MODE=true; shift ;;
-            *) log_error "未知选项: $1"; show_usage; exit 1 ;;
-        esac
+find_and_extract_mongodb_binary() {
+    tgz_files_current=$(ls mongodb*.tgz 2>/dev/null)
+    tgz_files_download=$(ls ${DOWNLOAD_DIR}/mongodb*.tgz 2>/dev/null)
+    # 查找当前目录和下载目录下是否有安装包
+    tgz_files=$(echo "$tgz_files_current $tgz_files_download" | tr ' ' '\n' | sort -u | tr '\n' ' '|xargs)
+    while true; do
+        if [ "$(echo $tgz_files | wc -w)" -gt 1 ]; then
+            echo "找到多个 MongoDB 二进制文件，请选择:"
+            for i in $(echo "$tgz_files"); do
+                echo "$i"
+            done
+            read -t 5 -p "请输入数字选择一个: " choice
+            if [ "$choice" -lt 1 ] || [ "$choice" -gt "$(echo $tgz_files | wc -w)" ]; then
+                echo "无效的选择，请重新输入."
+                continue
+            else
+                tgz_files=$(echo "$tgz_files" | sed -n "${choice}p")
+                break
+            fi
+        fi
+        if [ ! -f "$tgz_files" ]; then
+            read -t 8 -p "未找到MongoDB二进制文件，请输入本地路径 (或按Enter自动下载): " tgz_path
+            if [ -z "$tgz_path" ]; then
+                tgz_files=$(download_binary)
+                break
+            elif [ ! -f "$tgz_path" ]; then
+                echo "指定的路径不存在，请重新输入."
+                continue
+            else
+                tgz_files="$tgz_path"
+                break
+            fi
+        else
+            break
+        fi
     done
+   if [ ! -f "$tgz_files" ]; then
+      echo "查找或下载失败，退出脚本。"
+      exit 1
+    fi
+    echo "解压:${tgz_files}到${INSTALL_DIR}" && tar -zxf $tgz_files -C ${INSTALL_DIR}
+    folder_name=$(ls ${INSTALL_DIR} | grep -E '^mongodb-.*' | tail -1)
+    mv "${INSTALL_DIR}/$folder_name" ${INSTALL_DIR}/mongo
+    echo "解压完成:${INSTALL_DIR}/mongo"
+}
+download_binary() {
+    local tgz_files="${DOWNLOAD_DIR}/mongodb-linux.tgz"
+    if [ -f $tgz_files ]; then
+        echo "$tgz_files"
+        return
+    fi
+    arch="x86_64"
+    local distro=$(get_distro_version)
+    wget -O $tgz_files "https://fastdl.mongodb.org/linux/mongodb-linux-${arch}-${distro}-6.0.16.tgz" && echo "$tgz_files" || echo ""
+}
+configure_env_var() {
+    [ ! -f $ENV_FILE ] && echo 'export PATH=$PATH:${INSTALL_DIR}/mongo/bin' >> $ENV_FILE
+    source $ENV_FILE
 }
 
-# === 检测系统 ===
-detect_os() {
-    case "$(uname -s)" in
-        Darwin*) echo "macos" ;;
-        Linux*) echo "linux" ;;
-        *) echo "unknown" ;;
-    esac
+create_dirs() {
+    if [ ! -d "${INSTALL_DIR}/mongo/db" ] || [ ! -d "${INSTALL_DIR}/mongo/logs" ]; then
+      mkdir -p ${INSTALL_DIR}/mongo/{db,logs,conf}
+    fi
+    [ ! -f ${INSTALL_DIR}/mongo/mongodb.pid ] && touch ${INSTALL_DIR}/mongo/mongodb.pid && chmod 600 ${INSTALL_DIR}/mongo/*.pid
+    create_user_and_group $USR $GROUP
+    chown -R $USR:$GROUP ${INSTALL_DIR}/mongo
+    chmod -R 755 ${INSTALL_DIR}/mongo
+    chmod -R 700 ${INSTALL_DIR}/mongo/db ${INSTALL_DIR}/mongo/logs ${INSTALL_DIR}/mongo/conf
 }
 
-OS_TYPE=$(detect_os)
-
-# === Docker 检测 ===
-docker_available() {
-    command -v docker &>/dev/null && docker info &>/dev/null
-}
-
-# === 下载函数 ===
-download_file() {
-    local url="$1" output="$2"
-    local output_dir="$(dirname "$output")"
-    local output_file="$(basename "$output")"
-
-    if [ -d "$output_dir" ] && [ ! -w "$output_dir" ]; then
-        log_warn "下载目录无写入权限，尝试修复"
-        if command -v sudo &>/dev/null; then
-            sudo chown "$(id -u):$(id -g)" "$output_dir" 2>/dev/null || true
-        fi
-    fi
-    mkdir -p "$output_dir"
-
-    if [ -f "$output" ] && [ ! -w "$output" ]; then
-        if command -v sudo &>/dev/null; then
-            sudo rm -f "$output" 2>/dev/null || true
-        fi
-    fi
-
-    if command -v adl &>/dev/null; then
-        log_info "使用 adl 下载"
-        adl "$url" "$output_dir" "$output_file"
-        return $?
-    fi
-    if command -v curl &>/dev/null; then
-        log_info "使用 curl 下载"
-        curl -L -C - -o "$output" "$url"
-        return $?
-    fi
-    if command -v wget &>/dev/null; then
-        log_info "使用 wget 下载"
-        wget -c -O "$output" "$url"
-        return $?
-    fi
-    log_error "未找到可用下载工具"
-    return 1
-}
-
-verify_archive() {
-    local file="$1"
-    [ -f "$file" ] && [ -s "$file" ] && tar -tzf "$file" &>/dev/null
-}
-
-# === Docker 模式安装 ===
-install_docker() {
-    log_info "使用 Docker 模式安装 MongoDB"
-
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[Dry-run] 将创建 Docker Compose 配置到 $INSTALL_DIR"
-        return 0
-    fi
-
-    mkdir -p "$INSTALL_DIR"
-
-    cat > "$INSTALL_DIR/docker-compose.yml" <<EOF
-version: '3.8'
-
-services:
-  mongodb:
-    image: mongo:${MONGODB_VERSION}
-    container_name: mongodb
-    restart: unless-stopped
-    ports:
-      - "${PORT}:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: root
-    volumes:
-      - mongodb-data:/data/db
-      - ./init:/docker-entrypoint-initdb.d
-    networks:
-      - mongodb-network
-
-volumes:
-  mongodb-data:
-
-networks:
-  mongodb-network:
-    driver: bridge
-EOF
-
-    cat > "$INSTALL_DIR/start.sh" <<'EOF'
-#!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
-if docker compose version &>/dev/null; then
-    docker compose up -d
-else
-    docker-compose up -d
-fi
-echo "MongoDB 已启动"
-EOF
-    chmod +x "$INSTALL_DIR/start.sh"
-
-    cat > "$INSTALL_DIR/stop.sh" <<'EOF'
-#!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
-if docker compose version &>/dev/null; then
-    docker compose down
-else
-    docker-compose down
-fi
-echo "MongoDB 已停止"
-EOF
-    chmod +x "$INSTALL_DIR/stop.sh"
-
-    log_ok "MongoDB Docker 配置创建完成"
-    log_info "启动: $INSTALL_DIR/start.sh"
-}
-
-# === 主机模式安装 ===
-install_host() {
-    log_info "使用主机模式安装 MongoDB"
-
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[Dry-run] 将下载到 $DOWNLOAD_DIR 并安装到 $INSTALL_DIR"
-        return 0
-    fi
-
-    local arch
-    case "$(uname -m)" in
-        x86_64|amd64) arch="x86_64" ;;
-        arm64|aarch64) arch="aarch64" ;;
-        *) log_error "不支持的架构: $(uname -m)"; exit 1 ;;
-    esac
-
-    local os_name
-    case "$OS_TYPE" in
-        macos) os_name="macos" ;;
-        linux) os_name="linux" ;;
-        *) log_error "不支持的操作系统"; exit 1 ;;
-    esac
-
-    local tgz_name="mongodb-${os_name}-${arch}-${MONGODB_VERSION}.tgz"
-    local url="https://fastdl.mongodb.org/${os_name}/${tgz_name}"
-    local archive="$DOWNLOAD_DIR/$tgz_name"
-
-    mkdir -p "$DOWNLOAD_DIR"
-
-    if [ -f "$archive" ] && verify_archive "$archive"; then
-        log_info "检测到已存在安装包: $archive"
+ask_for_replica_set() {
+    read -t 3 -p "是否启用副本集? (y/n) 默认(y): " use_replica_set
+    use_replica_set=${use_replica_set:-y}
+    if [ "$use_replica_set" == "n" ]; then
+        echo ""
     else
-        log_info "下载 MongoDB: $url"
-        if ! download_file "$url" "$archive"; then
-            log_error "下载失败"
-            exit 1
-        fi
-        if ! verify_archive "$archive"; then
-            log_error "安装包验证失败"
-            rm -f "$archive"
-            exit 1
-        fi
+        read -t 5 -p "请输入副本集名称 (默认为 rs0): " replica_set_name
+        replica_set_name=${replica_set_name:-rs0}
+        echo "$replica_set_name"
     fi
-
-    # 解压
-    local temp_dir
-    temp_dir="$(mktemp -d)"
-    tar -xzf "$archive" -C "$temp_dir"
-
-    local extracted
-    extracted="$(find "$temp_dir" -maxdepth 1 -type d | grep -v "^$temp_dir$" | head -1)"
-    if [ -z "$extracted" ]; then
-        rm -rf "$temp_dir"
-        log_error "解压后未找到 MongoDB 目录"
-        exit 1
-    fi
-
-    # 安装到目标目录
-    mkdir -p "$INSTALL_DIR"
-    rm -rf "$INSTALL_DIR"/*
-    cp -R "$extracted"/* "$INSTALL_DIR/"
-    rm -rf "$temp_dir"
-
-    # 创建目录
-    mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/logs" "$INSTALL_DIR/conf"
-
-    # 创建配置
-    cat > "$INSTALL_DIR/conf/mongodb.conf" <<EOF
+}
+create_mongodb_conf() {
+    create_dirs
+    replica_set_name=$(ask_for_replica_set)
+    keyfile_path=$(generate_keyfile ${INSTALL_DIR}/mongo/conf/mongodb.key)
+    [ -f $keyfile_path ] && chmod 400 $keyfile_path
+    data_dir="${INSTALL_DIR}/mongo/db"
+    cat <<EOF > $CONF_FILE
+net:
+  port: $PORT
+  # 127.0.0.1只允许本机访问，如果想让其他主机能访问修改为0.0.0.0
+  bindIp: 0.0.0.0
 storage:
-  dbPath: ${INSTALL_DIR}/data
+  dbPath: ${data_dir}
   journal:
     enabled: true
-
-net:
-  port: ${PORT}
-  bindIp: 127.0.0.1
-
-systemLog:
-  destination: file
-  path: ${INSTALL_DIR}/logs/mongodb.log
-  logAppend: true
-
 processManagement:
   fork: true
-  pidFilePath: ${INSTALL_DIR}/mongodb.pid
+  pidFilePath: ${INSTALL_DIR}/mongo/mongodb.pid
+systemLog:
+  destination: file
+  logAppend: true
+  path: ${INSTALL_DIR}/mongo/logs/mongodb.log
+# 认证配置在初始化副本集和初始用户后开启
+#security:
+#  authorization: enabled
+#  keyFile: $keyfile_path
 EOF
+    if [ -n "$replica_set_name" ]; then
+      echo "replication: " >> $CONF_FILE
+      echo "  replSetName: $replica_set_name" >> $CONF_FILE
 
-    # 创建启动脚本
-    cat > "$INSTALL_DIR/start.sh" <<EOF
-#!/bin/bash
-if pgrep -f "mongod.*${INSTALL_DIR}" > /dev/null 2>&1; then
-    echo "MongoDB 已在运行"
-    exit 0
-fi
-"${INSTALL_DIR}/bin/mongod" --config "${INSTALL_DIR}/conf/mongodb.conf"
-echo "MongoDB 已启动，端口: ${PORT}"
-EOF
-    chmod +x "$INSTALL_DIR/start.sh"
-
-    # 创建停止脚本
-    cat > "$INSTALL_DIR/stop.sh" <<EOF
-#!/bin/bash
-pids="\$(pgrep -f "mongod.*${INSTALL_DIR}" || true)"
-if [ -n "\$pids" ]; then
-    kill \$pids 2>/dev/null || true
-    sleep 2
-    pids="\$(pgrep -f "mongod.*${INSTALL_DIR}" || true)"
-    [ -n "\$pids" ] && kill -9 \$pids 2>/dev/null || true
-fi
-echo "MongoDB 已停止"
-EOF
-    chmod +x "$INSTALL_DIR/stop.sh"
-
-    log_ok "MongoDB 主机模式安装完成"
+      local ports=(27018 27019 27020)
+      for p in "${ports[@]}"; do
+        cp $CONF_FILE ${INSTALL_DIR}/mongo/conf/mongodb_${p}.conf
+        local conf_file="${INSTALL_DIR}/mongo/conf/mongodb_${p}.conf"
+        local log_file="${INSTALL_DIR}/mongo/logs/mongodb${p}.log"
+        local data_dir="${INSTALL_DIR}/mongo/db/${p}"
+        [ ! -d $data_dir ] && mkdir $data_dir
+        sed -i  "s#${PORT}#$p#g" $conf_file
+        sed -i  "s#${INSTALL_DIR}/mongo/logs/mongodb.log#$log_file#g" $conf_file
+        sed -i  "s#${INSTALL_DIR}/mongo/db#$data_dir#g" $conf_file
+        sed -i  "s#mongodb.pid#mongodb${p}.pid#g" $conf_file
+      done
+    fi
+    chown $USR:$GROUP -R ${INSTALL_DIR}/mongo
 }
+create_systemd_service() {
+    cat <<EOF > $SERVICE_FILE
+[Unit]
+Description=MongoDB Database Server
+After=network.target
 
-# === 卸载 ===
-uninstall_mongodb() {
-    log_info "卸载 MongoDB..."
+[Service]
+Type=forking
+User=$USR
+Group=$GROUP
+ExecStart=${INSTALL_DIR}/mongo/bin/mongod --config $CONF_FILE
+PIDFile=${INSTALL_DIR}/mongo/mongodb.pid
+Restart=on-failure
+LimitNOFILE=65536
+TimeoutStartSec=130
 
-    if [[ "$DRY_RUN" == true ]]; then
-        log_info "[Dry-run] 将删除 $INSTALL_DIR"
-        return 0
+[Install]
+WantedBy=multi-user.target
+EOF
+    count=$(find $INSTALL_DIR/mongo/conf/ -name "mongodb_*.conf"|wc -l)
+    if [ $count -eq 0 ];then
+      count=$(find $INSTALL_DIR/mongo/conf/ -name "mongodb*.conf"|wc -l)
     fi
-
-    # 停止主机进程
-    if pgrep -f "mongod.*$INSTALL_DIR" &>/dev/null; then
-        log_info "停止 MongoDB 进程..."
-        pids="$(pgrep -f "mongod.*$INSTALL_DIR" || true)"
-        [ -n "$pids" ] && kill $pids 2>/dev/null || true
-        sleep 2
-        pids="$(pgrep -f "mongod.*$INSTALL_DIR" || true)"
-        [ -n "$pids" ] && kill -9 $pids 2>/dev/null || true
+    systemctl daemon-reload
+    if [ $count -le 1 ];then
+      systemctl enable mongodb
+      if systemctl is-active mongodb &> /dev/null; then
+          echo -e "${GREEN}MongoDB 服务正在运行。${NC}"
+      else
+          systemctl start mongodb
+      fi
+      systemctl status mongodb
+    else
+      systemctl disable mongodb
+      local ports=(27018 27019 27020)
+      for p in "${ports[@]}"; do
+        local file="/etc/systemd/system/mongodb${p}.service"
+        cp $SERVICE_FILE $file
+        sed -i "s#mongodb.conf#mongodb_${p}.conf#g" $file
+        sed -i "s#\.pid#${p}\.pid#g" $file
+        systemctl enable mongodb${p}
+        systemctl start mongodb${p}
+      done
     fi
-
-    # 停止 Docker 容器
-    if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
-        log_info "停止 Docker 容器..."
-        cd "$INSTALL_DIR"
-        if docker compose version &>/dev/null; then
-            docker compose down -v 2>/dev/null || true
-        elif command -v docker-compose &>/dev/null; then
-            docker-compose down -v 2>/dev/null || true
-        fi
-    fi
-
-    # 删除安装目录
-    if [ -d "$INSTALL_DIR" ]; then
-        log_info "删除安装目录: $INSTALL_DIR"
-        rm -rf "$INSTALL_DIR"
-    fi
-
-    log_ok "MongoDB 卸载完成"
 }
+validate_login() {
+    local result=""
+    local retries=3
+    echo "mongosh $1 --username $2 --password $3 --authenticationDatabase admin 登录验证..."
+    while [ $retries -gt 0 ]; do
+      sleep 5
+      # https://www.mongodb.com/try/download/shell
+      if mongosh $1 --username "$2" --password "$3" --authenticationDatabase "admin" --eval "db.runCommand({connectionStatus: 1})"; then
+        result="$2用户登录成功。"
+        break
+      else
+        echo "重试验证..."
+        result="$2用户登录失败。"
+      fi
+      retries=$((retries - 1))
+    done
+    echo "$result"
+}
+init_mongodb() {
+  # 初始化时通常端口小在先，通常为主节点
+  local addr="mongodb://localhost:27017/admin"
+  local host_name=$(get_dns_hostname)
+  grep -q "replSetName:" $CONF_FILE || addr="mongodb://localhost:27017/admin"
+  echo -n "${addr}等待接受连接..."
+  wait_sec=60
+  if wait_for_process_ready $wait_sec "mongosh $addr --eval 'db.runCommand({connectionStatus: 1});'"; then
+    echo "已准备好接受连接。"
+  else
+    echo "未能在${wait_sec}秒内准备好接受连接。"
+  fi
+  if grep -q "replSetName:" $CONF_FILE;then
+    replSetName=$(cat $INSTALL_DIR/mongo/conf/*.conf |grep "replSetName:"|head -n 1|awk -F': ' '{print $2}')
+    mongosh $addr <<EOF
+rs.initiate(
+  {
+    _id: "$replSetName",
+    members: [
+      { _id: 0, host: "$host_name:27018" },
+      { _id: 1, host: "$host_name:27019" },
+      { _id: 2, host: "$host_name:27020" }
+    ]
+  }
+);
+EOF
 
-# === 主函数 ===
-main() {
-    parse_args "$@"
-
-    if [[ "$UNINSTALL_MODE" == true ]]; then
-        uninstall_mongodb
-        exit 0
+    if wait_for_process_ready $wait_sec "mongosh $addr --eval 'rs.status();'|grep -q "PRIMARY""; then
+      mongosh $addr --eval 'rs.status();'|grep -B 3 "PRIMARY"|grep "name: "|awk '{print $2}'
     fi
+  fi
 
-    log_info "MongoDB 安装"
-    log_info "安装目录: $INSTALL_DIR"
-    log_info "下载目录: $DOWNLOAD_DIR"
-    log_info "端口: $PORT"
+  read -t 5 -p "输入初始用户名(默认root):" username
+  read -t 5 -p "输入初始用户名(空则生成随机密码):" password
+  username=${username:-root}
+  if ! mongosh $addr --eval "print(db.system.users.findOne({user: '$username', db: 'admin'}))" | grep -q "$username"; then
+      [ -n "$password" ] && password=$(tr -dc 'a-zA-Z0-9#&' < /dev/urandom | head -c12)
+      echo "创建初始用户 '$username'..." && echo -e "密码:${RED}${password}${NC}"
+      mongosh $addr --eval "db.createUser({user: '$username', pwd: '$password', roles: [{role: 'root', db: 'admin'},{role: 'clusterAdmin', db: 'admin'}]});"
+      validate_login $addr $username $password
+  else
+      echo "用户 '$username' 已存在，跳过创建。"
+  fi
 
-    # 自动选择模式
-    if [[ "$INSTALL_MODE" == "auto" ]]; then
-        if docker_available; then
-            INSTALL_MODE="docker"
-            log_info "检测到 Docker，使用 Docker 模式"
+  echo "开启认证并重启服务..."
+  local ports=(27018 27019 27020)
+  grep -q "replSetName:" $CONF_FILE || ports=(27017)
+  for p in "${ports[@]}"; do
+    local conf_file="${INSTALL_DIR}/mongo/conf/mongodb_${p}.conf"
+    [ ! -f $conf_file ] && conf_file="${INSTALL_DIR}/mongo/conf/mongodb.conf"
+    if [ ! -f $conf_file ];then
+      echo "文件不存在:$conf_file"
+      continue
+    fi
+    sed -i 's/^#security:/security:/' $conf_file
+    sed -i 's/^#  authorization/  authorization/' $conf_file
+    sed -i "s/#  keyFile/  keyFile/" $conf_file
+  done
+  if grep -q "replSetName:" $CONF_FILE;then
+    for p in "${ports[@]}"; do
+      echo "systemctl restart mongodb${p}" && systemctl restart mongodb${p}
+    done
+    echo "已重启，等待启动完成..."
+    if wait_for_process_ready $wait_sec "mongosh $addr -u $username -p '$password' --eval 'rs.status();'|grep -q 'PRIMARY'"; then
+      echo -e "\n启动完成，副本集：\n" && mongosh $addr -u $username -p "$password" --eval 'rs.status();'
+      # db.changeUserPassword("username", "new_password")
+    fi
+  else
+     systemctl restart mongodb
+  fi
+}
+detect_mongodb() {
+      if ! grep -q "replSetName:" $CONF_FILE; then
+        sleep 5
+        if pgrep -x "mongod" > /dev/null; then
+          echo -e "${GREEN}MongoDB安装成功！${NC}"
+          echo -e "注意：
+          执行: source $ENV_FILE 或【重新登录当前服务器】来重新加载环境变量
+          日志文件： ${INSTALL_DIR}/mongo/logs/mongodb.log
+          启动命令: systemctl start mongodb
+          停止命令：systemctl stop mongodb
+          端口号：$PORT
+          "
         else
-            INSTALL_MODE="host"
-            log_info "Docker 不可用，使用主机模式"
+            echo -e "${RED}很抱歉安装失败${NC}"
         fi
-    fi
-
-    case "$INSTALL_MODE" in
-        docker)
-            if ! docker_available; then
-                log_error "Docker 不可用，无法使用 Docker 模式"
-                exit 1
-            fi
-            install_docker ;;
-        host)
-            install_host ;;
-        *)
-            log_error "未知安装模式: $INSTALL_MODE"
-            exit 1 ;;
-    esac
-
-    log_ok "MongoDB 安装完成"
-    log_info "安装目录: $INSTALL_DIR"
-    log_info "启动: $INSTALL_DIR/start.sh"
-    log_info "停止: $INSTALL_DIR/stop.sh"
+      fi
 }
+check_permission
+# 调试代码，方便脚本重复执行
+rm -rf ${INSTALL_DIR}/mongo
+if ! command -v "mongosh" &> /dev/null; then
+  echo "安装mongosh:https://www.mongodb.com/try/download/shell"
+fi
+install_dependencies
+find_and_extract_mongodb_binary
+configure_env_var
+create_mongodb_conf
+create_systemd_service
+init_mongodb
+detect_mongodb
+detect_firewall $PORT
 
-main "$@"

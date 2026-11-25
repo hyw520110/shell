@@ -10,10 +10,13 @@
       {
         "name": "官方脚本安装",
         "type": "bash",
-        "command": "curl -fsSL https://antigravity.google/ide/install.sh | bash",
-        "check": "[ -d '/Applications/Antigravity.app' ] || [ -d '/Applications/Google Antigravity.app' ]",
+        "command": "bash \"${SCRIPT_DIR}/scripts/antigravity.sh\" install app",
+        "check": "[ -x \"$HOME/.local/bin/antigravity\" ] || [ -d \"$HOME/.local/opt/antigravity-ide\" ]",
         "uninstall": [
-          "echo '请手动在 /Applications 中删除 Antigravity 应用'"
+          {
+            "description": "删除 Antigravity IDE",
+            "command": "bash \"${SCRIPT_DIR}/scripts/antigravity.sh\" uninstall app"
+          }
         ]
       }
     ],
@@ -21,26 +24,26 @@
   },
 
   "update": {
-    "command": "curl -fsSL https://antigravity.google/ide/install.sh | bash",
-    "check": "[ -d '/Applications/Antigravity.app' ] || [ -d '/Applications/Google Antigravity.app' ]"
+    "command": "bash \"${SCRIPT_DIR}/scripts/antigravity.sh\" update app",
+    "check": "[ -x \"$HOME/.local/bin/antigravity\" ] || [ -d \"$HOME/.local/opt/antigravity-ide\" ]"
   },
 
   "config": {
-    "path": "$HOME/Library/Application Support/Antigravity/User/settings.json",
+    "path": "$HOME/.config/Antigravity/User/settings.json",
     "operations": {
-      "view": "cat \"$HOME/Library/Application Support/Antigravity/User/settings.json\" 2>/dev/null || echo '配置文件不存在'",
-      "edit": "open -a Antigravity 2>/dev/null || echo '请在 IDE 中手动打开设置'"
+      "view": "cat \"$HOME/.config/Antigravity/User/settings.json\" 2>/dev/null || echo '配置文件不存在'",
+      "edit": "${EDITOR:-vim} \"$HOME/.config/Antigravity/User/settings.json\""
     }
   },
 
   "commands": {
-    "start": "open -a Antigravity"
+    "start": "\"$HOME/.local/bin/antigravity\" >/dev/null 2>&1 &"
   },
 
   "status_check": [
     {
       "name": "检查应用",
-      "command": "[ -d '/Applications/Antigravity.app' ] || [ -d '/Applications/Google Antigravity.app' ] && echo '已安装' || echo '未安装'"
+      "command": "bash \"${SCRIPT_DIR}/scripts/antigravity.sh\" status app"
     }
   ],
 

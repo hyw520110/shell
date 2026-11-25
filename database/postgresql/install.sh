@@ -87,6 +87,43 @@ docker_available() {
     command -v docker &>/dev/null && docker info &>/dev/null
 }
 
+# === 添加 PostgreSQL 官方仓库（PGDG）===
+# 发行版默认源通常没有指定的 postgresql-15 与 pgvector，需先添加官方仓库
+setup_pgdg_repo() {
+    if command -v apt &>/dev/null; then
+        local codename
+        codename=$(. /etc/os-release 2>/dev/null && echo "${VERSION_CODENAME:-}")
+        if [[ -z "$codename" ]] && command -v lsb_release &>/dev/null; then
+            codename=$(lsb_release -cs 2>/dev/null || true)
+        fi
+        if [[ -z "$codename" ]]; then
+            log_warn "无法识别发行版代号，跳过 PGDG 仓库配置"
+            return 0
+        fi
+        log_info "添加 PGDG 仓库: ${codename}-pgdg"
+        sudo apt install -y curl ca-certificates
+        sudo install -d /usr/share/postgresql-common/pgdg
+        sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${codename}-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+        sudo apt update
+    elif command -v dnf &>/dev/null || command -v yum &>/dev/null; then
+        local pkg_mgr major arch
+        pkg_mgr=$(command -v dnf || command -v yum)
+        major=$(rpm -E %{rhel} 2>/dev/null || true)
+        arch=$(uname -m)
+        if [[ -z "$major" || "$major" == "%{rhel}" ]]; then
+            log_warn "无法识别 RHEL 主版本，跳过 PGDG 仓库配置"
+            return 0
+        fi
+        log_info "添加 PGDG 仓库: EL-${major}-${arch}"
+        sudo "$pkg_mgr" install -y "https://download.postgresql.org/pub/repos/yum/reporpms/EL-${major}-${arch}/pgdg-redhat-repo-latest.noarch.rpm"
+    else
+        log_warn "未知包管理器，跳过 PGDG 仓库配置"
+    fi
+}
+
 # === Docker 模式安装 ===
 install_docker() {
     log_info "使用 Docker 模式安装 PostgreSQL"
@@ -180,13 +217,20 @@ install_host() {
             ;;
         linux)
             log_info "使用系统包管理器安装 PostgreSQL..."
+            setup_pgdg_repo
             if command -v apt &>/dev/null; then
                 sudo apt update
                 sudo apt install -y postgresql-${PG_VERSION} postgresql-client-${PG_VERSION}
+                sudo apt install -y postgresql-${PG_VERSION}-pgvector \
+                    || log_warn "pgvector 安装失败，可稍后手动安装 postgresql-${PG_VERSION}-pgvector"
             elif command -v dnf &>/dev/null; then
                 sudo dnf install -y postgresql${PG_VERSION}-server postgresql${PG_VERSION}-contrib
+                sudo dnf install -y pgvector_${PG_VERSION} \
+                    || log_warn "pgvector 安装失败，可稍后手动安装 pgvector_${PG_VERSION}"
             elif command -v yum &>/dev/null; then
                 sudo yum install -y postgresql${PG_VERSION}-server postgresql${PG_VERSION}-contrib
+                sudo yum install -y pgvector_${PG_VERSION} \
+                    || log_warn "pgvector 安装失败，可稍后手动安装 pgvector_${PG_VERSION}"
             else
                 log_error "不支持的包管理器"
                 exit 1

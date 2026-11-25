@@ -177,6 +177,10 @@ operate_tool() {
     local index=$1; local op=$2; local skip_ext="${3:-false}"
     parse_tool_data "${TOOLS[$index]}" "OP"
 
+    # 暂停统一由本脚本的 pause_before_menu 负责：子脚本（hermes.sh 等）
+    # 检测到该变量时不再自己暂停，避免回到菜单前要按两次键
+    export AI_HUB_NO_PAUSE=1
+
     # 配置中的 npm 命令也需要运行环境，不能仅在 exec_pkg_op 的兜底分支检查。
     if [[ "$OP_type" == "npm" && ( "$op" == "install" || "$op" == "update" ) ]]; then
         ensure_node_runtime || return $?
@@ -440,13 +444,14 @@ safe_remove_config_path() {
 
 uninstall_tool_extended() {
     local idx=$1; parse_tool_data "${TOOLS[$idx]}" "UN"
-    echo -e "${RED}[未安装] 彻底卸载 $UN_name...${NC}"
+    echo -e "${RED}[卸载] 彻底卸载 $UN_name...${NC}"
     operate_tool "$idx" "uninstall" "true" || return 1
     execute_extended_commands "$UN_id" "post_uninstall" "$UN_name"
     execute_extended_commands "$UN_id" "uninstall_extended" "$UN_name"
     execute_extended_commands "$UN_id" "uninstall_cleanup" "$UN_name"
     if [[ -n "$UN_conf" ]]; then
-        read -p "是否删除配置文件 $UN_conf? (y/N): " rm_c
+        local rm_c=""
+        read -p "是否删除配置文件 $UN_conf? (y/N): " rm_c || true
         if [[ "$rm_c" == "y" ]]; then
             local conf_root
             if [[ -d "$UN_conf" ]]; then
@@ -800,7 +805,7 @@ run_configured_command() {
             warn_log "已跳过高风险非交互命令: ${desc}。设置 AI_HUB_ALLOW_DANGEROUS=1 可允许执行。"
             return 1
         elif [[ -t 0 ]]; then
-            echo -e "${YELLOW}[未安装]  即将执行高风险步骤: $desc${NC}"
+            echo -e "${YELLOW}[确认] 即将执行高风险步骤: $desc${NC}"
             echo "$cmd"
             read -p "确认执行？(y/N): " confirm_danger
             [[ "$confirm_danger" == "y" || "$confirm_danger" == "Y" ]] || return 1
@@ -857,6 +862,14 @@ eval "$1"
     fi
 }
 
+# 命令执行完先停一下再回菜单，否则安装/更新的结果会被菜单立刻刷掉
+pause_before_menu() {
+    [[ "${AI_HUB_NON_INTERACTIVE:-0}" == "1" ]] && return 0
+    [[ -t 0 ]] || return 0
+    echo ""
+    read -r -p "按回车返回菜单..." _ || true
+}
+
 # ==================== 4. 菜单与交互 ====================
 
 is_id_in_words() {
@@ -896,8 +909,8 @@ _get_npm_global_list() {
         local cached_root cache_mtime node_mtime
         cached_root=$(head -1 "$cache_file" 2>/dev/null)
         if [[ -n "$cached_root" && -d "$cached_root" ]]; then
-            cache_mtime=$(stat -f %m "$cache_file" 2>/dev/null || echo 0)
-            node_mtime=$(stat -f %m "$cached_root" 2>/dev/null || echo 0)
+            cache_mtime=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null || echo 0)
+            node_mtime=$(stat -c %Y "$cached_root" 2>/dev/null || stat -f %m "$cached_root" 2>/dev/null || echo 0)
             if (( node_mtime <= cache_mtime )); then
                 _NPM_GLOBAL_LIST_CACHE=$(tail -n +2 "$cache_file" 2>/dev/null)
             fi
@@ -1082,42 +1095,38 @@ select_tool_interactive() {
                         [[ "${TOOL_STATUS[$gi]}" != true ]] || group_installed=$((group_installed + 1))
                     done
                     local group_name="${C_name% (*}"
-                    # 组行也需要 [OK] /[未安装] ：只给计数时，多选框 [x] 容易被读成「已安装」。
-                    local group_icon="${YELLOW}[未安装] ${NC}"
-                    [[ $group_installed -gt 0 ]] && group_icon="${GREEN}[已安装] ${NC}"
-                    # 一个都没装时别说「已安装」字样，避免读错。
+                    # 状态只在行尾出现一次：计数文案本身已说明安装情况。
                     local group_count_label
                     if [[ $group_installed -eq 0 ]]; then
-                        group_count_label="[$group_count 个版本均未安装]"
+                        group_count_label="${YELLOW}[$group_count 个版本均未安装]${NC}"
                     elif [[ $group_installed -lt $group_count ]]; then
-                        group_count_label="[$group_installed/$group_count 个版本已安装]"
+                        group_count_label="${YELLOW}[$group_installed/$group_count 个版本已安装]${NC}"
                     else
-                        group_count_label="[$group_count/$group_count 个版本全部已安装]"
+                        group_count_label="${GREEN}[$group_count/$group_count 个版本全部已安装]${NC}"
                     fi
-                    opts+=("${group_icon}${group_name} ${group_count_label}")
+                    opts+=("${group_name} ${group_count_label}")
                     idxs+=("$i")
                     continue
                 fi
-                local status_icon="${YELLOW}[未安装] ${NC}"
-                local extra_info=""
+                # 安装状态只在行尾显示一次，避免行首、行尾重复。
+                local status_suffix=" ${YELLOW}[未安装]${NC}"
                 local badge
                 badge=$(tool_category_badge "$C_cat")
                 if [[ "${TOOL_STATUS[$i]}" == "true" ]]; then
-                    status_icon="${GREEN}[已安装] ${NC}"
-                    extra_info=" [$(get_tool_display_status "$i")]"
+                    status_suffix=" [${GREEN}$(get_tool_display_status "$i")${NC}]"
                     if [[ "$C_cat" == "ai-gateway" ]]; then
                         if [[ "$C_id" == "sub2api" || "$C_id" == "one-api" || "$C_id" == "new-api" ]]; then
                             if command -v docker >/dev/null 2>&1 && docker ps --filter "name=$C_id" --format "{{.Status}}" | grep -q "Up"; then
-                                extra_info=" [${GREEN}Running${NC}]"
+                                status_suffix=" [${GREEN}Running${NC}]"
                             else
-                                extra_info=" [${RED}Stopped${NC}]"
+                                status_suffix=" [${RED}Stopped${NC}]"
                             fi
                         fi
                     fi
                 elif [[ "$C_cat" == "ai-ide" ]]; then
                     _fix_ide_cli_path "$C_id" "$C_name"
                 fi
-                opts+=("${status_icon}${badge}${C_name}${extra_info}"); idxs+=($i)
+                opts+=("${badge}${C_name}${status_suffix}"); idxs+=($i)
             done
         done
         # 3. 添加固定操作项 (使用 @ 标识)
@@ -1207,7 +1216,7 @@ select_tool_interactive() {
                 _show_group_variant_menu "$_GSEL_group"
             else
                 local op="install"; [[ "${TOOL_STATUS[$tidx]}" == "true" ]] && op="update"
-                operate_tool "$tidx" "$op"; echo ""; read -p "按回车返回..."
+                operate_tool "$tidx" "$op"; pause_before_menu
             fi
         fi
     done
@@ -1244,13 +1253,13 @@ _show_group_variant_menu() {
     for ((_vi=0; _vi<${#TOOLS[@]}; _vi++)); do
         parse_tool_data "${TOOLS[$_vi]}" "_GV"
         [[ "$_GV_group" == "$group" ]] || continue
-        local v_st_icon="${YELLOW}[未安装] ${NC}"
         local v_extra="未安装"
+        local v_color="$YELLOW"
         if [[ "${TOOL_STATUS[$_vi]}" == "true" ]]; then
-            v_st_icon="${GREEN}[已安装] ${NC}"
             v_extra="$(get_tool_display_status "$_vi")"
+            v_color="$GREEN"
         fi
-        v_opts+=("${v_st_icon}${_GV_name}  [${v_extra}]")
+        v_opts+=("${_GV_name}  [${v_color}${v_extra}${NC}]")
         v_idxs+=($_vi)
         v_statuses+=("${TOOL_STATUS[$_vi]}")
     done
@@ -1337,7 +1346,7 @@ _show_group_variant_uninstall() {
         [[ "${TOOL_STATUS[$_vi]}" != "true" ]] && continue  # 仅已安装
         local v_extra
         v_extra="$(get_tool_display_status "$_vi")"
-        v_opts+=("${GREEN}[已安装] ${_GV_name}${NC}  [${v_extra}]")
+        v_opts+=("${_GV_name}  [${GREEN}${v_extra}${NC}]")
         v_idxs+=($_vi)
     done
     
@@ -1419,6 +1428,7 @@ _install_or_update_entry() {
     else
         [[ "${TOOL_STATUS[$ti]}" != true ]] || op=update
         operate_tool "$ti" "$op"
+        pause_before_menu
     fi
 }
 
@@ -1788,7 +1798,7 @@ batch_apply_selected_configs() {
         if [[ ("${TOOL_STATUS[$i]}" == "true" || "$_is_target_explicit" == "true") && -n "$BTG_conf" ]] && is_batch_config_target "$BTG_cat" "$BTG_conf"; then
             local _kind
             _kind=$(skill_target_kind "$BTG_id" "$BTG_name")
-            target_opts+=("${GREEN}[已安装] ${BTG_name}${NC} - $(get_tool_display_status "$i")")
+            target_opts+=("${BTG_name} - ${GREEN}$(get_tool_display_status "$i")${NC}")
             target_confs+=("$BTG_conf")
             target_names+=("$BTG_name")
             target_ids+=("$BTG_id")
@@ -3960,13 +3970,11 @@ manage_mcp_servers_menu() {
         local id="${m%%:*}"
         local rest="${m#*:}"
         local name="${rest%%:*}"
-        local status_text="未安装"
+        local status_text="${YELLOW}未安装${NC}"
         if is_mcp_server_installed "$id"; then
-            status_text="已安装"
-            opts+=("${GREEN}[已安装] ${name}${NC} ($id) - $status_text")
-        else
-            opts+=("${YELLOW}[未安装] ${name}${NC} ($id) - $status_text")
+            status_text="${GREEN}已安装${NC}"
         fi
+        opts+=("${name} ($id) - ${status_text}")
         ids+=("$id")
         idx=$((idx + 1))
     done
@@ -4156,14 +4164,14 @@ manage_skills() {
             local missing_ext
             missing_ext=$(skill_missing_recommended_extension_count "$sid")
             if [[ "$missing_ext" -gt 0 ]]; then
-                opts+=("${GREEN}[已安装] ${sname}${NC} [$sc] - 已安装，推荐扩展缺失: ${missing_ext}")
+                opts+=("${sname} [$sc] - ${GREEN}已安装${NC}，推荐扩展缺失: ${missing_ext}")
             else
-                opts+=("${GREEN}[已安装] ${sname}${NC} [$sc] - 已安装")
+                opts+=("${sname} [$sc] - ${GREEN}已安装${NC}")
             fi
         else
             local ext_hint=""
             [[ "$(skill_missing_recommended_extension_count "$sid")" -gt 0 ]] && ext_hint="，含推荐扩展命令"
-            opts+=("${YELLOW}[未安装] ${sname}${NC} [$sc] - 未安装${ext_hint}")
+            opts+=("${sname} [$sc] - ${YELLOW}未安装${NC}${ext_hint}")
         fi
         idx=$((idx + 1))
     done

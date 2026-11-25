@@ -136,7 +136,7 @@ compile_tools() {
 tools_fingerprint() {
     local tools_dir="$1"
     while IFS= read -r file; do
-        stat -f "%m:%N" "$file" 2>/dev/null || stat -c "%Y:%n" "$file" 2>/dev/null
+        stat -c "%Y:%n" "$file" 2>/dev/null || stat -f "%m:%N" "$file" 2>/dev/null
     done < <(find "$tools_dir" -name "*.json" -type f 2>/dev/null | sort) | cksum | awk '{print $1":"$2}'
 }
 
