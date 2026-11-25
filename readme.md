@@ -30,7 +30,6 @@
   - [🖥️ 系统管理](#-系统管理)
   - [🤖 自动化工具](#-自动化工具)
   - [🔧 通用工具](#-通用工具)
-  - [🔒 安全工具](#-安全工具)
   - [🧪 测试工具](#-测试工具)
   - [📱 移动端开发](#-移动端开发)
   - [📄 文档](#-文档)
@@ -100,7 +99,6 @@ bash java/jdk/switch-java.sh --version 11
 | Docker 环境部署 | `bash docker/install-docker.sh` | 安装 Docker + Docker Compose |
 | 中间件快速部署 | `bash middleware/redis/install-redis.sh` | 以 Redis 为例，其他类似 |
 | AI 工具链管理 | `bash ai/ai-hub.sh` | 统一管理 60+ AI 工具 |
-| 安全扫描 | `bash security/scanner/nmap/install-nmap.sh` | 网络安全扫描 |
 
 ---
 
@@ -443,47 +441,6 @@ bash java/jdk/switch-java.sh --version 11
 | `certs/` | 证书管理 | SSL/TLS 证书管理工具 | ✅ |
 | `dependency-track/` | Dependency-Track | OWASP Dependency-Track 软件供应链分析 | ✅ |
 
-### 🔒 安全工具
-
-> 安全工具集已拆分为独立仓库 `git@github.com:hyw520110/security.git`（本地 `~/work/security`）。
-> 下方表格为历史索引，实际脚本与协作规范请查看新仓库的 `README.md` 和 `AGENTS.md`。
-
-| 目录 | 名称 | 说明 | 状态 |
-|-----|------|------|------|
-| **安全扫描** | | | |
-| `security/scanner/nmap/` | Nmap | 网络端口与服务扫描 | ✅ |
-| `security/scanner/nessus/` | Nessus | Nessus 漏洞扫描器 | ✅ |
-| `security/scanner/nikto/` | Nikto | Web 服务器漏洞扫描 | ✅ |
-| `security/scanner/openvas/` | OpenVAS | OpenVAS 漏洞评估 | ✅ |
-| `security/scanner/nuclei/` | Nuclei | Nuclei 快速漏洞扫描 | ✅ |
-| `security/scanner/trivy/` | Trivy | 容器/依赖漏洞扫描 | ✅ |
-| **安全防护** | | | |
-| `security/protection/waf/` | WAF | Web 应用防火墙 | ✅ |
-| `security/protection/fail2ban/` | Fail2Ban | 入侵防御系统 | ✅ |
-| `security/protection/clamav/` | ClamAV | 开源杀毒引擎 | ✅ |
-| **安全监控** | | | |
-| `security/monitor/lynis/` | Lynis | 系统安全审计工具 | ✅ |
-| **代码安全** | | | |
-| `security/code-security/p3c/` | P3C | 阿里巴巴 Java 代码规范检查 | ✅ |
-| `security/code-security/install-shellcheck.sh` | ShellCheck | Shell 脚本静态检查 | ✅ |
-| `security/code-security/bandit/` | Bandit | Python 代码安全扫描 | ✅ |
-| `security/code-security/safety/` | Safety | Python 依赖安全检查 | ✅ |
-| `security/code-security/pip-audit/` | pip-audit | pip 依赖漏洞审计 | ✅ |
-| `security/code-security/dependency-check/` | OWASP DC | OWASP 依赖项检查 | ✅ |
-| **主机安全** | | | |
-| `security/host-security/aide/` | AIDE | 文件完整性检测 | ✅ |
-| `security/host-security/chkrootkit/` | Chkrootkit | Rootkit 检测 | ✅ |
-| `security/host-security/denyhosts/` | DenyHosts | SSH 暴力破解防护 | ✅ |
-| `security/host-security/ossec/` | OSSEC | 主机入侵检测系统 | ✅ |
-| `security/host-security/rkhunter/` | RKHunter | Rootkit 检测工具 | ✅ |
-| **Web 安全** | | | |
-| `security/web-security/owasp-zap/` | OWASP ZAP | Web 应用安全测试 | ✅ |
-| `security/web-security/openscap/` | OpenSCAP | 安全合规扫描 | ✅ |
-| **渗透测试** | | | |
-| `sqlmap/` | SQLMap | SQL 注入自动化测试 | ✅ |
-| `viper/` | Viper | Viper 渗透测试框架 | ✅ |
-| `cobalt/` | Cobalt | Cobalt 渗透测试工具 | ✅ |
-
 ### 🧪 测试工具
 
 | 目录 | 名称 | 说明 | 状态 |
@@ -722,12 +679,6 @@ bash docker/uninstall-docker.sh
 - [ ] 增加并行安装支持
 - [ ] 离线安装包制作工具
 - [ ] 增量更新机制
-
-### 安全工具
-- [ ] 安全扫描报告自动生成
-- [ ] 合规性检查自动化
-- [ ] 漏洞情报集成
-- [ ] 安全基线自动加固
 
 ### 文档优化
 - [ ] 增加架构图

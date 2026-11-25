@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A collection of Bash automation scripts for ops and dev workflows: dev environment setup, middleware deployment, monitoring, security auditing, CI/CD, and an AI toolchain manager. Everything is Bash, organized into top-level directories by domain (`java/`, `database/`, `docker/`, `network/`, `security/`, `ai/`, etc.). Scripts target both Linux (CentOS/Ubuntu/Debian/Rocky/Alma/RHEL) and macOS, and must stay compatible with Bash 3.2+ (macOS ships 3.2).
+A collection of Bash automation scripts for ops and dev workflows: dev environment setup, middleware deployment, monitoring, security auditing, CI/CD, and an AI toolchain manager. Everything is Bash, organized into top-level directories by domain (`java/`, `database/`, `docker/`, `network/`, `ai/`, etc.). Scripts target both Linux (CentOS/Ubuntu/Debian/Rocky/Alma/RHEL) and macOS, and must stay compatible with Bash 3.2+ (macOS ships 3.2).
 
 Documentation and user-facing strings are written in Chinese. Match that convention when editing existing scripts.
 
@@ -18,7 +18,7 @@ bash java/jdk/install-jdk17.sh        # e.g. install JDK 17
 bash java/jdk/switch-java.sh --version 11
 ```
 
-Linting uses shellcheck (install via `security/code-security/install-shellcheck.sh`):
+Linting uses shellcheck (install via your package manager, e.g. `brew install shellcheck` or `apt install shellcheck`):
 
 ```bash
 shellcheck path/to/script.sh
