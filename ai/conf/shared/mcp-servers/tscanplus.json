@@ -4,11 +4,8 @@
   "description": "TscanPlus/TscanClient 的本地 MCP 接口，用于授权环境中的资产侦察、URL 指纹、JS 收集及人工控制的安全验证。",
   "category": "security",
   "install": {
-    "type": "download",
-    "setup": [
-      "运行 ai/scripts/tscanplus.sh install mcp 安装官方 TscanPlus 构建",
-      "安装完成后重启 Codex/客户端，再检查 MCP 状态"
-    ]
+    "type": "custom",
+    "command": "bash scripts/tscanplus.sh install mcp"
   },
   "compatibility": {
     "check": "case \"$(uname -s 2>/dev/null)\" in Darwin|Linux) exit 0 ;; *) exit 1 ;; esac",

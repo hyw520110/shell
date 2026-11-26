@@ -6,7 +6,7 @@
   "install": {
     "type": "manual",
     "setup": [
-      "先安装并启动 Burp Suite（macOS 可用 security/web-security/burp/burp.sh install）",
+      "先安装并启动 Burp Suite",
       "在 Burp Extensions 标签添加官方 MCP Server 扩展 JAR（github.com/PortSwigger/mcp-server）",
       "在 Burp 的 MCP 标签页启用 MCP Server，默认监听 http://127.0.0.1:9876",
       "如需 stdio 模式，使用扩展内置代理：java -jar mcp-proxy-all.jar --sse-url http://127.0.0.1:9876"

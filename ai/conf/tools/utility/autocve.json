@@ -15,30 +15,30 @@
       {
         "name": "Docker Compose 本地安装",
         "type": "bash",
-        "command": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" install",
-        "check": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" status",
+        "command": "bash \"${SCRIPT_DIR}/scripts/autocve.sh\" install",
+        "check": "bash \"${SCRIPT_DIR}/scripts/autocve.sh\" status",
         "uninstall": [
-          "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" uninstall --yes"
+          "bash \"${SCRIPT_DIR}/scripts/autocve.sh\" uninstall --yes"
         ]
       }
     ],
     "default_method": 0
   },
   "update": {
-    "command": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" update",
-    "check": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" status"
+    "command": "bash \"${SCRIPT_DIR}/scripts/autocve.sh\" update",
+    "check": "bash \"${SCRIPT_DIR}/scripts/autocve.sh\" status"
   },
   "commands": {
-    "status": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" status",
-    "start": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" start",
-    "stop": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" stop",
-    "logs": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" logs"
+    "status": "bash \"${SCRIPT_DIR}/scripts/autocve.sh\" status",
+    "start": "bash \"${SCRIPT_DIR}/scripts/autocve.sh\" start",
+    "stop": "bash \"${SCRIPT_DIR}/scripts/autocve.sh\" stop",
+    "logs": "bash \"${SCRIPT_DIR}/scripts/autocve.sh\" logs"
   },
   "process_check": "",
   "status_check": [
     {
       "name": "检查 AutoCVE Compose 状态",
-      "command": "bash \"${SCRIPT_DIR}/../security/code-security/autocve/autocve.sh\" status"
+      "command": "bash \"${SCRIPT_DIR}/scripts/autocve.sh\" status"
     }
   ],
   "setup_guide": {

@@ -6,7 +6,7 @@
   "install": {
     "type": "manual",
     "setup": [
-      "先安装并启动 ZAP（macOS 可用 security/web-security/zap/zap.sh install）",
+      "先安装并启动 ZAP",
       "在 ZAP 的市场（Marketplace）安装 MCP Integration 插件",
       "在 ZAP 的 Options → MCP Integration 配置端口（默认 8282）与 Security Key",
       "MCP 客户端通过 https://127.0.0.1:8282 连接，并在 Authorization 头携带 Security Key",

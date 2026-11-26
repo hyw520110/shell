@@ -28,7 +28,7 @@ while [[ -L "$SCRIPT_PATH" ]]; do
 done
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 
-TSCAN_VERSION="${TSCAN_VERSION:-3.4.2}"
+TSCAN_VERSION="${TSCAN_VERSION:-3.5.8}"
 TSCAN_ROOT="${TSCAN_ROOT:-${HOME}/.local/share/tscanplus}"
 TSCAN_BIN_DIR="${TSCAN_BIN_DIR:-${HOME}/.local/bin}"
 TSCAN_CLIENT_BIN="$TSCAN_ROOT/TscanClient"
@@ -36,7 +36,7 @@ TSCAN_GUI_ROOT="$TSCAN_ROOT/TscanPlus.app"
 TSCAN_MCP_SHIM="$TSCAN_BIN_DIR/tscanplus-mcp"
 TSCAN_CLIENT_LINK="$TSCAN_BIN_DIR/tscanclient"
 TSCAN_MARKER="$TSCAN_ROOT/.managed-by-shell"
-TSCAN_GITHUB_RAW="https://github.com/TideSec/TscanPlus/raw/refs/heads/main"
+TSCAN_RELEASE_BASE="https://github.com/TideSec/TscanPlus/releases/download"
 
 web_require_platform() {
   case "$(uname -s)" in
@@ -116,6 +116,19 @@ find_binary() {
   printf '%s' "$found"
 }
 
+get_latest_version() {
+  local api="https://api.github.com/repos/TideSec/TscanPlus/releases/latest"
+  local tag
+  tag="$(curl -fsSL --connect-timeout 10 --max-time 20 "$api" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("tag_name",""))' 2>/dev/null || true)"
+  tag="${tag#v}"
+  [[ -n "$tag" ]] && printf '%s' "$tag" || return 1
+}
+
+installed_mcp_version() {
+  local vfile="$TSCAN_ROOT/.mcp-version"
+  [[ -f "$vfile" ]] && cat "$vfile" || return 1
+}
+
 install_client() {
   require_cmds curl unzip find mkdir cp chmod ln
   local suffix archive tmp extract source
@@ -146,12 +159,14 @@ install_mcp() {
   suffix="$(detect_asset_suffix)"
   mkdir -p "$TSCAN_ROOT" "$TSCAN_BIN_DIR"
 
+  local asset_url
   if [[ "$suffix" == Mac_* ]]; then
     require_cmds hdiutil ditto
     archive="$(mktemp "${TMPDIR:-/tmp}/tscanplus.dmg.XXXXXX")"
     mount="$(mktemp -d "${TMPDIR:-/tmp}/tscanplus-mount.XXXXXX")"
     trap 'rm -f "${archive:-}"; hdiutil detach "${mount:-}" >/dev/null 2>&1 || true; rmdir "${mount:-}" >/dev/null 2>&1 || true' RETURN
-    download_file "$TSCAN_GITHUB_RAW/TscanPlus-v${TSCAN_VERSION}/TscanPlus_${suffix}.dmg" "$archive"
+    asset_url="$TSCAN_RELEASE_BASE/v${TSCAN_VERSION}/TscanPlus_${suffix}.dmg"
+    download_file "$asset_url" "$archive"
     hdiutil attach "$archive" -nobrowse -readonly -mountpoint "$mount" >/dev/null
     app="$(find "$mount" -maxdepth 2 -type d -name '*.app' -print -quit 2>/dev/null || true)"
     [[ -n "$app" ]] || die "DMG 中未找到 TscanPlus.app"
@@ -165,7 +180,8 @@ install_mcp() {
     archive="$(mktemp "${TMPDIR:-/tmp}/tscanplus.zip.XXXXXX")"
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/tscanplus-extract.XXXXXX")"
     trap 'rm -f "${archive:-}"; rm -rf "${tmp:-}"' RETURN
-    download_file "$TSCAN_GITHUB_RAW/TscanPlus-v${TSCAN_VERSION}/TscanPlus_${suffix}.zip" "$archive"
+    asset_url="$TSCAN_RELEASE_BASE/v${TSCAN_VERSION}/TscanPlus_${suffix}.zip"
+    download_file "$asset_url" "$archive"
     unzip -tq "$archive" >/dev/null || die "压缩包校验失败"
     unzip -q "$archive" -d "$tmp"
     source="$(find_binary "$tmp" TscanPlus)"
@@ -177,6 +193,7 @@ install_mcp() {
   cp "$SCRIPT_PATH" "$TSCAN_ROOT/tscanplus.sh"
   chmod 0755 "$TSCAN_ROOT/tscanplus.sh"
   ln -sfn "$TSCAN_ROOT/tscanplus.sh" "$TSCAN_MCP_SHIM"
+  printf '%s\n' "$TSCAN_VERSION" > "$TSCAN_ROOT/.mcp-version"
   : > "$TSCAN_MARKER"
   trap - RETURN
   rm -f "${archive:-}"
@@ -185,7 +202,7 @@ install_mcp() {
     hdiutil detach "$mount" >/dev/null 2>&1 || true
     rmdir "$mount" >/dev/null 2>&1 || true
   fi
-  log "TscanPlus MCP 启动器已安装：$TSCAN_MCP_SHIM"
+  log "TscanPlus MCP 启动器已安装：$TSCAN_MCP_SHIM (v${TSCAN_VERSION})"
 }
 
 cmd_install() {
@@ -200,6 +217,8 @@ cmd_install() {
 }
 
 cmd_status() {
+  local latest=""
+  latest="$(get_latest_version 2>/dev/null || true)"
   printf 'TscanClient: '
   if [[ -x "$TSCAN_CLIENT_BIN" ]]; then
     printf '已安装 (%s)\n' "$TSCAN_CLIENT_BIN"
@@ -208,9 +227,16 @@ cmd_status() {
   fi
   printf 'TscanPlus MCP: '
   if [[ -x "$TSCAN_MCP_SHIM" ]]; then
-    printf '启动器已安装 (%s)\n' "$TSCAN_MCP_SHIM"
+    local cur; cur="$(installed_mcp_version 2>/dev/null || echo unknown)"
+    printf '已安装 v%s (%s)\n' "$cur" "$TSCAN_MCP_SHIM"
+    if [[ -n "$latest" && "$cur" != "$latest" && "$cur" != "unknown" ]]; then
+      printf '  -> 有新版本: v%s（运行 update mcp 更新）\n' "$latest"
+    elif [[ -n "$latest" ]]; then
+      printf '  -> 最新: v%s\n' "$latest"
+    fi
   else
     printf '未安装\n'
+    [[ -n "$latest" ]] && printf '  -> 最新可用: v%s\n' "$latest"
   fi
   if [[ -d "$TSCAN_GUI_ROOT" ]]; then
     printf 'TscanPlus.app: %s\n' "$TSCAN_GUI_ROOT"
@@ -285,7 +311,8 @@ cmd_uninstall() {
 main() {
   local cmd="${1:-help}"; shift || true
   case "$cmd" in
-    install|update) cmd_install "${1:-client}" ;;
+    install) cmd_install "${1:-client}" ;;
+    update) cmd_update "${1:-client}" ;;
     status) cmd_status ;;
     scan-url) parse_scan_args url "$@" ;;
     scan-urls) parse_scan_args urls "$@" ;;

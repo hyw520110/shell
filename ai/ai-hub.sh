@@ -821,7 +821,7 @@ run_configured_command() {
     if [[ "${AI_HUB_USE_ADL:-1}" != "0" && "$gate" == "gate" && "$cmd" == *curl* ]] && command_exists adl; then
         local adl_bin
         adl_bin=$(command -v adl)
-        (cd "$SCRIPT_DIR" && AI_HUB_ADL_BIN="$adl_bin" bash -c '
+        (cd "$SCRIPT_DIR" && AI_HUB_ADL_BIN="$adl_bin" AI_HUB_DIR="$SCRIPT_DIR" bash -c '
 curl() {
     local out="" url="" arg next_is_out=false
     for arg in "$@"; do
@@ -858,7 +858,7 @@ curl() {
 eval "$1"
 ' _ "$cmd")
     else
-        (cd "$SCRIPT_DIR" && bash -c "$cmd")
+        (cd "$SCRIPT_DIR" && AI_HUB_DIR="$SCRIPT_DIR" bash -c "$cmd")
     fi
 }
 
@@ -4343,10 +4343,12 @@ view_skills() {
         "${group_order[@]}"
 }
 
-# 非交互安装指定名称的 MCP：按名称或 id 匹配，同步配置到所有目标工具 + 安装包。
-# 用法: ai-hub.sh -m -i <名称或id>
+# 非交互安装指定名称的 MCP：按名称或 id 匹配，同步配置到目标工具 + 安装包。
+# 用法: ai-hub.sh -m -i <名称或id> [目标客户端...]
+# 未指定目标时默认同步到所有已发现的支持 MCP 的客户端/profile。
 install_mcp_by_name() {
-    local query="$1"
+    local query="$1"; shift || true
+    local requested_targets_raw="$*"
     local found_id="" found_name=""
     local m id name rest
     for m in "${mcp_servers[@]}"; do
@@ -4366,7 +4368,51 @@ install_mcp_by_name() {
         config_path_in_list "$_cconf" "${targets[@]}" && continue
         targets+=("$_cconf"); names+=("$_cname")
     done < <(collect_mcp_config_targets)
-    [[ ${#targets[@]} -eq 0 ]] && { echo -e "${RED}[失败] 未发现支持 MCP 写入的工具/profile 配置${NC}" >&2; return 1; }
+
+    # 若指定了目标客户端，仅保留匹配目标
+    if [[ -n "$requested_targets_raw" ]]; then
+        local normalized="${requested_targets_raw//,/ }" req
+        local filtered_targets=() filtered_names=()
+        for req in $normalized; do
+            [[ -n "$req" ]] || continue
+            local matched=false i
+            for i in "${!targets[@]}"; do
+                local tname="${names[$i]}" tpath="${targets[$i]}"
+                local tid=""
+                # 尝试从路径/名称推断 id（宽松匹配）
+                local req_lc tname_lc tpath_lc
+                req_lc=$(printf '%s' "$req" | tr '[:upper:]' '[:lower:]')
+                tname_lc=$(printf '%s' "$tname" | tr '[:upper:]' '[:lower:]')
+                tpath_lc=$(printf '%s' "$tpath" | tr '[:upper:]' '[:lower:]')
+                if [[ "$tname_lc" == *"$req_lc"* || "$tname_lc" == "$req_lc" || "$tpath_lc" == *"$req_lc"* || "$req_lc" == "$tname_lc" ]]; then
+                    matched=true
+                else
+                    # 再按工具 id 匹配
+                    local ti
+                    for ti in "${!TOOLS[@]}"; do
+                        parse_tool_data "${TOOLS[$ti]}" "FMT"
+                        local fmt_id_lc fmt_cmd_lc fmt_name_lc fmt_conf_exp
+                        fmt_id_lc=$(printf '%s' "$FMT_id" | tr '[:upper:]' '[:lower:]')
+                        fmt_cmd_lc=$(printf '%s' "$FMT_cmd" | tr '[:upper:]' '[:lower:]')
+                        fmt_name_lc=$(printf '%s' "$FMT_name" | tr '[:upper:]' '[:lower:]')
+                        fmt_conf_exp=$(expand_path "$FMT_config")
+                        if [[ "$fmt_id_lc" == "$req_lc" || "$fmt_cmd_lc" == "$req_lc" || "$fmt_name_lc" == *"$req_lc"* ]]; then
+                            if [[ "$fmt_conf_exp" == "$(expand_path "$tpath")" || "$tname" == "$FMT_name" || "$tname_lc" == "$fmt_name_lc" ]]; then
+                                matched=true; break
+                            fi
+                        fi
+                    done
+                fi
+                if [[ "$matched" == "true" ]]; then
+                    config_path_in_list "$tpath" "${filtered_targets[@]}" || { filtered_targets+=("$tpath"); filtered_names+=("$tname"); }
+                    matched=false
+                fi
+            done
+        done
+        targets=("${filtered_targets[@]}"); names=("${filtered_names[@]}")
+    fi
+
+    [[ ${#targets[@]} -eq 0 ]] && { echo -e "${RED}[失败] 未发现匹配的支持 MCP 写入的工具/profile 配置${NC}" >&2; return 1; }
 
     local selected_ids=("$found_id")
     filter_mcps_by_env selected_ids
@@ -4389,10 +4435,12 @@ install_mcp_by_name() {
     echo -e "${GREEN}[已安装] MCP '$found_name' 安装完成。${NC}"
 }
 
-# 非交互安装指定名称的 Skill：按名称或 id 匹配，安装。
-# 用法: ai-hub.sh -s -i <名称或id>
+# 非交互安装指定名称的 Skill：按名称或 id 匹配。
+# 用法: ai-hub.sh -s -i <名称或id> [目标客户端...]
+# 未指定目标时写入所有已发现的支持 Skill 的客户端/profile；指定目标时只写入匹配客户端。
 install_skill_by_name() {
-    local query="$1"
+    local query="$1"; shift || true
+    local requested_targets_raw="$*"
     local found_id="" found_name=""
     local s sid sname sd sc
     for s in "${SKILLS[@]}"; do
@@ -4405,8 +4453,80 @@ install_skill_by_name() {
         echo -e "${RED}[失败] 未找到名称/id 为 '$query' 的 Skill。可用: ai-hub.sh -s${NC}" >&2
         return 1
     fi
-    install_skill "$found_id"
-    echo -e "${GREEN}[已安装] Skill '$found_name' 安装完成。${NC}"
+
+    install_skill "$found_id" || { echo -e "${RED}[失败] Skill '$found_name' 安装失败。${NC}" >&2; return 1; }
+
+    # 确定目标：默认写入所有支持 Skill 的已安装客户端；若无法判定状态则回退为所有支持客户端
+    local target_ids=() target_names=() target_kinds=() target_skill_dirs=()
+    local i any_installed=false
+    for i in "${!TOOLS[@]}"; do
+        [[ "${TOOL_STATUS[$i]:-}" == "true" ]] && any_installed=true && break
+    done
+    for i in "${!TOOLS[@]}"; do
+        parse_tool_data "${TOOLS[$i]}" "SBT"
+        local tkind tdir
+        tkind=$(skill_target_kind "$SBT_id" "$SBT_name")
+        [[ "$tkind" == "fallback" ]] && continue
+        if [[ "$any_installed" == "true" && -z "$requested_targets_raw" ]]; then
+            [[ "${TOOL_STATUS[$i]}" == "true" ]] || continue
+        fi
+        tdir=$(skill_target_dir "$tkind")
+        # 去重（同 kind+dir）
+        local dup=false j
+        for j in "${!target_kinds[@]}"; do
+            [[ "${target_kinds[$j]}" == "$tkind" && "${target_skill_dirs[$j]}" == "$tdir" ]] && dup=true && break
+        done
+        [[ "$dup" == "true" ]] && continue
+        target_ids+=("$SBT_id"); target_names+=("$SBT_name"); target_kinds+=("$tkind"); target_skill_dirs+=("$tdir")
+    done
+    # 额外 profile 目标
+    local _pid _pname _pkind _pconf _pskills
+    while IFS=$'\t' read -r _pid _pname _pkind _pconf _pskills; do
+        [[ -n "$_pid" ]] || continue
+        local pk="${_pkind:-$(skill_target_kind "$_pid" "$_pname")}"
+        [[ "$pk" == "fallback" ]] && continue
+        local dup=false j
+        for j in "${!target_kinds[@]}"; do
+            [[ "${target_kinds[$j]}" == "$pk" && "${target_skill_dirs[$j]}" == "${_pskills:-$(skill_target_dir "$pk")}" ]] && dup=true && break
+        done
+        [[ "$dup" == "true" ]] && continue
+        target_ids+=("$_pid"); target_names+=("$_pname"); target_kinds+=("$pk"); target_skill_dirs+=("${_pskills:-$(skill_target_dir "$pk")}")
+    done < <(collect_extra_profile_targets)
+
+    # 按目标过滤
+    if [[ -n "$requested_targets_raw" ]]; then
+        local normalized="${requested_targets_raw//,/ }" req
+        local f_ids=() f_names=() f_kinds=() f_dirs=()
+        for req in $normalized; do
+            [[ -n "$req" ]] || continue
+            local req_lc; req_lc=$(printf '%s' "$req" | tr '[:upper:]' '[:lower:]')
+            for i in "${!target_ids[@]}"; do
+                local tid_lc tname_lc
+                tid_lc=$(printf '%s' "${target_ids[$i]}" | tr '[:upper:]' '[:lower:]')
+                tname_lc=$(printf '%s' "${target_names[$i]}" | tr '[:upper:]' '[:lower:]')
+                if [[ "$tid_lc" == "$req_lc" || "$tname_lc" == *"$req_lc"* || "$tname_lc" == "$req_lc" ]]; then
+                    local dup=false j
+                    for j in "${!f_ids[@]}"; do [[ "${f_ids[$j]}" == "${target_ids[$i]}" && "${f_dirs[$j]}" == "${target_skill_dirs[$i]}" ]] && dup=true && break; done
+                    [[ "$dup" == "false" ]] && { f_ids+=("${target_ids[$i]}"); f_names+=("${target_names[$i]}"); f_kinds+=("${target_kinds[$i]}"); f_dirs+=("${target_skill_dirs[$i]}"); }
+                fi
+            done
+        done
+        target_ids=("${f_ids[@]}"); target_names=("${f_names[@]}"); target_kinds=("${f_kinds[@]}"); target_skill_dirs=("${f_dirs[@]}")
+    fi
+
+    [[ ${#target_ids[@]} -eq 0 ]] && { echo -e "${YELLOW}[提示] 未发现匹配的支持 Skill 的客户端目标；Skill 已安装到 ai-hub 本地存储。${NC}"; return 0; }
+
+    local ok_count=0 fail_count=0 i
+    for i in "${!target_ids[@]}"; do
+        echo -ne "   -> 写入 ${target_names[$i]} ... "
+        if install_skill_for_target "$found_id" "${target_kinds[$i]}" "${target_skill_dirs[$i]}"; then
+            echo "成功"; ok_count=$((ok_count+1))
+        else
+            echo "失败"; fail_count=$((fail_count+1))
+        fi
+    done
+    echo -e "${GREEN}[已安装] Skill '$found_name' 写入完成（成功 ${ok_count}，失败 ${fail_count}）。${NC}"
+    [[ $fail_count -eq 0 ]]
 }
 
 manage_ai_docs() { info_log "管理文档功能暂通过交互菜单直接调用库函数"; }
@@ -4797,7 +4917,11 @@ main() {
         case $dm in
             "mcp")
                 if [[ -n "$install_name" ]]; then
-                    install_mcp_by_name "$install_name" || exit 1
+                    # 剩余位置参数作为目标客户端（排除 install_name 本身）
+                    local _mcp_targets=()
+                    local _pa
+                    for _pa in "${positional_args[@]}"; do [[ "$_pa" == "$install_name" ]] || _mcp_targets+=("$_pa"); done
+                    install_mcp_by_name "$install_name" "${_mcp_targets[@]}" || exit 1
                 elif [[ "$dm_select" == true ]]; then
                     manage_mcp_servers_menu
                 else
@@ -4805,7 +4929,10 @@ main() {
                 fi ;;
             "skills")
                 if [[ -n "$install_name" ]]; then
-                    install_skill_by_name "$install_name" || exit 1
+                    local _sk_targets=()
+                    local _pa
+                    for _pa in "${positional_args[@]}"; do [[ "$_pa" == "$install_name" ]] || _sk_targets+=("$_pa"); done
+                    install_skill_by_name "$install_name" "${_sk_targets[@]}" || exit 1
                 elif [[ "$dm_select" == true ]]; then
                     manage_skills
                 else

@@ -15,30 +15,30 @@
       {
         "name": "本地源码构建（macOS/Linux）",
         "type": "bash",
-        "command": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" install",
-        "check": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" status",
+        "command": "bash \"${SCRIPT_DIR}/scripts/cyberstrike-ai.sh\" install",
+        "check": "bash \"${SCRIPT_DIR}/scripts/cyberstrike-ai.sh\" status",
         "uninstall": [
-          "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" uninstall --yes"
+          "bash \"${SCRIPT_DIR}/scripts/cyberstrike-ai.sh\" uninstall --yes"
         ]
       }
     ],
     "default_method": 0
   },
   "update": {
-    "command": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" update",
-    "check": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" status"
+    "command": "bash \"${SCRIPT_DIR}/scripts/cyberstrike-ai.sh\" update",
+    "check": "bash \"${SCRIPT_DIR}/scripts/cyberstrike-ai.sh\" status"
   },
   "commands": {
-    "status": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" status",
-    "start": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" start",
-    "stop": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" stop",
-    "restart": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" restart"
+    "status": "bash \"${SCRIPT_DIR}/scripts/cyberstrike-ai.sh\" status",
+    "start": "bash \"${SCRIPT_DIR}/scripts/cyberstrike-ai.sh\" start",
+    "stop": "bash \"${SCRIPT_DIR}/scripts/cyberstrike-ai.sh\" stop",
+    "restart": "bash \"${SCRIPT_DIR}/scripts/cyberstrike-ai.sh\" restart"
   },
   "process_check": "",
   "status_check": [
     {
       "name": "检查 CyberStrikeAI 安装状态",
-      "command": "bash \"${SCRIPT_DIR}/../security/platform/cyberstrikeai/cyberstrike-ai.sh\" status"
+      "command": "bash \"${SCRIPT_DIR}/scripts/cyberstrike-ai.sh\" status"
     }
   ],
   "setup_guide": {
@@ -46,7 +46,7 @@
     "workflows": [
       {
         "name": "安全启动",
-        "example": "bash security/platform/cyberstrikeai/cyberstrike-ai.sh start"
+        "example": "bash ai/scripts/cyberstrike-ai.sh start"
       },
       {
         "name": "安全检查",

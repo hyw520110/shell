@@ -6,7 +6,7 @@
   "install": {
     "type": "bash",
     "pre_install": [
-      "command -v codeql >/dev/null 2>&1 || echo '未检测到 codeql CLI，请先运行 security/web-security/install-codeql.sh install'"
+      "command -v codeql >/dev/null 2>&1 || echo '未检测到 codeql CLI，请先安装 CodeQL CLI 并将其加入 PATH'"
     ],
     "command": "npm install -g codeql-development-mcp-server 2>/dev/null || npx -y codeql-development-mcp-server --help >/dev/null 2>&1 || true"
   },
@@ -33,7 +33,7 @@
     },
     {
       "name": "检查 CodeQL CLI",
-      "command": "codeql version 2>/dev/null || echo 'CodeQL CLI 未安装（可运行 security/web-security/install-codeql.sh install）'"
+      "command": "codeql version 2>/dev/null || echo 'CodeQL CLI 未安装（需先安装 CodeQL CLI 并加入 PATH）'"
     }
   ],
   "tools": [
